@@ -194,7 +194,7 @@ flowchart TB
 
 | Stage | Deliverable | Acceptance evidence |
 |---|---|---|
-| 0 · Local command center | Portable schema, guarded demo seed, 30-day synthetic history, overview/energy/BI/economics/workflow/evidence panels | API/schema tests, source labels, rerunnable additive seed, repeatable screenshots/GIF committed in `docs/media/` |
+| 0 · Local command center | Portable schema, guarded demo seed, 30-day synthetic history, overview/energy/BI/economics/workflow/evidence panels | API/schema tests, source labels, and rerunnable additive seed; screenshots/GIF remain outstanding |
 | 1 · Source onboarding | Read-only connector registry, onboarding wizard, identity/scope/freshness checks, import previews | Vendor sandbox contracts, malformed/stale-data tests, secret-reference-only config, operator-confirmed mapping |
 | 2 · Data quality and BI | Boundary-aligned intervals, missingness/coverage budgets, versioned formulas, KPI lineage and cost actual reconciliation | Reproducible queries, boundary tests, quality SLOs and calculation manifests |
 | 3 · Predictive maintenance | Condition features, work-order/failure labels, maintenance history, interpretable forecasting and drift | Time-split backtests, calibration/error analysis, leakage checks, minimum-history gates and human disposition |
@@ -207,15 +207,16 @@ local API is unauthenticated and must remain loopback-only; vendor/cloud live
 adapters, validated forecasts, production IAM and safety-control integration
 are not delivered by this starter.
 
-### Demo artifacts
+### Screenshots and GIF
 
 The local walkthrough is available at
 `http://127.0.0.1:8795/?tenant_id=dcc00000-0000-4000-8000-000000000001&demo=synthetic`.
-Screenshot and GIF files are a pre-release checklist item and are not committed
-yet; do not treat this README as claiming those media assets exist. Capture them
-from this explicit synthetic view, preserve the `SYNTHETIC DEMO · NOT LIVE`
-notice, and place the reviewed files in `docs/media/` before publishing. No live
-connector or physical-system action is part of the walkthrough.
+No screenshots or GIF are currently committed under `docs/media/`; the visual
+demo deliverable is still outstanding. This README intentionally does not use
+fabricated application imagery. Any future recording should use this explicit
+synthetic view, preserve the `SYNTHETIC DEMO · NOT LIVE` notice, and avoid
+implying live integrations or facility control. A complete feature tour will
+require multiple focused captures rather than one screen.
 
 ## License
 
