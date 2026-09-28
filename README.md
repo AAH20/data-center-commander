@@ -1,5 +1,7 @@
 # Data Center Commander
 
+![Overview tour across the synthetic demo sections](docs/media/overview.gif)
+
 **An open, operator-centered system for governing the full data-center lifecycle—from utility boundary to useful compute.**
 
 [![CI](https://github.com/AAH20/data-center-commander/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AAH20/data-center-commander/actions/workflows/ci.yml)
@@ -214,8 +216,6 @@ The captures below use the documented local synthetic walkthrough:
 Every capture keeps the **SYNTHETIC DEMO · NOT LIVE** banner visible. All readings,
 workflows, estimates, and price assumptions are fixtures; they are not facility
 telemetry, forecasts, quotes, invoices, approvals, or operational evidence.
-
-![Overview tour across the synthetic demo sections](docs/media/overview.gif)
 
 <details>
 <summary>View screenshots for every section</summary>
