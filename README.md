@@ -2,6 +2,42 @@
 
 **An open, operator-centered system for governing the full data-center lifecycle—from utility boundary to useful compute.**
 
+[![CI](https://github.com/AAH20/data-center-commander/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AAH20/data-center-commander/actions/workflows/ci.yml)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0-only-blue.svg)](LICENSE)
+
+> One command view for facilities, energy, capacity, maintenance, economics,
+> analytics, and evidence—with read-only integrations and explicit safety
+> boundaries.
+
+**Status:** local decision-support prototype. Vendor adapters, validated
+forecasts, production IAM, and facility control are not delivered.
+
+## Architecture
+
+Data moves from authorized sources through validation before it reaches
+operator views and analytics. Recommendations remain advisory.
+
+```mermaid
+flowchart LR
+  SRC[Utility, OEM, cloud and facility sources] --> ADAPTER[Versioned read-only adapters]
+  ADAPTER --> QUALITY[Identity, units, freshness and provenance checks]
+  QUALITY --> DB[(Portable PostgreSQL schema)]
+  OP[Operator] --> UI[Multi-tab command center]
+  UI --> API[Loopback read-only API]
+  API --> DB
+  DB --> BI[Reproducible KPIs and continuous BI]
+  BI --> MODELS[Trend and maintenance analysis]
+  MODELS --> GATE{Evidence sufficient?}
+  GATE -->|No| UNKNOWN[Unknown; no forecast]
+  GATE -->|Yes| REC[Human-reviewed advisory]
+  API -. no authority .-> SAFE[No facility actuation]
+```
+
+**Explore:** [full architecture](docs/ARCHITECTURE.md) ·
+[lifecycle operations](docs/LIFECYCLE_OPERATIONS.md) ·
+[integrations](docs/INTEGRATIONS.md) ·
+[data model and KPIs](docs/DATA_MODEL_AND_KPIS.md)
+
 Data Center Commander is a standalone, vendor-neutral operations and decision-support project. It joins facility, energy, environmental, asset, workload, capacity, maintenance, incident, change, and evidence data under one tenant-scoped operational model. It is not a BMS, EPMS, CMMS, hypervisor, scheduler, or safety controller; those systems remain authoritative for their domains.
 
 ## Product contract
@@ -114,7 +150,7 @@ forecasts stay disabled where minimum history or authoritative labels are
 missing. It never enables facility actuation or other writes. See
 [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md) before running seeds.
 
-## Architecture at a glance
+## Detailed data and analytics flows
 
 ```mermaid
 flowchart LR
