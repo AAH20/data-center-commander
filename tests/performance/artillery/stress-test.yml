@@ -1,0 +1,71 @@
+# Artillery Stress Test — Data Center Commander API
+# Pushes the system beyond normal capacity to find breaking points
+#
+# Usage:
+#   npx artillery run tests/performance/artillery/stress-test.yml
+
+config:
+  target: "{{ $processEnvironment.BASE_URL || 'http://127.0.0.1:8790' }}"
+  phases:
+    - duration: 120
+      arrivalRate: 10
+      name: "Initial load"
+    - duration: 300
+      arrivalRate: 50
+      name: "Heavy load"
+    - duration: 120
+      arrivalRate: 100
+      name: "Stress"
+    - duration: 300
+      arrivalRate: 200
+      name: "Extreme stress"
+    - duration: 120
+      arrivalRate: 10
+      name: "Recovery"
+  defaults:
+    headers:
+      Content-Type: application/json
+      Accept: application/json
+  ensure:
+    thresholds:
+      - http.response_time.p95: 3000
+      - http.response_time.p99: 5000
+      - http.codes.2xx: 90
+  processor: "./artillery/helpers.js"
+
+scenarios:
+  - name: "Heavy Analytics Query"
+    weight: 30
+    flow:
+      - get:
+          url: "/v1/analytics?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}&window_days=90"
+      - think: 0.5
+
+  - name: "Full Asset Scan"
+    weight: 25
+    flow:
+      - get:
+          url: "/v1/assets?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 0.5
+      - get:
+          url: "/v1/topology?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 0.5
+
+  - name: "Cost Deep Dive"
+    weight: 25
+    flow:
+      - get:
+          url: "/v1/costs?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 0.5
+      - get:
+          url: "/v1/capacity?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 0.5
+
+  - name: "Health Check Storm"
+    weight: 20
+    flow:
+      - get:
+          url: "/healthz"
+      - get:
+          url: "/readyz"
+      - think: 0.2

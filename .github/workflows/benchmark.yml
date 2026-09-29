@@ -1,0 +1,45 @@
+name: Benchmark
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -e ".[test]" pytest-benchmark
+      - name: Run benchmarks
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/ --benchmark-only --benchmark-json=benchmark-results.json || true
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results.json
+          retention-days: 30
+      - name: Compare with baseline
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Benchmark comparison would run here with stored baselines"
+          echo "Current results:"
+          cat benchmark-results.json 2>/dev/null || echo "No benchmark results"

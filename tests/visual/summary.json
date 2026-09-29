@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-09-29T12:15:31.402Z",
+  "baseUrl": "http://127.0.0.1:8790",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "pixelThreshold": 0.1,
+  "diffThreshold": 0.01,
+  "total": 12,
+  "passed": 12,
+  "failed": 0,
+  "results": [
+    {
+      "view": "overview",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "energy",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "analytics",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "finance",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "capacity",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "assets",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "reliability",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "workflows",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "integrations",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "evidence",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "workloads",
+      "status": "baseline_saved"
+    },
+    {
+      "view": "critical",
+      "status": "baseline_saved"
+    }
+  ]
+}

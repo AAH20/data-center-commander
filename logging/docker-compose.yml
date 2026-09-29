@@ -1,0 +1,120 @@
+# Centralized logging stack for Data Center Commander
+# Stack: Loki (log aggregation) + Promtail (log shipping) + Grafana (visualization)
+# Alternative: Set USE_ELK=true to use Elasticsearch + Logstash + Kibana instead
+
+services:
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: dcc-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - dcc-logging
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: dcc-promtail
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - dcc-logs:/var/log/dcc:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - dcc-logging
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: dcc-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+    volumes:
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - dcc-logging
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: ELK stack (uncomment to use instead of Loki)
+  # elasticsearch:
+  #   image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+  #   container_name: dcc-elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - xpack.security.enabled=false
+  #     - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+  #   ports:
+  #     - "9200:9200"
+  #   volumes:
+  #     - elasticsearch-data:/usr/share/elasticsearch/data
+  #   networks:
+  #     - dcc-logging
+  #   restart: unless-stopped
+  #
+  # logstash:
+  #   image: docker.elastic.co/logstash/logstash:8.13.0
+  #   container_name: dcc-logstash
+  #   ports:
+  #     - "5044:5044"
+  #   volumes:
+  #     - ./logstash-pipeline.conf:/usr/share/logstash/pipeline/logstash.conf:ro
+  #     - dcc-logs:/var/log/dcc:ro
+  #   networks:
+  #     - dcc-logging
+  #   depends_on:
+  #     - elasticsearch
+  #   restart: unless-stopped
+  #
+  # kibana:
+  #   image: docker.elastic.co/kibana/kibana:8.13.0
+  #   container_name: dcc-kibana
+  #   ports:
+  #     - "5601:5601"
+  #   environment:
+  #     - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+  #   networks:
+  #     - dcc-logging
+  #   depends_on:
+  #     - elasticsearch
+  #   restart: unless-stopped
+
+volumes:
+  loki-data:
+  grafana-data:
+  dcc-logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./logs
+  # elasticsearch-data:
+
+networks:
+  dcc-logging:
+    driver: bridge

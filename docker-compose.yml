@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dcc
+      POSTGRES_PASSWORD: dcc_dev_password
+      POSTGRES_DB: data_center_commander
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/migrations/001_cost_intelligence.sql:/docker-entrypoint-initdb.d/002_migration_001.sql:ro
+      - ./database/migrations/002_lifecycle_rollup_fix.sql:/docker-entrypoint-initdb.d/003_migration_002.sql:ro
+      - ./database/migrations/003_estimate_price_link_validation.sql:/docker-entrypoint-initdb.d/004_migration_003.sql:ro
+      - ./database/migrations/004_placement_comparison_snapshots.sql:/docker-entrypoint-initdb.d/005_migration_004.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dcc -d data_center_commander"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dcc-net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DCC_DATABASE_URL: postgresql://dcc:dcc_dev_password@db:5432/data_center_commander
+    ports:
+      - "8790:8790"
+    networks:
+      - dcc-net
+
+volumes:
+  db_data:
+
+networks:
+  dcc-net:
+    driver: bridge

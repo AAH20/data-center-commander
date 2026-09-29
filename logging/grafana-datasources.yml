@@ -1,0 +1,28 @@
+# Grafana datasource provisioning for Data Center Commander
+
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":"(\w+)"'
+          url: 'http://localhost:8790/v1/traces/$${__value.raw}'
+    isDefault: true
+    editable: false
+
+  # Uncomment for ELK stack
+  # - name: Elasticsearch
+  #   type: elasticsearch
+  #   access: proxy
+  #   url: http://elasticsearch:9200
+  #   jsonData:
+  #     index: dcc-logs-*
+  #     timeField: '@timestamp'
+  #     logMessageField: message
+  #     logLevelField: level

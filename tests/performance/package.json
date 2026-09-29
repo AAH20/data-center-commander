@@ -1,0 +1,22 @@
+{
+  "name": "dcc-performance-tests",
+  "version": "1.0.0",
+  "description": "Performance test suite for Data Center Commander API",
+  "private": true,
+  "scripts": {
+    "test:k6:load": "k6 run tests/performance/k6/load-test.js",
+    "test:k6:stress": "k6 run tests/performance/k6/stress-test.js",
+    "test:k6:spike": "k6 run tests/performance/k6/spike-test.js",
+    "test:k6:endurance": "k6 run tests/performance/k6/endurance-test.js",
+    "test:k6:all": "npm run test:k6:load && npm run test:k6:stress && npm run test:k6:spike && npm run test:k6:endurance",
+    "test:artillery:load": "artillery run tests/performance/artillery/load-test.yml",
+    "test:artillery:stress": "artillery run tests/performance/artillery/stress-test.yml",
+    "test:artillery:spike": "artillery run tests/performance/artillery/spike-test.yml",
+    "test:artillery:endurance": "artillery run tests/performance/artillery/endurance-test.yml",
+    "test:artillery:all": "npm run test:artillery:load && npm run test:artillery:stress && npm run test:artillery:spike && npm run test:artillery:endurance",
+    "test:all": "npm run test:k6:all && npm run test:artillery:all"
+  },
+  "devDependencies": {
+    "artillery": "^2.0.0"
+  }
+}

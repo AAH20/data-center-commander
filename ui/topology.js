@@ -1,3 +1,18 @@
+/**
+ * Asset Topology Visualization module for Data Center Commander.
+ *
+ * Renders a deterministic layered graph of tenant assets and their relationships
+ * from the /v1/topology endpoint. Supports search, relationship filtering,
+ * and 2-hop dependency tracing. Uses adjacency-list BFS for O(V+E) layout
+ * and renders up to 200 nodes / 400 edges.
+ *
+ * Design: Self-contained ES module, SVG-based graph, dark theme consistent
+ * with the existing DCC UI. No external dependencies.
+ *
+ * @module topology
+ * @see {@link https://en.wikipedia.org/wiki/Breadth-first_search|BFS}
+ * @see {@link https://en.wikipedia.org/wiki/Adjacency_list|Adjacency List}
+ */
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const graphHost = document.querySelector("#topologyGraph");
 const controlHost = document.querySelector("#topologyControls");
@@ -7,7 +22,19 @@ const styleEl = document.createElement("style"); styleEl.textContent = `.graph-c
 let cached = {nodes:[],edges:[]}, focus = null;
 controlHost.innerHTML = `<div class="topology-toolbar"><input id="topologySearch" placeholder="Find asset / type" aria-label="Search graph"><select id="topologyRelation" aria-label="Filter relationship"><option value="">All relationships</option></select><select id="topologyFocus" aria-label="Trace dependency from asset"><option value="">Trace from a node…</option></select><button id="topologyTrace">Trace 2 hops</button></div><div class="muted">Deterministic layered layout · adjacency-list BFS: O(V+E) · render is capped at 200 nodes / 400 edges</div>`;
 const search = document.querySelector("#topologySearch"), relation = document.querySelector("#topologyRelation"), focusSelect = document.querySelector("#topologyFocus");
+/**
+ * Performs BFS from a start node to find all nodes within maxDepth hops.
+ * @param {string} start - Starting node ID
+ * @param {number} [maxDepth=2] - Maximum traversal depth
+ * @returns {Set<string>} Set of node IDs within the specified depth
+ */
 function traceFrom(start, maxDepth=2) { const adjacency=new Map(cached.nodes.map(n=>[n.id,[]])); for(const e of cached.edges){if(adjacency.has(e.source)&&adjacency.has(e.target)){adjacency.get(e.source).push(e.target);adjacency.get(e.target).push(e.source)}} const depth=new Map([[start,0]]),queue=[start]; for(let i=0;i<queue.length;i++){const v=queue[i];if(depth.get(v)>=maxDepth)continue;for(const w of adjacency.get(v)||[])if(!depth.has(w)){depth.set(w,depth.get(v)+1);queue.push(w)}}return new Set(depth.keys()); }
+/**
+ * Renders the topology graph as an SVG with layered layout.
+ * Applies search filtering, relationship filtering, and focus tracing.
+ * Capped at 200 nodes / 400 edges for performance.
+ * @returns {void}
+ */
 function render() {
  const nodes=cached.nodes.slice(0,200), ids=new Set(nodes.map(n=>n.id)), edges=cached.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)).slice(0,400);
  if(!nodes.length){graphHost.innerHTML='<div class="empty">No asset relationships in this tenant. Register a verified source or load an explicitly synthetic demo dataset.</div>';return}

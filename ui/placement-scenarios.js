@@ -1,3 +1,21 @@
+/**
+ * Placement Scenarios module for Data Center Commander.
+ *
+ * Manages saved placement comparison draft snapshots. Provides a UI for
+ * saving, listing, and refreshing tenant-scoped comparison drafts stored
+ * in PostgreSQL. All snapshots are explicitly draft—not approved estimates.
+ * Snapshots retain browser-calculated outputs and evidence references for
+ * owner review.
+ *
+ * Features:
+ * - Save comparison draft snapshots to tenant-scoped PostgreSQL storage
+ * - List saved drafts with SHA-256 integrity hashes
+ * - Refresh draft list
+ * - UUID tenant validation
+ *
+ * @module placement-scenarios
+ * @see {@link https://en.wikipedia.org/wiki/SHA-2|SHA-256}
+ */
 (() => {
   const workbench = document.querySelector("#placementWorkbench");
   const results = workbench?.querySelector("#placementResults");

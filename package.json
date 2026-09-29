@@ -1,0 +1,31 @@
+{
+  "name": "data-center-commander",
+  "version": "1.0.0",
+  "description": "![Overview tour across the synthetic demo sections](docs/media/overview.gif)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AAH20/data-center-commander.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AAH20/data-center-commander/issues"
+  },
+  "homepage": "https://github.com/AAH20/data-center-commander#readme",
+  "dependencies": {
+    "fast-check": "^4.10.2",
+    "pixelmatch": "^7.2.0",
+    "playwright": "^1.63.0",
+    "pngjs": "^7.0.0"
+  }
+}

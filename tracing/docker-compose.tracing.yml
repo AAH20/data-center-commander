@@ -1,0 +1,73 @@
+# Docker Compose override for the distributed tracing stack.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f tracing/docker-compose.tracing.yml up -d
+#
+# This adds:
+#   - Jaeger (all-in-one) on port 16686
+#   - OpenTelemetry Collector on ports 4317/4318
+#   - Prometheus on port 9090
+#   - Grafana on port 3000
+#
+# The app is configured to export traces to the OTLP endpoint.
+
+services:
+  app:
+    environment:
+      DCC_TRACING_ENABLED: "true"
+      DCC_OTLP_ENDPOINT: http://otel-collector:4317
+      DCC_JAEGER_ENDPOINT: jaeger:14250
+      DCC_SERVICE_NAME: data-center-commander
+      DCC_TRACE_SAMPLE_RATE: "1.0"
+    depends_on:
+      - otel-collector
+      - jaeger
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./tracing/otel-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics
+      - "13133:13133" # Health check
+    networks:
+      - dcc-net
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14250:14250" # Jaeger gRPC (model.proto)
+      - "14268:14268" # Jaeger HTTP (Thrift)
+    networks:
+      - dcc-net
+
+  prometheus:
+    image: prom/prometheus:v2.49.0
+    volumes:
+      - ./tracing/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - dcc-net
+
+  grafana:
+    image: grafana/grafana:10.3.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./tracing/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - jaeger
+      - prometheus
+    networks:
+      - dcc-net

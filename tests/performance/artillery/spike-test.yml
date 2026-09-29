@@ -1,0 +1,73 @@
+# Artillery Spike Test — Data Center Commander API
+# Simulates sudden traffic spikes (dashboard refresh storms, monitoring polls)
+#
+# Usage:
+#   npx artillery run tests/performance/artillery/spike-test.yml
+
+config:
+  target: "{{ $processEnvironment.BASE_URL || 'http://127.0.0.1:8790' }}"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Baseline"
+    - duration: 10
+      arrivalRate: 100
+      name: "Spike 1"
+    - duration: 60
+      arrivalRate: 100
+      name: "Hold peak"
+    - duration: 10
+      arrivalRate: 5
+      name: "Drop"
+    - duration: 60
+      arrivalRate: 5
+      name: "Recovery"
+    - duration: 10
+      arrivalRate: 150
+      name: "Spike 2"
+    - duration: 60
+      arrivalRate: 150
+      name: "Hold peak 2"
+    - duration: 30
+      arrivalRate: 5
+      name: "Ramp down"
+  defaults:
+    headers:
+      Content-Type: application/json
+      Accept: application/json
+  ensure:
+    thresholds:
+      - http.response_time.p95: 2000
+      - http.response_time.p99: 4000
+      - http.codes.2xx: 92
+  processor: "./artillery/helpers.js"
+
+scenarios:
+  - name: "Dashboard Refresh Storm"
+    weight: 40
+    flow:
+      - get:
+          url: "/v1/overview?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - get:
+          url: "/v1/analytics?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}&window_days=7"
+      - think: 0.2
+
+  - name: "Monitoring Agent Poll"
+    weight: 35
+    flow:
+      - get:
+          url: "/v1/assets?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - get:
+          url: "/healthz"
+      - think: 0.1
+
+  - name: "Status Check Burst"
+    weight: 25
+    flow:
+      - get:
+          url: "/healthz"
+      - get:
+          url: "/readyz"
+      - get:
+          url: "/v1/overview?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 0.1

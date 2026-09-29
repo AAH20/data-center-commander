@@ -1,0 +1,17 @@
+global:
+  smtp_smarthost: localhost:587
+  smtp_from: alerts@datacentercommander.local
+
+route:
+  receiver: default
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: default
+    # Configure your notification channels here
+    # email_configs:
+    #   - to: ops@example.com
+    # webhook_configs:
+    #   - url: http://localhost:5001/

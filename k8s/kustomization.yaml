@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: data-center-commander
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 02-secret.yaml
+  - 03-serviceaccount.yaml
+  - 04-deployment.yaml
+  - 05-service.yaml
+  - 06-ingress.yaml
+  - 07-hpa.yaml
+  - 08-pdb.yaml
+  - 09-networkpolicy.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: dcc
+  app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: data-center-commander
+    newTag: latest

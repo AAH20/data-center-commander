@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dcc-config
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/name: data-center-commander
+    app.kubernetes.io/part-of: dcc
+data:
+  # Non-sensitive configuration only.
+  # DCC_DATABASE_URL is injected via the Secret below.
+  DCC_LOG_LEVEL: "INFO"
+  DCC_PORT: "8790"
+  DCC_HOST: "0.0.0.0"
+  DCC_DEMO_MODE: "false"
+  DCC_READ_ONLY: "true"

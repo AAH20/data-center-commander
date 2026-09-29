@@ -1,0 +1,61 @@
+# Data Center Commander — Load Balancer Stack
+#
+# Runs Nginx as a TLS-terminating reverse proxy / load balancer in front of
+# multiple DCC API instances (scripts/run-local.py).
+#
+# Usage:
+#   docker compose up -d
+#
+# Then open: https://localhost/
+# (Accept the self-signed cert warning in your browser.)
+
+services:
+  # ── Nginx load balancer ──────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - dcc-api-1
+      - dcc-api-2
+      - dcc-api-3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── DCC API instance 1 ──────────────────────────────────────────────
+  dcc-api-1:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8790"]
+    environment:
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:5432/data_center_commander_dev}
+    restart: unless-stopped
+
+  # ── DCC API instance 2 ──────────────────────────────────────────────
+  dcc-api-2:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8791"]
+    environment:
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:5432/data_center_commander_dev}
+    restart: unless-stopped
+
+  # ── DCC API instance 3 ──────────────────────────────────────────────
+  dcc-api-3:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8792"]
+    environment:
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres@host.docker.internal:5432/data_center_commander_dev}
+    restart: unless-stopped

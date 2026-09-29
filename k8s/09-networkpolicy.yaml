@@ -1,0 +1,57 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dcc-api
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/name: data-center-commander
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: dcc
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: data-center-commander
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from the ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8790
+    # Allow traffic from within the same namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8790
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow PostgreSQL to the database service
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Allow HTTPS for external API calls (Azure pricing, etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443

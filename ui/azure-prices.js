@@ -1,3 +1,22 @@
+/**
+ * Azure & Google Cloud Pricing module for Data Center Commander.
+ *
+ * Fetches live retail prices from the Azure Retail Prices API and Google Cloud
+ * Billing Catalog API. Provides a price-backed estimate draft where users can
+ * add rates, enter billable units, and export CSV estimates. All estimates
+ * are planning drafts—not quotes or persisted cost-book entries.
+ *
+ * Features:
+ * - Azure retail price lookup with filtering
+ * - Google Cloud catalog lookup (server-side API key required)
+ * - Estimate draft with monthly/annualized calculations
+ * - CSV export of estimate drafts
+ * - Tenant-scoped requests
+ *
+ * @module azure-prices
+ * @see {@link https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices|Azure Retail Prices API}
+ * @see {@link https://cloud.google.com/billing/docs/how-to/catalog-api|Google Cloud Billing Catalog API}
+ */
 (() => {
   const form = document.querySelector("#azurePriceForm");
   if (!form) return;
@@ -36,6 +55,12 @@
   const googleResults = document.createElement("div"); googleResults.className = "tablewrap"; googleResults.hidden = true;
   googlePanel.append(googleTitle, googleNote, googleForm, googleStatus, googleResults); draftHost.closest("section").insertAdjacentElement("afterend", googlePanel);
 
+  /**
+   * Renders the estimate draft table with all added rates.
+   * Shows meter, rate, bill unit, units/month, monthly estimate, annualized estimate,
+   * source date, and remove button for each line.
+   * @returns {void}
+   */
   function renderDraft() {
     if (!draftHost || !draftStatus || !download) return;
     draftHost.replaceChildren();

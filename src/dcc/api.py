@@ -4,10 +4,16 @@ import json
 import hashlib
 import os
 import re
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
+
+from .logging import get_logger, get_api_logger, clear_context
+
+logger = get_logger(__name__)
+api_logger = get_api_logger()
 
 ROOT = Path(__file__).resolve().parents[2]
 UUID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
@@ -113,6 +119,7 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def respond(self, status: int, body: dict, content_type: str = "application/json; charset=utf-8") -> None:
+        self._last_status = status
         data = json.dumps(body, separators=(",", ":"), default=str).encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -122,7 +129,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:  # noqa: N802
+        start_time = time.monotonic()
         path = urlsplit(self.path)
+        try:
+            self._do_GET_inner(path)
+        finally:
+            duration_ms = (time.monotonic() - start_time) * 1000
+            api_logger.info(
+                "API request",
+                extra={
+                    "method": "GET",
+                    "path": path.path,
+                    "status": getattr(self, "_last_status", 0),
+                    "duration_ms": round(duration_ms, 2),
+                    "remote_addr": self.client_address[0],
+                },
+            )
+            clear_context()
+
+    def _do_GET_inner(self, path) -> None:
         if path.path == "/v1/placement/scenarios":
             try:
                 tenant = parse_tenant(parse_qs(path.query, keep_blank_values=True))
@@ -143,7 +168,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 self.respond(503, {"error": "placement_snapshot_database_unavailable", "execution_permitted": False})
             return
-        if path.path in {"/assets/onboarding.js", "/assets/topology.js", "/assets/azure-prices.js", "/assets/placement-comparison.js", "/assets/placement-scenarios.js"}:
+        if path.path in {"/assets/onboarding.js", "/assets/topology.js", "/assets/azure-prices.js", "/assets/placement-comparison.js", "/assets/placement-scenarios.js", "/assets/quality-dashboard.js", "/assets/security-dashboard.js", "/assets/forecast-dashboard.js", "/assets/economics-dashboard.js", "/assets/ops-dashboard.js"}:
             asset = ROOT / "ui" / path.path.removeprefix("/assets/")
             try:
                 data = asset.read_bytes()
@@ -417,7 +442,25 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(503, {"error": code, "read_only": True, "execution_permitted": False})
 
     def do_POST(self) -> None:  # noqa: N802
+        start_time = time.monotonic()
         path = urlsplit(self.path)
+        try:
+            self._do_POST_inner(path)
+        finally:
+            duration_ms = (time.monotonic() - start_time) * 1000
+            api_logger.info(
+                "API request",
+                extra={
+                    "method": "POST",
+                    "path": path.path,
+                    "status": getattr(self, "_last_status", 0),
+                    "duration_ms": round(duration_ms, 2),
+                    "remote_addr": self.client_address[0],
+                },
+            )
+            clear_context()
+
+    def _do_POST_inner(self, path) -> None:
         if path.path != "/v1/placement/scenarios":
             self.respond(404, {"error": "route_not_found", "execution_permitted": False})
             return

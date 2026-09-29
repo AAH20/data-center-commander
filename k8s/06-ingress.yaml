@@ -1,0 +1,38 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dcc-api
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/name: data-center-commander
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: dcc
+  annotations:
+    # Adjust ingress class for your cluster (nginx, traefik, alb, etc.)
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "5"
+    # CORS — restrict to your UI origin in production
+    nginx.ingress.kubernetes.io/enable-cors: "false"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - dcc.example.com  # Replace with your domain
+      secretName: dcc-tls  # Create with: kubectl create secret tls dcc-tls --cert=... --key=... -n data-center-commander
+  rules:
+    - host: dcc.example.com  # Replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dcc-api
+                port:
+                  number: 80

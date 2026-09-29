@@ -1,3 +1,22 @@
+/**
+ * Placement Comparison module for Data Center Commander.
+ *
+ * On-premises vs cloud subscription tradeoff calculator. Provides TCO modeling
+ * with NPV discounting, workload fit analysis, and decision gates. All
+ * calculations run in the browser tab only—no data is sent to the server
+ * or persisted to the cost book. Results are cost-only comparisons and do
+ * not constitute placement recommendations.
+ *
+ * Features:
+ * - TCO model with one-time, recurring, refresh, and exit costs
+ * - NPV discounting with configurable annual rate
+ * - Workload fit and tradeoff analysis
+ * - Decision gates checklist
+ * - JSON export of comparison snapshots
+ *
+ * @module placement-comparison
+ * @see {@link https://en.wikipedia.org/wiki/Net_present_value|Net Present Value}
+ */
 (() => {
   const nav = document.querySelector(".nav");
   const economicsView = document.querySelector("#view-finance");
@@ -127,6 +146,10 @@
   const gateSummary = document.createElement("p"); gateSummary.className = "muted"; gateSummary.setAttribute("role", "status"); root.querySelector("#placementGates").before(gateSummary);
   let lastComparison = null;
   window.getPlacementComparisonSnapshot = () => lastComparison;
+  /**
+   * Updates the decision gate checklist summary.
+   * @returns {void}
+   */
   function updateGates() {
     const complete = gateInputs.filter(input => input.checked).length;
     gateSummary.textContent = `${complete} of ${gateInputs.length} decision gates reviewed · checklist state stays in this tab and is not an approval.`;
@@ -134,6 +157,11 @@
   }
   gateInputs.forEach(input => input.addEventListener("change", updateGates)); updateGates();
 
+  /**
+   * Switches the active placement tab panel.
+   * @param {string} id - Tab ID ("tco", "fit", or "gates")
+   * @returns {void}
+   */
   function tab(id) {
     for (const button of root.querySelectorAll("[data-placement-tab]")) {
       const selected = button.dataset.placementTab === id;
@@ -150,8 +178,29 @@
     event.preventDefault(); buttons[next].focus(); buttons[next].click();
   });
 
+  /**
+   * Gets the currency code from the form.
+   * @returns {string} Uppercase 3-letter currency code
+   */
   const currency = () => (new FormData(form).get("currency") || "").toString().toUpperCase();
+  /**
+   * Formats a number as currency.
+   * @param {number} value - Amount to format
+   * @param {string} code - ISO 4217 currency code
+   * @returns {string} Formatted currency string
+   */
   const fmt = (value, code) => new Intl.NumberFormat(undefined, {style:"currency", currency:code, maximumFractionDigits:2}).format(value);
+  /**
+   * Calculates TCO for a given side (onprem or cloud).
+   * Computes NPV, undiscounted lifecycle cost, year-one cash, and cost per unit.
+   * @param {"onprem"|"cloud"} side - Cost side to calculate
+   * @param {FormData} values - Form data with all cost inputs
+   * @param {number} horizon - Lifecycle horizon in months
+   * @param {number} rate - Annual discount rate (0-1)
+   * @param {number} volume - Monthly workload units delivered
+   * @returns {{side: string, upfront: number, recurring_monthly: number, undiscounted_lifecycle: number, npv: number, average_monthly: number, year_one_cash: number, cost_per_unit: number, horizon_months: number, monthly_units: number}}
+   * @throws {Error} If refresh month is invalid
+   */
   function calculate(side, values, horizon, rate, volume) {
     const fields = moneyFields[side], amounts = Object.fromEntries(fields.map(([key]) => [key, Number(values.get(`${side}_${key}`))]));
     const upfrontKeys = side === "onprem" ? ["capex", "site", "migration"] : ["migration"];
@@ -173,6 +222,12 @@
     if (horizon <= 12) yearOne += terminal;
     return {side, upfront, recurring_monthly:monthly, undiscounted_lifecycle:undiscounted, npv, average_monthly:npv / horizon, year_one_cash:yearOne, cost_per_unit:npv / (horizon * volume), horizon_months:horizon, monthly_units:volume};
   }
+  /**
+   * Renders the on-premises vs cloud comparison results.
+   * Validates inputs, calculates both sides, and renders the comparison UI.
+   * @param {Event} [event] - Form submit event
+   * @returns {void}
+   */
   function renderComparison(event) {
     event?.preventDefault();
     const values = new FormData(form), horizon = Number(values.get("horizon")), discount = Number(values.get("discount")) / 100, volume = Number(values.get("volume")), code = currency();

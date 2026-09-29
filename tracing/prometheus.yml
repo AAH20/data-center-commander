@@ -1,0 +1,19 @@
+# Prometheus configuration for scraping span metrics from the OTel Collector.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "dcc_.*"
+        action: keep
+
+  - job_name: dcc-app
+    static_configs:
+      - targets: ["app:8790"]
+    metrics_path: /metrics

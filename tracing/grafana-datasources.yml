@@ -1,0 +1,24 @@
+# Grafana provisioning for Jaeger and Prometheus data sources.
+
+apiVersion: 1
+
+datasources:
+  - name: Jaeger
+    uid: jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      nodeGraph:
+        enabled: true
+
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true

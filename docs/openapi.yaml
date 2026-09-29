@@ -1,0 +1,1472 @@
+openapi: 3.1.0
+info:
+  title: Data Center Commander API
+  version: 0.1.0
+  description: |
+    Loopback read-only API for the Data Center Commander local command center.
+    All endpoints are unauthenticated and must remain loopback-only.
+    Tenant isolation is enforced via PostgreSQL Row-Level Security.
+  license:
+    name: AGPL-3.0-only
+    url: https://www.gnu.org/licenses/agpl-3.0.html
+  contact:
+    name: Data Center Commander
+    url: https://github.com/AAH20/data-center-commander
+servers:
+  - url: http://127.0.0.1:8790
+    description: Local development server (loopback only)
+tags:
+  - name: Health
+    description: Liveness and readiness probes
+  - name: Overview
+    description: Tenant-level summary
+  - name: Topology
+    description: Asset relationship graph
+  - name: Facilities
+    description: Data center facilities
+  - name: Assets
+    description: IT and facility assets
+  - name: Workflows
+    description: Operational workflows and work orders
+  - name: Connectors
+    description: Integration connector registry
+  - name: Capacity
+    description: Capacity snapshots and forecasts
+  - name: Evidence
+    description: Append-only evidence events
+  - name: Costs
+    description: Cost estimates, prices, and actuals
+  - name: Analytics
+    description: KPI series, quality, and telemetry
+  - name: Placement
+    description: Placement comparison snapshots
+  - name: Pricing
+    description: Cloud provider retail price lookups
+  - name: UI
+    description: Static UI assets
+paths:
+  /:
+    get:
+      tags: [UI]
+      summary: Serve the command-center UI
+      description: Returns the main index.html for the browser-based command center.
+      responses:
+        '200':
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      description: Returns service liveness. Does not check database connectivity.
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: data-center-commander
+                  mode:
+                    type: string
+                    example: read_only
+                  execution_permitted:
+                    type: boolean
+                    example: false
+  /readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: |
+        Checks database connectivity, required schema tables, and forced
+        tenant Row-Level Security. Returns 503 if any check fails.
+      responses:
+        '200':
+          description: All readiness checks passed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: data-center-commander
+                  ready:
+                    type: boolean
+                    example: true
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [ok, unavailable, not_configured]
+                      schema:
+                        type: string
+                        enum: [ok, incomplete, unchecked]
+                      tenant_rls:
+                        type: string
+                        enum: [ok, not_enforced, unchecked]
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '503':
+          description: One or more readiness checks failed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  ready:
+                    type: boolean
+                    example: false
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                      schema:
+                        type: string
+                      tenant_rls:
+                        type: string
+                  execution_permitted:
+                    type: boolean
+                    example: false
+  /v1/overview:
+    get:
+      tags: [Overview]
+      summary: Tenant overview
+      description: |
+        Returns a tenant-level summary including active facility count,
+        latest KPI observations, open workflow count, and latest telemetry
+        ingestion timestamp. Synthetic data is quarantined unless
+        `demo=synthetic` is explicitly provided.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/demoMode'
+      responses:
+        '200':
+          description: Tenant overview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  facility_count:
+                    type: integer
+                    example: 3
+                  kpis:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KpiObservation'
+                  open_workflows:
+                    type: integer
+                    example: 5
+                  latest_telemetry_ingested_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  source_status:
+                    type: string
+                    enum: [synthetic_demo, observed, no_telemetry]
+                  synthetic:
+                    type: boolean
+                  synthetic_demo_mode:
+                    type: boolean
+                  read_only:
+                    type: boolean
+                    example: true
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/topology:
+    get:
+      tags: [Topology]
+      summary: Asset topology graph
+      description: |
+        Returns nodes (assets) and edges (relationships) for the tenant's
+        asset topology graph. Limited to 500 nodes and 1000 edges.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Topology graph
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  nodes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TopologyNode'
+                  edges:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TopologyEdge'
+                  read_only:
+                    type: boolean
+                    example: true
+                  source:
+                    type: string
+                    example: postgresql_asset_relationships
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/facilities:
+    get:
+      tags: [Facilities]
+      summary: List facilities
+      description: Returns all facilities for the tenant, ordered by site and name. Limited to 500 rows.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Facility list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  facilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Facility'
+                  read_only:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/assets:
+    get:
+      tags: [Assets]
+      summary: List assets
+      description: Returns all assets for the tenant, ordered by lifecycle state and name. Limited to 1000 rows.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Asset list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  assets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Asset'
+                  read_only:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/workflows:
+    get:
+      tags: [Workflows]
+      summary: List operational workflows
+      description: Returns operational workflows ordered by status, priority, and due date. Limited to 500 rows.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Workflow list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  workflows:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+                  read_only:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/connectors:
+    get:
+      tags: [Connectors]
+      summary: List connectors
+      description: Returns all integration connectors for the tenant. Limited to 500 rows.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Connector list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  connectors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Connector'
+                  read_only:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/capacity:
+    get:
+      tags: [Capacity]
+      summary: List capacity snapshots
+      description: |
+        Returns the latest capacity snapshot per facility, dimension, and
+        scenario. Limited to 1000 rows.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Capacity snapshot list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  capacity:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CapacitySnapshot'
+                  read_only:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/evidence:
+    get:
+      tags: [Evidence]
+      summary: List evidence events
+      description: Returns the most recent evidence events for the tenant (latest 100).
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Evidence event list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  evidence:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EvidenceEvent'
+                  read_only:
+                    type: boolean
+                    example: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/costs:
+    get:
+      tags: [Costs]
+      summary: Cost intelligence
+      description: |
+        Returns cost estimates, price observations, and cost actuals for the
+        tenant. Synthetic data is quarantined unless `demo=synthetic` is
+        explicitly provided.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/demoMode'
+      responses:
+        '200':
+          description: Cost intelligence data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  estimates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EstimateProject'
+                  prices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PriceObservation'
+                  actuals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CostActual'
+                  read_only:
+                    type: boolean
+                    example: true
+                  synthetic:
+                    type: boolean
+                  synthetic_demo_mode:
+                    type: boolean
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/analytics:
+    get:
+      tags: [Analytics]
+      summary: Analytics and KPI data
+      description: |
+        Returns KPI time series, KPI quality summaries, telemetry quality
+        breakdowns, and workflow health metrics for the specified window.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/windowDays'
+      responses:
+        '200':
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  window_days:
+                    type: integer
+                    example: 30
+                  kpi_series:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KpiSeriesPoint'
+                  kpi_quality:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KpiQualitySummary'
+                  telemetry_quality:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TelemetryQuality'
+                  workflow_health:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkflowHealth'
+                  model_policy:
+                    type: object
+                    properties:
+                      trend_forecast_min_daily_points:
+                        type: integer
+                        example: 7
+                      anomaly_min_daily_points:
+                        type: integer
+                        example: 14
+                      maintenance_failure_labels_required:
+                        type: boolean
+                        example: true
+                      note:
+                        type: string
+                  read_only:
+                    type: boolean
+                    example: true
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/placement/scenarios:
+    get:
+      tags: [Placement]
+      summary: List placement comparison snapshots
+      description: |
+        Returns draft placement comparison snapshots for the tenant, ordered
+        by creation date descending. Limited to 100 rows. Snapshots are
+        append-only and immutable.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Placement snapshot list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  scenarios:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlacementSnapshot'
+                  status:
+                    type: string
+                    example: draft_snapshots
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+    post:
+      tags: [Placement]
+      summary: Create placement comparison snapshot
+      description: |
+        Creates a new draft placement comparison snapshot. The request must
+        originate from the same origin (loopback). The payload is validated,
+        canonically hashed with SHA-256, and stored as an immutable draft.
+        Snapshots are browser-calculated and are not approved estimates.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlacementSnapshotInput'
+      responses:
+        '201':
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  scenario:
+                    $ref: '#/components/schemas/PlacementSnapshot'
+                  status:
+                    type: string
+                    example: draft_snapshot
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Same-origin policy violation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: same_origin_required
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+  /v1/pricing/azure-retail:
+    get:
+      tags: [Pricing]
+      summary: Azure retail prices
+      description: |
+        Fetches a bounded page of Azure retail prices from the public Azure
+        Retail Prices API. Returns up to 100 rows. Never follows provider
+        next-page links. Prices are public retail list rates only.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: service_name
+          in: query
+          required: true
+          description: Azure service name (e.g., "Virtual Machines")
+          schema:
+            type: string
+            maxLength: 80
+            pattern: '^[A-Za-z0-9 ()&._/-]+$'
+            example: Virtual Machines
+        - name: region
+          in: query
+          required: false
+          description: Azure region name
+          schema:
+            type: string
+            maxLength: 80
+            pattern: '^[A-Za-z0-9._-]*$'
+        - name: sku
+          in: query
+          required: false
+          description: Azure SKU name
+          schema:
+            type: string
+            maxLength: 80
+            pattern: '^[A-Za-z0-9._-]*$'
+        - name: currency
+          in: query
+          required: false
+          description: ISO 4217 currency code
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}$'
+            default: USD
+      responses:
+        '200':
+          description: Azure retail price results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AzurePriceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '502':
+          description: Azure price catalog unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  execution_permitted:
+                    type: boolean
+                    example: false
+  /v1/pricing/google-cloud-retail:
+    get:
+      tags: [Pricing]
+      summary: Google Cloud retail prices
+      description: |
+        Searches the Google Cloud Billing Catalog API for SKUs matching the
+        query. Returns up to 100 rows. Requires GOOGLE_CLOUD_BILLING_API_KEY
+        in the server environment. Prices are public catalog list rates.
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: service_name
+          in: query
+          required: true
+          description: Google Cloud service display name (e.g., "Compute Engine")
+          schema:
+            type: string
+            maxLength: 80
+            pattern: '^[A-Za-z0-9 &()._/-]+$'
+            example: Compute Engine
+        - name: region
+          in: query
+          required: true
+          description: Google Cloud region (e.g., "us-central1")
+          schema:
+            type: string
+            maxLength: 80
+            pattern: '^[A-Za-z0-9._-]+$'
+        - name: sku_query
+          in: query
+          required: true
+          description: SKU description search string
+          schema:
+            type: string
+            maxLength: 100
+            pattern: '^[A-Za-z0-9 &()._/-]+$'
+        - name: currency
+          in: query
+          required: false
+          description: ISO 4217 currency code
+          schema:
+            type: string
+            pattern: '^[A-Z]{3}$'
+            default: USD
+      responses:
+        '200':
+          description: Google Cloud retail price results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleCloudPriceResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '502':
+          description: Google Cloud Billing catalog unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  execution_permitted:
+                    type: boolean
+                    example: false
+        '503':
+          description: Google Cloud Billing API key not configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  execution_permitted:
+                    type: boolean
+                    example: false
+  /assets/{filename}:
+    get:
+      tags: [UI]
+      summary: Serve UI JavaScript asset
+      description: Serves a static JavaScript file from the UI directory.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - onboarding.js
+              - topology.js
+              - azure-prices.js
+              - placement-comparison.js
+              - placement-scenarios.js
+              - quality-dashboard.js
+      responses:
+        '200':
+          description: JavaScript file
+          content:
+            text/javascript:
+              schema:
+                type: string
+        '404':
+          description: Asset not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: asset_not_found
+components:
+  parameters:
+    tenantId:
+      name: tenant_id
+      in: query
+      required: true
+      description: Tenant UUID for row-level security scoping
+      schema:
+        type: string
+        format: uuid
+    demoMode:
+      name: demo
+      in: query
+      required: false
+      description: Set to "synthetic" to include synthetic demo data in the response
+      schema:
+        type: string
+        enum: [synthetic]
+    windowDays:
+      name: window_days
+      in: query
+      required: false
+      description: Analysis window in days (1-90)
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 90
+        default: 30
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              execution_permitted:
+                type: boolean
+                example: false
+    DatabaseUnavailable:
+      description: Database unavailable or schema missing
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                enum: [database_not_configured, database_unavailable_or_schema_missing]
+              read_only:
+                type: boolean
+                example: true
+              execution_permitted:
+                type: boolean
+                example: false
+  schemas:
+    KpiObservation:
+      type: object
+      properties:
+        metric_key:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        value_numeric:
+          type: number
+          nullable: true
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+        observed_at:
+          type: string
+          format: date-time
+        coverage:
+          type: number
+        uncertainty:
+          type: number
+        quality_status:
+          type: string
+        reason_codes:
+          type: array
+          items:
+            type: string
+        provenance:
+          type: object
+    TopologyNode:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          example: asset
+        label:
+          type: string
+        type:
+          type: string
+        state:
+          type: string
+        criticality:
+          type: string
+        external_id:
+          type: string
+        facility:
+          type: string
+    TopologyEdge:
+      type: object
+      properties:
+        source:
+          type: string
+        target:
+          type: string
+        relation:
+          type: string
+        confidence:
+          type: number
+        valid_from:
+          type: string
+          format: date-time
+        provenance:
+          type: object
+    Facility:
+      type: object
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        facility_type:
+          type: string
+          enum: [datacenter, edge, lab, other]
+        status:
+          type: string
+        site_code:
+          type: string
+        site_name:
+          type: string
+    Asset:
+      type: object
+      properties:
+        external_id:
+          type: string
+        asset_type:
+          type: string
+        name:
+          type: string
+        manufacturer:
+          type: string
+        model:
+          type: string
+        lifecycle_state:
+          type: string
+          enum: [planned, procured, installed, commissioning, active, maintenance, impaired, retiring, retired, disposed, unknown]
+        criticality:
+          type: string
+          enum: [low, medium, high, critical]
+        observed_at:
+          type: string
+          format: date-time
+        facility_name:
+          type: string
+        space_name:
+          type: string
+    Workflow:
+      type: object
+      properties:
+        id:
+          type: string
+        workflow_type:
+          type: string
+        stage:
+          type: string
+        status:
+          type: string
+        priority:
+          type: string
+        title:
+          type: string
+        accountable_owner:
+          type: string
+        opened_at:
+          type: string
+          format: date-time
+        due_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+    Connector:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        vendor:
+          type: string
+        product:
+          type: string
+        adapter_id:
+          type: string
+        adapter_version:
+          type: string
+        status:
+          type: string
+          enum: [draft, testing, active, degraded, disabled]
+        access_mode:
+          type: string
+          enum: [read_only, draft_write, disabled]
+        scopes:
+          type: array
+          items:
+            type: string
+        last_success_at:
+          type: string
+          format: date-time
+          nullable: true
+    CapacitySnapshot:
+      type: object
+      properties:
+        facility_id:
+          type: string
+        dimension:
+          type: string
+          enum: [power_kw, cooling_kw, rack_u, network_gbps, storage_tb, cpu_cores, gpu_units, water_m3_day, fuel_hours]
+        scenario:
+          type: string
+        usable:
+          type: number
+        reserved:
+          type: number
+        policy_reserve:
+          type: number
+        forecast_peak:
+          type: number
+        unit:
+          type: string
+        quality_status:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+    EvidenceEvent:
+      type: object
+      properties:
+        sequence:
+          type: integer
+        event_type:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        actor_ref:
+          type: string
+        subject_type:
+          type: string
+        subject_id:
+          type: string
+        event_hash:
+          type: string
+    EstimateProject:
+      type: object
+      properties:
+        id:
+          type: string
+        project_code:
+          type: string
+        name:
+          type: string
+        lifecycle_phase:
+          type: string
+        status:
+          type: string
+        currency:
+          type: string
+        geography:
+          type: string
+        price_as_of:
+          type: string
+          format: date
+        horizon_months:
+          type: integer
+        it_capacity_kw:
+          type: number
+        facility_area_m2:
+          type: number
+        rack_count:
+          type: integer
+        annual_it_energy_kwh:
+          type: number
+        annual_useful_work:
+          type: number
+        discount_rate:
+          type: number
+        contingency_pct:
+          type: number
+        assumptions:
+          type: object
+        calculation_version:
+          type: string
+        lifecycle_pv:
+          type: number
+        low_pv:
+          type: number
+        high_pv:
+          type: number
+        first_period_cost:
+          type: number
+        line_count:
+          type: integer
+        unpriced_lines:
+          type: integer
+        synthetic_lines:
+          type: integer
+    PriceObservation:
+      type: object
+      properties:
+        item_code:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        quantity_unit:
+          type: string
+        unit_price:
+          type: number
+        currency:
+          type: string
+        normalized_unit_price:
+          type: number
+        book_currency:
+          type: string
+        currency_basis_date:
+          type: string
+          format: date
+        fx_to_book:
+          type: number
+        geography:
+          type: string
+        delivery_basis:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+        valid_from:
+          type: string
+          format: date
+        valid_to:
+          type: string
+          format: date
+          nullable: true
+        source_kind:
+          type: string
+        source_name:
+          type: string
+        source_ref:
+          type: string
+        confidence:
+          type: number
+        quality_status:
+          type: string
+        provenance:
+          type: object
+    CostActual:
+      type: object
+      properties:
+        accounting_period:
+          type: string
+          format: date
+        cost_type:
+          type: string
+        currency:
+          type: string
+        actual_amount:
+          type: number
+        entries:
+          type: integer
+        synthetic:
+          type: boolean
+    KpiSeriesPoint:
+      type: object
+      properties:
+        metric_key:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        bucket:
+          type: string
+          format: date-time
+        value:
+          type: number
+        coverage:
+          type: number
+        uncertainty:
+          type: number
+        samples:
+          type: integer
+        synthetic:
+          type: boolean
+    KpiQualitySummary:
+      type: object
+      properties:
+        metric_key:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        observations:
+          type: integer
+        usable_observations:
+          type: integer
+        mean_coverage:
+          type: number
+        mean_uncertainty:
+          type: number
+        latest_window_end:
+          type: string
+          format: date-time
+        synthetic_observations:
+          type: integer
+    TelemetryQuality:
+      type: object
+      properties:
+        quality_status:
+          type: string
+        samples:
+          type: integer
+        metrics:
+          type: integer
+        assets:
+          type: integer
+        latest_observed_at:
+          type: string
+          format: date-time
+    WorkflowHealth:
+      type: object
+      properties:
+        workflow_type:
+          type: string
+        status:
+          type: string
+        priority:
+          type: string
+        items:
+          type: integer
+        overdue:
+          type: integer
+        mean_age_days:
+          type: number
+    PlacementSnapshot:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        schema_version:
+          type: string
+          example: placement-tco-comparison.v1
+        payload:
+          type: object
+        payload_sha256:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    PlacementSnapshotInput:
+      type: object
+      required: [name, payload]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        payload:
+          type: object
+          required: [schema_version, assumptions, sources, results]
+          properties:
+            schema_version:
+              type: string
+              enum: [placement-tco-comparison.v1]
+            assumptions:
+              type: object
+              required: [currency, horizon_months]
+              properties:
+                currency:
+                  type: string
+                  pattern: '^[A-Za-z]{3}$'
+                horizon_months:
+                  type: integer
+                  minimum: 1
+                  maximum: 120
+            sources:
+              type: object
+              required: [onprem, cloud]
+              properties:
+                onprem:
+                  $ref: '#/components/schemas/PlacementSource'
+                cloud:
+                  $ref: '#/components/schemas/PlacementSource'
+            results:
+              type: object
+              required: [onprem, cloud]
+              properties:
+                onprem:
+                  type: object
+                cloud:
+                  type: object
+    PlacementSource:
+      type: object
+      required: [type, reference, observed_on]
+      properties:
+        type:
+          type: string
+        reference:
+          type: string
+        observed_on:
+          type: string
+          format: date
+    AzurePriceResponse:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: Microsoft Azure Retail Prices API
+        api_version:
+          type: string
+          example: 2023-01-01-preview
+        retrieved_at:
+          type: string
+          format: date-time
+        source_url:
+          type: string
+        query:
+          type: object
+          properties:
+            service_name:
+              type: string
+            region:
+              type: string
+              nullable: true
+            sku:
+              type: string
+              nullable: true
+            currency:
+              type: string
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/AzurePriceRow'
+        returned:
+          type: integer
+        truncated:
+          type: boolean
+        commercial_basis:
+          type: string
+        persisted:
+          type: boolean
+          example: false
+        execution_permitted:
+          type: boolean
+          example: false
+    AzurePriceRow:
+      type: object
+      properties:
+        serviceName:
+          type: string
+        productName:
+          type: string
+        skuName:
+          type: string
+        armSkuName:
+          type: string
+        armRegionName:
+          type: string
+        meterName:
+          type: string
+        unitOfMeasure:
+          type: string
+        currencyCode:
+          type: string
+        effectiveStartDate:
+          type: string
+        priceType:
+          type: string
+        isPrimaryMeterRegion:
+          type: boolean
+        retailPrice:
+          type: string
+    GoogleCloudPriceResponse:
+      type: object
+      properties:
+        provider:
+          type: string
+          example: Google Cloud Billing Catalog API
+        api_version:
+          type: string
+          example: v1
+        retrieved_at:
+          type: string
+          format: date-time
+        source_url:
+          type: string
+        query:
+          type: object
+          properties:
+            service_name:
+              type: string
+            region:
+              type: string
+            sku_query:
+              type: string
+            currency:
+              type: string
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoogleCloudPriceRow'
+        returned:
+          type: integer
+        truncated:
+          type: boolean
+        commercial_basis:
+          type: string
+        persisted:
+          type: boolean
+          example: false
+        execution_permitted:
+          type: boolean
+          example: false
+    GoogleCloudPriceRow:
+      type: object
+      properties:
+        serviceName:
+          type: string
+        serviceId:
+          type: string
+        skuId:
+          type: string
+        description:
+          type: string
+        region:
+          type: string
+        available_regions:
+          type: array
+          items:
+            type: string
+        usage_type:
+          type: string
+        currencyCode:
+          type: string
+        unitOfMeasure:
+          type: string
+        effectiveStartDate:
+          type: string
+        tiered_rates:
+          type: array
+          items:
+            type: object
+            properties:
+              start_usage_amount:
+                type: string
+              unit_price:
+                type: string
+        tier_count:
+          type: integer
+        estimate_eligible:
+          type: boolean
+        retailPrice:
+          type: string
+          nullable: true

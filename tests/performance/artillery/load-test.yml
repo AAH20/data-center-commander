@@ -1,0 +1,79 @@
+# Artillery Load Test — Data Center Commander API
+# Simulates normal production traffic with steady ramp-up
+#
+# Usage:
+#   npx artillery run tests/performance/artillery/load-test.yml
+#   npx artillery run --environment local tests/performance/artillery/load-test.yml
+
+config:
+  target: "{{ $processEnvironment.BASE_URL || 'http://127.0.0.1:8790' }}"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up"
+    - duration: 180
+      arrivalRate: 10
+      name: "Ramp up"
+    - duration: 180
+      arrivalRate: 20
+      name: "Sustained load"
+    - duration: 60
+      arrivalRate: 5
+      name: "Ramp down"
+  defaults:
+    headers:
+      Content-Type: application/json
+      Accept: application/json
+  ensure:
+    thresholds:
+      - http.response_time.p95: 1500
+      - http.response_time.p99: 3000
+      - http.codes.2xx: 95
+  processor: "./artillery/helpers.js"
+
+scenarios:
+  - name: "Dashboard Overview Flow"
+    weight: 30
+    flow:
+      - get:
+          url: "/v1/overview?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 1
+      - get:
+          url: "/v1/analytics?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}&window_days=30"
+      - think: 2
+
+  - name: "Asset Inventory Flow"
+    weight: 25
+    flow:
+      - get:
+          url: "/v1/assets?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 1
+      - get:
+          url: "/v1/facilities?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 1
+      - get:
+          url: "/v1/topology?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 2
+
+  - name: "Operations Flow"
+    weight: 25
+    flow:
+      - get:
+          url: "/v1/workflows?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 1
+      - get:
+          url: "/v1/capacity?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 1
+      - get:
+          url: "/v1/evidence?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 2
+
+  - name: "Cost Analysis Flow"
+    weight: 20
+    flow:
+      - get:
+          url: "/v1/costs?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 1
+      - get:
+          url: "/v1/connectors?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+      - think: 2

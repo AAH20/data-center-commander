@@ -1,0 +1,43 @@
+groups:
+  - name: dcc-api
+    rules:
+      - alert: DCCAPIDown
+        expr: up{job="dcc-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DCC API is down"
+          description: "DCC API has been unreachable for more than 1 minute."
+
+      - alert: DCCDatabaseUnavailable
+        expr: dcc_database_errors_total > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DCC database errors detected"
+          description: "Database errors have been observed for more than 2 minutes."
+
+      - alert: DCCHighErrorRate
+        expr: |
+          sum(rate(dcc_api_requests_total{status=~"5.."}[5m]))
+          / sum(rate(dcc_api_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DCC API high error rate"
+          description: "5xx error rate exceeds 5% over the last 5 minutes."
+
+      - alert: DCCHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(dcc_api_request_duration_seconds_bucket[5m])) by (le, route)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DCC API high latency"
+          description: "p95 latency exceeds 500ms for at least one route over 5 minutes."

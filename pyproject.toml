@@ -11,7 +11,18 @@ dependencies = []
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2,<4"]
+tracing = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20",
+    "opentelemetry-exporter-jaeger>=1.20",
+]
 test = ["psycopg[binary,pool]>=3.2,<4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.168.3",
+]

@@ -1,3 +1,15 @@
+/**
+ * Onboarding module for Data Center Commander.
+ *
+ * First-run experience that guides users through workspace profile selection,
+ * data source connection, and verification. Manages local preferences (stored
+ * in localStorage), renders the onboarding dialog, and provides a due-diligence
+ * snapshot export. All preferences are local-only and do not connect to any
+ * external source or authorize infrastructure changes.
+ *
+ * @module onboarding
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage|localStorage}
+ */
 const profiles = [
   ["founder", "Solo founder / lab"], ["smb", "SMB / edge estate"],
   ["enterprise", "Large enterprise / hybrid cloud"], ["public", "Government / public sector"],
@@ -15,6 +27,11 @@ document.body.append(dialog);
 const setup = document.querySelector("#workspaceSetup");
 const savedLabel = document.createElement("span"); savedLabel.className="dcc-tag"; savedLabel.id="dccProfileBadge"; setup?.before(savedLabel);
 const liveNotice=document.createElement("section");liveNotice.className="banner warn";liveNotice.id="dccLiveNotice";liveNotice.setAttribute("role","status");liveNotice.innerHTML='<b>Live-data boundary:</b> this workspace starts in source-unverified mode. Demo fixtures are not operational telemetry; estimates are not vendor quotes. Connect and verify an authoritative source before using a KPI or price for a decision. <button type="button" id="dccStartOnboarding">Start onboarding</button>';document.querySelector("main.wrap")?.prepend(liveNotice);
+/**
+ * Updates the profile badge and workload tier based on saved preferences.
+ * Maps profile values to tier values and dispatches change events.
+ * @returns {void}
+ */
 function paint(){savedLabel.textContent=saved.profile?`Profile · ${profiles.find(x=>x[0]===saved.profile)?.[1]||saved.profile}`:"Profile · not set";const tier=document.querySelector("#workloadTier"),mapped={public:"government",critical:"mission"}[saved.profile]||saved.profile;if(tier&&mapped){tier.value=mapped;tier.dispatchEvent(new Event("change"))}}
 paint();
 setup?.addEventListener("click",()=>dialog.showModal());
