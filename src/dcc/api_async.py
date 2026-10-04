@@ -160,7 +160,12 @@ async def get_pool():
             timeout=5,
             kwargs={"row_factory": dict_row, "prepare_threshold": None},
         )
-        await _pool.wait(timeout=5)
+        try:
+            await _pool.open()
+            await _pool.wait(timeout=5)
+        except Exception:
+            await _pool.close()
+            raise HTTPException(status_code=503, detail="database_unavailable")
     return _pool
 
 

@@ -220,7 +220,7 @@ CREATE OR REPLACE FUNCTION dcc.paginate(
     p_limit int DEFAULT 100,
     p_offset int DEFAULT 0
 )
-RETURNS TABLE (limit int, offset int)
+RETURNS TABLE (page_limit int, page_offset int)
 LANGUAGE sql
 IMMUTABLE
 AS $$
