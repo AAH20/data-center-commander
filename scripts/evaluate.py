@@ -244,13 +244,17 @@ class OptimizationEvaluator:
             random.seed(seed)
 
             n_nodes = random.randint(3, 30)
-            nodes = []
+            # Generate symmetric adjacency (undirected graph)
+            adj_matrix: dict[str, set[str]] = {f"n{i}": set() for i in range(n_nodes)}
             for i in range(n_nodes):
-                neighbors = tuple(
-                    f"n{j}" for j in range(n_nodes)
-                    if j != i and random.random() < 0.3
-                )
-                nodes.append(NetworkNode(id=f"n{i}", neighbors=neighbors))
+                for j in range(i + 1, n_nodes):
+                    if random.random() < 0.3:
+                        adj_matrix[f"n{i}"].add(f"n{j}")
+                        adj_matrix[f"n{j}"].add(f"n{i}")
+            nodes = [
+                NetworkNode(id=f"n{i}", neighbors=tuple(sorted(adj_matrix[f"n{i}"])))
+                for i in range(n_nodes)
+            ]
 
             result = dsatur_zoning(nodes)
 
