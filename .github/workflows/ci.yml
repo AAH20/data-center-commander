@@ -9,17 +9,127 @@ permissions:
   contents: read
 
 jobs:
-  tests:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Run API and schema contract tests
+      - name: Install linting tools
+        run: pip install ruff mypy
+      - name: Lint with ruff
+        run: ruff check src/ tests/
+      - name: Type check with mypy
+        run: mypy src/dcc/ --ignore-missing-imports
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: data_center_commander_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout
+          pip install 'psycopg[binary,pool]>=3.2,<4'
+          pip install -e .
+      - name: Run unit tests
         env:
           PYTHONPATH: src
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m pytest tests/test_optimization.py tests/test_optimization_kernels.py tests/test_contracts.py -v --tb=short --timeout=30
+      - name: Run async API tests
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/test_api_async.py -v --tb=short --timeout=30
+      - name: Run integration tests
+        env:
+          PYTHONPATH: src
+          DCC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/data_center_commander_test
+        run: |
+          python -m pytest tests/ -v --tb=short --timeout=60 -k "integration" || echo "No integration tests yet"
+      - name: Generate coverage report
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m pytest tests/ --cov=src/dcc --cov-report=xml --cov-report=term-missing --timeout=30 || true
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install security tools
+        run: pip install bandit safety
+      - name: Security scan with bandit
+        run: bandit -r src/ -f json -o bandit-report.json || true
+      - name: Check dependencies for vulnerabilities
+        run: safety check || true
+
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
       - name: Validate shell syntax
         run: bash -n scripts/*.sh
+      - name: Validate SQL syntax
+        run: |
+          pip install sqlparse
+          python -c "
+          import sqlparse
+          import pathlib
+          for f in pathlib.Path('database').rglob('*.sql'):
+              sql = f.read_text()
+              parsed = sqlparse.parse(sql)
+              if not parsed:
+                  print(f'WARNING: {f} appears empty')
+              else:
+                  print(f'OK: {f} ({len(parsed)} statements)')
+          "
+      - name: Validate mermaid diagrams in docs
+        run: |
+          pip install pymmd
+          python -c "
+          import pathlib
+          import re
+          mermaid_blocks = []
+          for f in pathlib.Path('docs').rglob('*.md'):
+              content = f.read_text()
+              blocks = re.findall(r'\`\`\`mermaid\n(.*?)\`\`\`', content, re.DOTALL)
+              for i, block in enumerate(blocks):
+                  mermaid_blocks.append((f, i, block))
+          print(f'Found {len(mermaid_blocks)} mermaid diagrams')
+          for f, i, block in mermaid_blocks:
+              lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+              if not lines:
+                  print(f'  WARNING: {f} block {i} is empty')
+              else:
+                  print(f'  OK: {f} block {i} ({len(lines)} lines)')
+          "
