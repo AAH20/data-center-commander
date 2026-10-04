@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -17,12 +21,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
       - name: Install linting tools
-        run: pip install ruff mypy
+        run: pip install -e ".[lint]"
       - name: Lint with ruff
         run: ruff check src/ tests/
+      - name: Lint format check
+        run: ruff format --check src/ tests/
       - name: Type check with mypy
-        run: mypy src/dcc/ --ignore-missing-imports
+        run: mypy src/dcc/
 
   test:
     runs-on: ubuntu-latest
@@ -45,37 +52,48 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
       - name: Install dependencies
-        run: |
-          pip install pytest pytest-asyncio pytest-cov pytest-timeout
-          pip install 'psycopg[binary,pool]>=3.2,<4'
-          pip install -e .
-      - name: Run unit tests
-        env:
-          PYTHONPATH: src
-        run: |
-          python -m pytest tests/test_optimization.py tests/test_optimization_kernels.py tests/test_contracts.py -v --tb=short --timeout=30
-      - name: Run async API tests
-        env:
-          PYTHONPATH: src
-        run: |
-          python -m pytest tests/test_api_async.py -v --tb=short --timeout=30
-      - name: Run integration tests
+        run: pip install -e ".[test,postgres,async]"
+      - name: Run all tests with coverage
         env:
           PYTHONPATH: src
           DCC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/data_center_commander_test
         run: |
-          python -m pytest tests/ -v --tb=short --timeout=60 -k "integration" || echo "No integration tests yet"
-      - name: Generate coverage report
-        env:
-          PYTHONPATH: src
-        run: |
-          python -m pytest tests/ --cov=src/dcc --cov-report=xml --cov-report=term-missing --timeout=30 || true
+          python -m pytest tests/ \
+            --cov=src/dcc \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=60 \
+            --timeout=60
       - name: Upload coverage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: coverage.xml
+
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: pip install -e ".[test]"
+      - name: Run benchmarks
+        env:
+          PYTHONPATH: src
+        run: python scripts/evaluate.py
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: evaluation_report.json
 
   security:
     runs-on: ubuntu-latest
@@ -85,23 +103,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
       - name: Install security tools
-        run: pip install bandit safety
+        run: pip install -e ".[security]"
       - name: Security scan with bandit
         run: bandit -r src/ -f json -o bandit-report.json || true
       - name: Check dependencies for vulnerabilities
         run: safety check || true
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: bandit-report.json
 
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install validation tools
+        run: pip install sqlparse
       - name: Validate shell syntax
         run: bash -n scripts/*.sh
       - name: Validate SQL syntax
         run: |
-          pip install sqlparse
           python -c "
           import sqlparse
           import pathlib
@@ -113,23 +143,50 @@ jobs:
               else:
                   print(f'OK: {f} ({len(parsed)} statements)')
           "
-      - name: Validate mermaid diagrams in docs
+      - name: Validate mermaid diagrams
         run: |
-          pip install pymmd
           python -c "
           import pathlib
           import re
-          mermaid_blocks = []
+          count = 0
           for f in pathlib.Path('docs').rglob('*.md'):
               content = f.read_text()
               blocks = re.findall(r'\`\`\`mermaid\n(.*?)\`\`\`', content, re.DOTALL)
               for i, block in enumerate(blocks):
-                  mermaid_blocks.append((f, i, block))
-          print(f'Found {len(mermaid_blocks)} mermaid diagrams')
-          for f, i, block in mermaid_blocks:
-              lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
-              if not lines:
-                  print(f'  WARNING: {f} block {i} is empty')
-              else:
-                  print(f'  OK: {f} block {i} ({len(lines)} lines)')
+                  count += 1
+                  lines = [l.strip() for l in block.strip().split('\n') if l.strip()]
+                  if not lines:
+                      print(f'WARNING: {f} block {i} is empty')
+          print(f'Found {count} mermaid diagrams')
           "
+      - name: Validate JSON files
+        run: |
+          python -c "
+          import json
+          import pathlib
+          for f in pathlib.Path('.').rglob('*.json'):
+              if '.git' not in str(f) and 'node_modules' not in str(f):
+                  try:
+                      json.loads(f.read_text())
+                      print(f'OK: {f}')
+                  except json.JSONDecodeError as e:
+                      print(f'ERROR: {f}: {e}')
+          "
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install build tools
+        run: pip install build
+      - name: Build package
+        run: python -m build
+      - name: Verify package
+        run: |
+          pip install dist/*.whl
+          python -c "import dcc; print('Package imports successfully')"
