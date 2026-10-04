@@ -1,0 +1,45 @@
+<div class="container">
+  <header class="card">
+    <h1>Evidence & Audit</h1>
+    <p>Append-only, tenant-scoped event references. Full payload access belongs in the authorized audit workflow.</p>
+  </header>
+  <div class="card">
+    <h2>Chain Verification</h2>
+    <div id="chain-status" class="empty">Loading...</div>
+  </div>
+  <div class="card" style="margin-top:1rem">
+    <h2>Recent Events</h2>
+    <div id="evidence-view" class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.evidence = {
+  async mount(container) {
+    try {
+      const [verify, events] = await Promise.all([
+        DCC.utils.fetchJSON('/v2/evidence/verify'),
+        DCC.utils.fetchJSON('/v2/evidence'),
+      ]);
+      container.querySelector('#chain-status').innerHTML = `
+        <div style="display:flex;gap:1rem;align-items:center">
+          <span class="badge ${verify.chain_valid ? 'badge-success' : 'badge-danger'}">
+            ${verify.chain_valid ? 'Chain Valid' : 'Chain Invalid'}
+          </span>
+          <span>${verify.valid_events}/${verify.total_events} events verified</span>
+        </div>`;
+      container.querySelector('#evidence-view').innerHTML = events.items.length
+        ? `<table class="table"><thead><tr><th>Sequence</th><th>Type</th><th>Time</th><th>Actor</th></tr></thead>
+           <tbody>${events.items.map(e => `<tr>
+             <td>${e.sequence}</td>
+             <td>${DCC.utils.escapeHtml(e.event_type)}</td>
+             <td>${DCC.utils.formatDate(e.occurred_at)}</td>
+             <td>${DCC.utils.escapeHtml(e.actor_ref || '—')}</td>
+           </tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No evidence events</div>';
+    } catch (e) {
+      container.querySelector('#chain-status').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

@@ -1,0 +1,39 @@
+<div class="container">
+  <header class="card">
+    <h1>Energy, Cost & Carbon</h1>
+    <p>Versioned interval metrics with boundary, coverage, uncertainty, and source lineage.</p>
+  </header>
+  <div class="card">
+    <table class="table">
+      <thead><tr><th>Metric</th><th>Value</th><th>Unit</th><th>Window</th><th>Quality</th><th>Coverage</th></tr></thead>
+      <tbody id="energy-rows"><tr><td colspan="6" class="empty">Loading...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.energy = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/analytics');
+      const tbody = container.querySelector('#energy-rows');
+      if (!data.kpi_series.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">No energy data</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.kpi_series.map(s => `
+        <tr>
+          <td>${DCC.utils.escapeHtml(s.name)}</td>
+          <td>${DCC.utils.formatNumber(s.value, s.unit)}</td>
+          <td>${DCC.utils.escapeHtml(s.unit)}</td>
+          <td>${DCC.utils.formatDate(s.bucket)}</td>
+          <td><span class="badge ${s.synthetic ? 'badge-warning' : 'badge-success'}">${s.synthetic ? 'Synthetic' : 'Observed'}</span></td>
+          <td>${Math.round((s.coverage||0)*100)}%</td>
+        </tr>
+      `).join('');
+    } catch (e) {
+      container.querySelector('#energy-rows').innerHTML = `<tr><td colspan="6" class="error">${DCC.utils.escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+};
+</script>

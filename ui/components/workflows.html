@@ -1,0 +1,49 @@
+<div class="container">
+  <header class="card">
+    <h1>Lifecycle Operations Queue</h1>
+    <p>Demand → diligence → design → procure → build → commission → onboard → operate → maintain → optimize → assure → refresh → decommission.</p>
+  </header>
+  <div class="card">
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+      <input id="workflow-search" placeholder="Search workflows..." style="flex:1;padding:0.5rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg);color:var(--color-text)">
+      <select id="workflow-status" style="padding:0.5rem;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-bg);color:var(--color-text)">
+        <option value="">All statuses</option>
+        <option value="open">Open</option>
+        <option value="in_progress">In Progress</option>
+        <option value="closed">Closed</option>
+      </select>
+    </div>
+    <div id="workflow-table" class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.workflows = {
+  async mount(container) {
+    const search = container.querySelector('#workflow-search');
+    const status = container.querySelector('#workflow-status');
+    const load = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (status.value) params.set('status', status.value);
+        const data = await DCC.utils.fetchJSON('/v2/workflows?' + params);
+        container.querySelector('#workflow-table').innerHTML = data.items.length
+          ? `<table class="table"><thead><tr><th>Title</th><th>Type</th><th>Status</th><th>Priority</th><th>Owner</th></tr></thead>
+             <tbody>${data.items.map(w => `<tr>
+               <td>${DCC.utils.escapeHtml(w.title)}</td>
+               <td>${DCC.utils.escapeHtml(w.workflow_type)}</td>
+               <td><span class="badge ${w.status === 'open' ? 'badge-success' : 'badge-warning'}">${DCC.utils.escapeHtml(w.status)}</span></td>
+               <td>${DCC.utils.escapeHtml(w.priority)}</td>
+               <td>${DCC.utils.escapeHtml(w.accountable_owner)}</td>
+             </tr>`).join('')}</tbody></table>`
+          : '<div class="empty">No workflows</div>';
+      } catch (e) {
+        container.querySelector('#workflow-table').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+      }
+    };
+    search.addEventListener('input', DCC.utils.debounce(load, 300));
+    status.addEventListener('change', load);
+    await load();
+  }
+};
+</script>

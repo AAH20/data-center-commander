@@ -1,0 +1,31 @@
+<div class="container">
+  <header class="card">
+    <h1>Capacity & Resilience</h1>
+    <p>Usable capacity evaluated with policy reserve, forecasts, planned maintenance, and failure scenarios.</p>
+  </header>
+  <div class="grid" id="capacity-view" class="empty">Loading...</div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.capacity = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/capacity');
+      const view = container.querySelector('#capacity-view');
+      if (!data.capacity.length) {
+        view.innerHTML = '<div class="empty">No capacity snapshots</div>';
+        return;
+      }
+      view.innerHTML = data.capacity.map(c => `
+        <article class="card">
+          <div class="label">${DCC.utils.escapeHtml(c.dimension)} · ${DCC.utils.escapeHtml(c.scenario)}</div>
+          <div class="value">${DCC.utils.formatNumber(c.usable, c.unit)}</div>
+          <div class="label">Reserved: ${DCC.utils.formatNumber(c.reserved, c.unit)} · Policy: ${DCC.utils.formatNumber(c.policy_reserve, c.unit)}</div>
+        </article>
+      `).join('');
+    } catch (e) {
+      container.querySelector('#capacity-view').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

@@ -1,0 +1,31 @@
+<div class="container">
+  <header class="card">
+    <h1>Integrations & Source Health</h1>
+    <p>Registered source status only; adapters are not represented as live until their read contract is verified.</p>
+  </header>
+  <div class="card">
+    <div id="connector-view" class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.integrations = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/connectors');
+      container.querySelector('#connector-view').innerHTML = data.items.length
+        ? `<table class="table"><thead><tr><th>Name</th><th>Vendor</th><th>Status</th><th>Access</th><th>Last Success</th></tr></thead>
+           <tbody>${data.items.map(c => `<tr>
+             <td>${DCC.utils.escapeHtml(c.name)}</td>
+             <td>${DCC.utils.escapeHtml(c.vendor || '—')}</td>
+             <td><span class="badge ${c.status === 'active' ? 'badge-success' : 'badge-warning'}">${DCC.utils.escapeHtml(c.status)}</span></td>
+             <td>${DCC.utils.escapeHtml(c.access_mode)}</td>
+             <td>${DCC.utils.formatDate(c.last_success_at)}</td>
+           </tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No connectors</div>';
+    } catch (e) {
+      container.querySelector('#connector-view').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

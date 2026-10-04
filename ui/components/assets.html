@@ -1,0 +1,47 @@
+<div class="container">
+  <header class="card">
+    <h1>Estate & Lifecycle</h1>
+    <p>Sites, facility spaces, power/cooling assets, racks, compute, and time-versioned relationships.</p>
+  </header>
+  <div class="card">
+    <h2>Facilities</h2>
+    <div id="facility-view" class="empty">Loading...</div>
+  </div>
+  <div class="card" style="margin-top:1rem">
+    <h2>Assets</h2>
+    <div id="asset-view" class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.assets = {
+  async mount(container) {
+    try {
+      const [facilities, assets] = await Promise.all([
+        DCC.utils.fetchJSON('/v2/facilities'),
+        DCC.utils.fetchJSON('/v2/assets'),
+      ]);
+      container.querySelector('#facility-view').innerHTML = facilities.items.length
+        ? `<table class="table"><thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Status</th></tr></thead>
+           <tbody>${facilities.items.map(f => `<tr>
+             <td>${DCC.utils.escapeHtml(f.code)}</td>
+             <td>${DCC.utils.escapeHtml(f.name)}</td>
+             <td>${DCC.utils.escapeHtml(f.facility_type)}</td>
+             <td><span class="badge badge-success">${DCC.utils.escapeHtml(f.status)}</span></td>
+           </tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No facilities</div>';
+      container.querySelector('#asset-view').innerHTML = assets.items.length
+        ? `<table class="table"><thead><tr><th>Name</th><th>Type</th><th>State</th><th>Facility</th></tr></thead>
+           <tbody>${assets.items.map(a => `<tr>
+             <td>${DCC.utils.escapeHtml(a.name)}</td>
+             <td>${DCC.utils.escapeHtml(a.asset_type)}</td>
+             <td><span class="badge badge-success">${DCC.utils.escapeHtml(a.lifecycle_state)}</span></td>
+             <td>${DCC.utils.escapeHtml(a.facility_name || '—')}</td>
+           </tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No assets</div>';
+    } catch (e) {
+      container.querySelector('#facility-view').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

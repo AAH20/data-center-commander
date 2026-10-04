@@ -1,0 +1,30 @@
+<div class="container">
+  <header class="card">
+    <h1>Reliability & Maintenance</h1>
+    <p>Work-order and condition records linked to the authoritative CMMS and approved site procedures.</p>
+  </header>
+  <div class="card">
+    <div id="reliability-view" class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.reliability = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/workflows?status=open');
+      container.querySelector('#reliability-view').innerHTML = data.items.length
+        ? `<table class="table"><thead><tr><th>Title</th><th>Type</th><th>Priority</th><th>Owner</th></tr></thead>
+           <tbody>${data.items.map(w => `<tr>
+             <td>${DCC.utils.escapeHtml(w.title)}</td>
+             <td>${DCC.utils.escapeHtml(w.workflow_type)}</td>
+             <td><span class="badge ${w.priority === 'urgent' ? 'badge-danger' : 'badge-warning'}">${DCC.utils.escapeHtml(w.priority)}</span></td>
+             <td>${DCC.utils.escapeHtml(w.accountable_owner)}</td>
+           </tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No open workflows</div>';
+    } catch (e) {
+      container.querySelector('#reliability-view').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>
