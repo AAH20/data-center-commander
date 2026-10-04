@@ -198,15 +198,30 @@ class OptimizationEvaluator:
                 )
                 for i in range(n_orders)
             ]
+            # Ensure all skills are covered
+            all_skills = {"electrical", "mechanical", "network"}
             technicians = [
                 Technician(
                     id=f"t{i}",
-                    skills=frozenset(random.sample(["electrical", "mechanical", "network"], k=random.randint(1, 3))),
+                    skills=frozenset(random.sample(list(all_skills), k=random.randint(1, 3))),
                     base_latitude=40.5,
                     base_longitude=-74.0,
+                    available_hours=100.0,
                 )
                 for i in range(n_techs)
             ]
+            covered = set()
+            for t in technicians:
+                covered.update(t.skills)
+            missing = all_skills - covered
+            if missing and technicians:
+                technicians[0] = Technician(
+                    id=technicians[0].id,
+                    skills=technicians[0].skills | missing,
+                    base_latitude=technicians[0].base_latitude,
+                    base_longitude=technicians[0].base_longitude,
+                    available_hours=technicians[0].available_hours,
+                )
 
             result = clarke_wright_savings(work_orders, technicians)
 

@@ -213,7 +213,11 @@ def clarke_wright_savings(
 ) -> dict[str, list[str]]:
     """Route technicians to work orders using Clarke-Wright Savings.
 
-    Guarantees: 2-approximation for metric TSP.
+    Two-phase approach:
+    1. Assignment: distribute work orders across compatible technicians (greedy by priority)
+    2. Routing: optimize each technician's route using Clarke-Wright + 2-opt
+
+    Guarantees: 2-approximation for metric TSP (routing phase).
     Time: O(n² log n).
 
     Returns: mapping of technician_id → ordered list of work_order_ids.
@@ -221,35 +225,38 @@ def clarke_wright_savings(
     if not work_orders or not technicians:
         return {}
 
-    # Filter work orders by skill compatibility
-    eligible: dict[str, list[WorkOrder]] = {t.id: [] for t in technicians}
-    for wo in work_orders:
-        for tech in technicians:
-            if wo.skill_required in tech.skills:
-                eligible[tech.id].append(wo)
-                break
+    # Phase 1: Assign work orders to technicians
+    # Sort work orders by priority (highest first), then by duration (shortest first)
+    sorted_wos = sorted(work_orders, key=lambda wo: (-wo.priority, wo.duration_hours))
 
-    # Assign work orders to technicians, then route each technician's orders
+    # Track remaining hours per technician
+    remaining_hours: dict[str, float] = {t.id: t.available_hours for t in technicians}
+
+    # Assignment: greedy by priority, distribute across compatible technicians
+    assignment: dict[str, list[WorkOrder]] = {t.id: [] for t in technicians}
+
+    for wo in sorted_wos:
+        # Find compatible technicians with enough remaining hours
+        compatible = [
+            t for t in technicians
+            if wo.skill_required in t.skills and remaining_hours[t.id] >= wo.duration_hours
+        ]
+        if not compatible:
+            continue  # No technician can handle this work order
+
+        # Assign to compatible technician with most remaining hours (load balancing)
+        best_tech = max(compatible, key=lambda t: remaining_hours[t.id])
+        assignment[best_tech.id].append(wo)
+        remaining_hours[best_tech.id] -= wo.duration_hours
+
+    # Phase 2: Route each technician's assigned work orders using Clarke-Wright
     routes: dict[str, list[str]] = {}
-    unassigned = list(work_orders)
 
-    # Sort technicians by skill match count (most versatile first)
-    tech_order = sorted(
-        technicians,
-        key=lambda t: sum(1 for wo in work_orders if wo.skill_required in t.skills),
-        reverse=True,
-    )
-
-    for tech in tech_order:
-        # Get unassigned work orders this technician can handle
-        tech_wos = [wo for wo in unassigned if wo.skill_required in tech.skills]
+    for tech in technicians:
+        tech_wos = assignment[tech.id]
         if not tech_wos:
             routes[tech.id] = []
             continue
-
-        # Remove from unassigned
-        for wo in tech_wos:
-            unassigned.remove(wo)
 
         # Compute savings for this technician's work orders
         savings: list[tuple[float, WorkOrder, WorkOrder]] = []
@@ -317,13 +324,6 @@ def clarke_wright_savings(
         # Apply 2-opt local search
         best_route = _two_opt(best_route, depot_lat, depot_lon)
         routes[tech.id] = [wo.id for wo in best_route]
-
-    # Assign any remaining unassigned work orders to first compatible technician
-    for wo in unassigned:
-        for tech in technicians:
-            if wo.skill_required in tech.skills:
-                routes.setdefault(tech.id, []).append(wo.id)
-                break
 
     return routes
 
