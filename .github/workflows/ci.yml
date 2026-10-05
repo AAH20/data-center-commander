@@ -32,6 +32,7 @@ jobs:
         run: mypy src/dcc/
 
   test:
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -58,7 +59,7 @@ jobs:
       - name: Run all tests with coverage
         env:
           PYTHONPATH: src
-          DCC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/data_center_commander_test
+          DCC_DATABASE_URL: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/data_center_commander_test
         run: |
           python -m pytest tests/ \
             --cov=src/dcc \
@@ -72,8 +73,10 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+          retention-days: 30
 
   benchmark:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -94,8 +97,10 @@ jobs:
         with:
           name: benchmark-results
           path: evaluation_report.json
+          retention-days: 30
 
   security:
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -116,8 +121,10 @@ jobs:
         with:
           name: security-report
           path: bandit-report.json
+          retention-days: 30
 
   validate:
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -174,6 +181,7 @@ jobs:
           "
 
   build:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
