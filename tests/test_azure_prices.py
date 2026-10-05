@@ -2,9 +2,9 @@ import json
 import unittest
 from unittest.mock import patch
 
+from dcc.api import Handler
 from dcc.azure_prices import ENDPOINT, fetch_azure_retail_prices
 from dcc.google_prices import fetch_google_cloud_prices
-from dcc.api import Handler
 
 
 class AzureRetailPricesTests(unittest.TestCase):
@@ -60,7 +60,7 @@ class AzureRetailPricesTests(unittest.TestCase):
         self.assertEqual(handler.result[0], 400)
 
     def test_google_catalog_is_fixed_bounded_and_marks_tiered_rates_non_linear(self):
-        class Response:
+        class MockResponse:
             def __init__(self, payload): self.payload = payload
             def __enter__(self): return self
             def __exit__(self, *args): return False
@@ -71,8 +71,8 @@ class AzureRetailPricesTests(unittest.TestCase):
             def open(self, request, timeout):
                 self.calls.append((request.full_url, timeout))
                 if len(self.calls) == 1:
-                    return Response({"services": [{"displayName": "Compute Engine", "serviceId": "6F81-5844-456A"}]})
-                return Response({"skus": [
+                    return MockResponse({"services": [{"displayName": "Compute Engine", "serviceId": "6F81-5844-456A"}]})
+                return MockResponse({"skus": [
                     {"skuId": "SKU-1", "description": "N2 Instance Core running", "serviceRegions": ["us-central1"], "category": {"usageType": "OnDemand"}, "pricingInfo": [{"effectiveTime": "2026-09-01T00:00:00Z", "pricingExpression": {"usageUnitDescription": "hour", "tieredRates": [{"startUsageAmount": 0, "unitPrice": {"units": "0", "nanos": 96000000}}]}}]},
                     {"skuId": "SKU-2", "description": "N2 Instance Core tiered", "serviceRegions": ["us-central1"], "pricingInfo": [{"pricingExpression": {"tieredRates": [{"startUsageAmount": 0, "unitPrice": {"units": "0", "nanos": 0}}, {"startUsageAmount": 100, "unitPrice": {"units": "1", "nanos": 0}}]}}]},
                 ], "nextPageToken": "bounded-next-page"})
@@ -91,9 +91,8 @@ class AzureRetailPricesTests(unittest.TestCase):
         self.assertNotIn("not-returned", repr(result))
 
     def test_google_catalog_requires_server_key_before_network(self):
-        with patch("dcc.google_prices.urllib.request.build_opener") as build:
-            with self.assertRaisesRegex(ConnectionError, "GOOGLE_CLOUD_BILLING_API_KEY"):
-                fetch_google_cloud_prices(service_name="Compute Engine", region="us-central1", sku_query="N2 Instance Core", api_key="")
+        with patch("dcc.google_prices.urllib.request.build_opener") as build, self.assertRaisesRegex(ConnectionError, "GOOGLE_CLOUD_BILLING_API_KEY"):
+            fetch_google_cloud_prices(service_name="Compute Engine", region="us-central1", sku_query="N2 Instance Core", api_key="")
         build.assert_not_called()
 
     def test_google_http_route_is_tenant_scoped_and_reports_missing_server_key(self):

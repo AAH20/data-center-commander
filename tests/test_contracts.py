@@ -37,8 +37,8 @@ class ContractTests(unittest.TestCase):
             def __init__(self, missing_rls=False): self.conn = Connection(missing_rls)
             def connection(self):
                 class Context:
-                    def __enter__(inner): return self.conn
-                    def __exit__(inner, *args): return False
+                    def __enter__(inner): return self.conn  # noqa: N805
+                    def __exit__(inner, *args): return False  # noqa: N805
                 return Context()
 
         ready, checks = database_readiness(Pool())

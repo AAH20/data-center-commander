@@ -9,7 +9,6 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Database pool (shared with api_async)
 # ---------------------------------------------------------------------------
@@ -62,8 +61,7 @@ class FacilityService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
                 rows = await conn.fetch(
@@ -81,8 +79,7 @@ class FacilityService:
     @staticmethod
     async def get_facility_detail(tenant_id: str, facility_id: str) -> dict[str, Any] | None:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
                 row = await conn.fetchrow(
@@ -117,8 +114,7 @@ class AssetService:
         filters: AssetFilter | None = None,
     ) -> list[dict[str, Any]]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -159,8 +155,7 @@ class AssetService:
     @staticmethod
     async def get_asset_topology(tenant_id: str) -> dict[str, list[dict[str, Any]]]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -200,8 +195,7 @@ class EnergyService:
         window_days: int = 30,
     ) -> dict[str, Any]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -249,8 +243,7 @@ class CostService:
     @staticmethod
     async def get_cost_summary(tenant_id: str) -> dict[str, Any]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -313,8 +306,7 @@ class WorkflowService:
         status: str | None = None,
     ) -> list[dict[str, Any]]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -336,17 +328,16 @@ class WorkflowService:
     @staticmethod
     async def get_workflow_health(tenant_id: str) -> list[dict[str, Any]]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
-                await conn.execute("SET TRANSACTION READ ONLY")
-                await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        async with pool.connection() as conn, conn.transaction():
+            await conn.execute("SET TRANSACTION READ ONLY")
+            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-                rows = await conn.fetch(
-                    "SELECT workflow_type,status,priority,items,overdue,mean_age_days "
-                    "FROM dcc.mv_workflow_health WHERE tenant_id=$1::uuid",
-                    tenant_id,
-                )
-                return [dict(r) for r in rows]
+            rows = await conn.fetch(
+                "SELECT workflow_type,status,priority,items,overdue,mean_age_days "
+                "FROM dcc.mv_workflow_health WHERE tenant_id=$1::uuid",
+                tenant_id,
+            )
+            return [dict(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
@@ -362,8 +353,7 @@ class EvidenceService:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
+        async with pool.connection() as conn, conn.transaction():
                 await conn.execute("SET TRANSACTION READ ONLY")
                 await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -378,16 +368,15 @@ class EvidenceService:
     async def verify_chain(tenant_id: str) -> dict[str, Any]:
         """Verify the evidence hash chain for a tenant."""
         pool = await get_db_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
-                await conn.execute("SET TRANSACTION READ ONLY")
-                await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        async with pool.connection() as conn, conn.transaction():
+            await conn.execute("SET TRANSACTION READ ONLY")
+            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-                rows = await conn.fetch(
-                    "SELECT sequence,event_type,occurred_at,event_hash FROM dcc.evidence_events "
-                    "WHERE tenant_id=$1::uuid ORDER BY sequence",
-                    tenant_id,
-                )
+            rows = await conn.fetch(
+                "SELECT sequence,event_type,occurred_at,event_hash FROM dcc.evidence_events "
+                "WHERE tenant_id=$1::uuid ORDER BY sequence",
+                tenant_id,
+            )
 
         import hashlib
         previous_hash = ""

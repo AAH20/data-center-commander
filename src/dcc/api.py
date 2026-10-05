@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -79,20 +79,19 @@ def database_readiness(pool) -> tuple[bool, dict[str, str]]:
     if pool is None:
         return False, {"database": "not_configured", "schema": "unchecked", "tenant_rls": "unchecked"}
     try:
-        with pool.connection() as conn:
-            with conn.transaction():
-                conn.execute("SET TRANSACTION READ ONLY")
-                schema = conn.execute(
-                    "SELECT to_regclass('dcc.tenants') IS NOT NULL AS tenants, "
-                    "to_regclass('dcc.assets') IS NOT NULL AS assets, "
-                    "to_regclass('dcc.evidence_events') IS NOT NULL AS evidence"
-                ).fetchone()
-                rls = conn.execute(
-                    "SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity "
-                    "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-                    "WHERE n.nspname='dcc' AND c.relname=ANY(%s)",
-                    (["assets", "evidence_events"],),
-                ).fetchall()
+        with pool.connection() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION READ ONLY")
+            schema = conn.execute(
+                "SELECT to_regclass('dcc.tenants') IS NOT NULL AS tenants, "
+                "to_regclass('dcc.assets') IS NOT NULL AS assets, "
+                "to_regclass('dcc.evidence_events') IS NOT NULL AS evidence"
+            ).fetchone()
+            rls = conn.execute(
+                "SELECT c.relname,c.relrowsecurity,c.relforcerowsecurity "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                "WHERE n.nspname='dcc' AND c.relname=ANY(%s)",
+                (["assets", "evidence_events"],),
+            ).fetchall()
         if not schema or not all(schema.values()):
             return False, {"database": "ok", "schema": "incomplete", "tenant_rls": "unchecked"}
         policies = {row["relname"]: row for row in rls}
@@ -128,8 +127,7 @@ class Handler(BaseHTTPRequestHandler):
                 tenant = parse_tenant(parse_qs(path.query, keep_blank_values=True))
                 if self.pool is None:
                     raise RuntimeError("database_not_configured")
-                with self.pool.connection() as conn:
-                    with conn.transaction():
+                with self.pool.connection() as conn, conn.transaction():
                         conn.execute("SELECT set_config('dcc.tenant_id', %s, true)", (tenant,))
                         rows = conn.execute(
                             "SELECT id::text,name,schema_version,payload,payload_sha256,created_by,created_at "
@@ -231,14 +229,13 @@ class Handler(BaseHTTPRequestHandler):
             synthetic_demo_mode = query.get("demo") == ["synthetic"]
             try:
                 window_days = int(query.get("window_days", ["30"])[0])
-            except (TypeError, ValueError):
-                raise ValueError("window_days must be an integer from 1 to 90")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("window_days must be an integer from 1 to 90") from exc
             if not 1 <= window_days <= 90:
                 raise ValueError("window_days must be an integer from 1 to 90")
             if self.pool is None:
                 raise RuntimeError("database_not_configured")
-            with self.pool.connection() as conn:
-                with conn.transaction():
+            with self.pool.connection() as conn, conn.transaction():
                     conn.execute("SET TRANSACTION READ ONLY")
                     conn.execute("SELECT set_config('dcc.tenant_id', %s, true)", (tenant,))
                     if path.path == "/v1/topology":
@@ -439,16 +436,15 @@ class Handler(BaseHTTPRequestHandler):
             name, payload, digest, schema_version = validate_placement_snapshot(body)
             if self.pool is None:
                 raise RuntimeError("database_not_configured")
-            with self.pool.connection() as conn:
-                with conn.transaction():
-                    conn.execute("SELECT set_config('dcc.tenant_id', %s, true)", (tenant,))
-                    row = conn.execute(
-                        "INSERT INTO dcc.placement_comparison_snapshots"
-                        "(tenant_id,name,schema_version,payload,payload_sha256,created_by) "
-                        "VALUES(%s::uuid,%s,%s,%s::jsonb,%s,NULL) "
-                        "RETURNING id::text,name,schema_version,payload,payload_sha256,created_at",
-                        (tenant, name, schema_version, payload, digest),
-                    ).fetchone()
+            with self.pool.connection() as conn, conn.transaction():
+                conn.execute("SELECT set_config('dcc.tenant_id', %s, true)", (tenant,))
+                row = conn.execute(
+                    "INSERT INTO dcc.placement_comparison_snapshots"
+                    "(tenant_id,name,schema_version,payload,payload_sha256,created_by) "
+                    "VALUES(%s::uuid,%s,%s,%s::jsonb,%s,NULL) "
+                    "RETURNING id::text,name,schema_version,payload,payload_sha256,created_at",
+                    (tenant, name, schema_version, payload, digest),
+                ).fetchone()
             self.respond(201, {"tenant_id": tenant, "scenario": row, "status": "draft_snapshot",
                                "execution_permitted": False})
         except ValueError as exc:

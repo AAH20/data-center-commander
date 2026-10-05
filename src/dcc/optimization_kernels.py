@@ -7,8 +7,6 @@ structures and return results that can be persisted by the caller.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -198,11 +196,11 @@ def first_fit_decreasing(
 def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Compute haversine distance in km."""
     import math
-    R = 6371.0
+    earth_radius = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    return R * 2 * math.asin(math.sqrt(a))
+    return earth_radius * 2 * math.asin(math.sqrt(a))
 
 
 def clarke_wright_savings(
@@ -275,21 +273,21 @@ def clarke_wright_savings(
         # Build routes using union-find
         parent: dict[str, str] = {wo.id: wo.id for wo in tech_wos}
 
-        def find(x: str) -> str:
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
+        def find(x: str, _parent: dict[str, str] = parent) -> str:
+            while _parent[x] != x:
+                _parent[x] = _parent[_parent[x]]
+                x = _parent[x]
             return x
 
-        def union(a: str, b: str) -> bool:
-            ra, rb = find(a), find(b)
+        def union(a: str, b: str, _parent: dict[str, str] = parent) -> bool:
+            ra, rb = find(a, _parent), find(b, _parent)
             if ra == rb:
                 return False
-            parent[ra] = rb
+            _parent[ra] = rb
             return True
 
         # Perform unions based on savings (Clarke-Wright)
-        for s, a, b in savings:
+        for _s, a, b in savings:
             union(a.id, b.id)
 
         # Group work orders by union-find root

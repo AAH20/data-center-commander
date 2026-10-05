@@ -9,9 +9,10 @@ import hashlib
 import json
 import os
 import time
-from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,15 +24,14 @@ from .optimization_kernels import (
     EnergyRequest,
     NetworkNode,
     Technician,
-    WorkOrder,
     Workload,
+    WorkOrder,
     capacity_allocation,
     clarke_wright_savings,
     dsatur_zoning,
     first_fit_decreasing,
     max_min_fair_energy_allocation,
 )
-
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -74,8 +74,8 @@ def decode_cursor(cursor: str) -> int:
     try:
         data = json.loads(base64.b64decode(cursor.encode()))
         return int(data.get("offset", 0))
-    except Exception:
-        raise ValueError("invalid cursor")
+    except Exception as exc:
+        raise ValueError("invalid cursor") from exc
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +151,8 @@ async def get_pool():
         try:
             from psycopg.rows import dict_row
             from psycopg_pool import AsyncConnectionPool
-        except ImportError:
-            raise HTTPException(status_code=503, detail="postgres_extra_required")
+        except ImportError as exc:
+            raise HTTPException(status_code=503, detail="postgres_extra_required") from exc
         _pool = AsyncConnectionPool(
             conninfo=settings.database_url,
             min_size=1,
@@ -163,9 +163,9 @@ async def get_pool():
         try:
             await _pool.open()
             await _pool.wait(timeout=5)
-        except Exception:
+        except Exception as exc:
             await _pool.close()
-            raise HTTPException(status_code=503, detail="database_unavailable")
+            raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _pool
 
 
@@ -176,10 +176,8 @@ async def get_pool():
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
-    try:
+    with suppress(Exception):
         await get_pool()
-    except Exception:
-        pass
     yield
     # Shutdown
     global _pool
@@ -231,18 +229,17 @@ async def healthz():
 async def readyz():
     try:
         pool = await get_pool()
-        async with pool.connection() as conn:
-            async with conn.transaction():
-                await conn.execute("SET TRANSACTION READ ONLY")
-                schema = await conn.fetchrow(
-                    "SELECT to_regclass('dcc.tenants') IS NOT NULL AS tenants, "
-                    "to_regclass('dcc.assets') IS NOT NULL AS assets"
+        async with pool.connection() as conn, conn.transaction():
+            await conn.execute("SET TRANSACTION READ ONLY")
+            schema = await conn.fetchrow(
+                "SELECT to_regclass('dcc.tenants') IS NOT NULL AS tenants, "
+                "to_regclass('dcc.assets') IS NOT NULL AS assets"
+            )
+            if not schema or not all(schema.values()):
+                return JSONResponse(
+                    status_code=503,
+                    content={"ready": False, "checks": {"schema": "incomplete"}},
                 )
-                if not schema or not all(schema.values()):
-                    return JSONResponse(
-                        status_code=503,
-                        content={"ready": False, "checks": {"schema": "incomplete"}},
-                    )
         return {"ready": True, "checks": {"database": "ok", "schema": "ok"}}
     except Exception as exc:
         return JSONResponse(
@@ -266,8 +263,7 @@ async def overview(
         return cached
 
     pool = await get_pool()
-    async with pool.connection() as conn:
-        async with conn.transaction():
+    async with pool.connection() as conn, conn.transaction():
             await conn.execute("SET TRANSACTION READ ONLY")
             await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -315,8 +311,7 @@ async def list_assets(
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
-    async with pool.connection() as conn:
-        async with conn.transaction():
+    async with pool.connection() as conn, conn.transaction():
             await conn.execute("SET TRANSACTION READ ONLY")
             await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -354,8 +349,7 @@ async def list_facilities(
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
-    async with pool.connection() as conn:
-        async with conn.transaction():
+    async with pool.connection() as conn, conn.transaction():
             await conn.execute("SET TRANSACTION READ ONLY")
             await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -389,8 +383,7 @@ async def list_workflows(
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
-    async with pool.connection() as conn:
-        async with conn.transaction():
+    async with pool.connection() as conn, conn.transaction():
             await conn.execute("SET TRANSACTION READ ONLY")
             await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -437,8 +430,7 @@ async def analytics(
         return cached
 
     pool = await get_pool()
-    async with pool.connection() as conn:
-        async with conn.transaction():
+    async with pool.connection() as conn, conn.transaction():
             await conn.execute("SET TRANSACTION READ ONLY")
             await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
@@ -644,23 +636,21 @@ async def verify_evidence_chain(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
 ):
     pool = await get_pool()
-    async with pool.connection() as conn:
-        async with conn.transaction():
-            await conn.execute("SET TRANSACTION READ ONLY")
-            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-            rows = await conn.fetch(
-                "SELECT sequence,event_type,occurred_at,event_hash FROM dcc.evidence_events "
-                "WHERE tenant_id=$1::uuid ORDER BY sequence",
-                tenant_id,
-            )
+        rows = await conn.fetch(
+            "SELECT sequence,event_type,occurred_at,event_hash FROM dcc.evidence_events "
+            "WHERE tenant_id=$1::uuid ORDER BY sequence",
+            tenant_id,
+        )
 
     # Verify hash chain
     previous_hash = ""
     results = []
     for row in rows:
         # Recompute hash (simplified — full implementation would use dcc.verify_evidence_chain)
-        import hashlib
         computed = hashlib.sha256(
             f"{previous_hash}{row['event_type']}{row['occurred_at']}".encode()
         ).hexdigest()
@@ -710,4 +700,4 @@ async def serve_ui():
     return {"error": "UI not found"}
 
 
-from fastapi.responses import Response  # noqa: E402
+from fastapi.responses import Response as FastAPIResponse  # noqa: E402,F401
