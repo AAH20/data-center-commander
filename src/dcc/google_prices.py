@@ -126,7 +126,7 @@ def fetch_google_cloud_prices(*, service_name: str, region: str, sku_query: str,
     return {
         "provider": "Google Cloud Billing Catalog API",
         "api_version": "v1",
-        "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "retrieved_at": dt.datetime.now(dt.UTC).isoformat(),
         "source_url": f"{BASE}/services",
         "query": {"service_name": service_name, "region": region, "sku_query": sku_query, "currency": currency},
         "prices": rows,

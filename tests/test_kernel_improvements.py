@@ -10,8 +10,8 @@ import unittest
 from dcc.optimization_kernels import (
     Asset,
     Technician,
-    WorkOrder,
     Workload,
+    WorkOrder,
     clarke_wright_savings,
     first_fit_decreasing,
 )

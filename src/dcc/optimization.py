@@ -8,9 +8,8 @@ documented approximation ratios.
 """
 from __future__ import annotations
 
-import heapq
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T")
 

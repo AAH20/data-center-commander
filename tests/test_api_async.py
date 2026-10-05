@@ -6,20 +6,18 @@ Uses httpx ASGITransport for in-process testing (no real server needed).
 from __future__ import annotations
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from dcc.api_async import (
-    Cache,
+    Page,
     RateLimiter,
     app,
     cache,
     decode_cursor,
     encode_cursor,
     first_fit_decreasing,
-    Page,
-    rate_limiter,
 )
 
 

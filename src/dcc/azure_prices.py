@@ -93,7 +93,7 @@ def fetch_azure_retail_prices(
     return {
         "provider": "Microsoft Azure Retail Prices API",
         "api_version": API_VERSION,
-        "retrieved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "retrieved_at": dt.datetime.now(dt.UTC).isoformat(),
         "source_url": ENDPOINT,
         "query": {"service_name": service_name, "region": region or None, "sku": sku or None, "currency": currency},
         "prices": rows,

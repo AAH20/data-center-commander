@@ -5,7 +5,6 @@ of the algorithm. Tests use real data structures, not mocks.
 """
 from __future__ import annotations
 
-import math
 import unittest
 
 from dcc.optimization_kernels import (
@@ -14,8 +13,8 @@ from dcc.optimization_kernels import (
     EnergyRequest,
     NetworkNode,
     Technician,
-    WorkOrder,
     Workload,
+    WorkOrder,
     capacity_allocation,
     clarke_wright_savings,
     dsatur_zoning,
