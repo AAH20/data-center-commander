@@ -59,7 +59,7 @@ jobs:
       - name: Run all tests with coverage
         env:
           PYTHONPATH: src
-          DCC_DATABASE_URL: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/data_center_commander_test
+          DCC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/data_center_commander_test
         run: |
           python -m pytest tests/ \
             --cov=src/dcc \
@@ -134,7 +134,7 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - name: Install validation tools
-        run: pip install sqlparse
+        run: pip install sqlparse bandit safety
       - name: Validate shell syntax
         run: bash -n scripts/*.sh
       - name: Validate SQL syntax
