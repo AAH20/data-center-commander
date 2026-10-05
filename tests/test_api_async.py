@@ -127,7 +127,8 @@ class TestOptimizationEndpoints(unittest.TestCase):
         # Just verify the endpoint exists and accepts params without validation error
         # Full integration test requires a real database
         response = self.client.get(
-            "/v2/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&limit=10"
+            "/v2/assets",
+            params={"tenant_id": "dcc00000-0000-4000-8000-000000000001", "limit": 10},
         )
         # Should not 422 (validation error) — 503 is expected without DB
         self.assertNotEqual(response.status_code, 422)
