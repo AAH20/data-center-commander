@@ -3,6 +3,7 @@
 These tests verify that the improved FFD algorithm achieves >80% placement rate
 by using best-fit decreasing instead of first-fit decreasing.
 """
+
 from __future__ import annotations
 
 import random

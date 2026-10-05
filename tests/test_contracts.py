@@ -13,32 +13,55 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(checks["database"], "not_configured")
 
         class Cursor:
-            def __init__(self, rows): self.rows = rows
-            def fetchone(self): return self.rows[0]
-            def fetchall(self): return self.rows
+            def __init__(self, rows):
+                self.rows = rows
+
+            def fetchone(self):
+                return self.rows[0]
+
+            def fetchall(self):
+                return self.rows
 
         class Transaction:
-            def __enter__(self): return self
-            def __exit__(self, *args): return False
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
 
         class Connection:
-            def __init__(self, missing_rls=False): self.missing_rls = missing_rls
-            def transaction(self): return Transaction()
+            def __init__(self, missing_rls=False):
+                self.missing_rls = missing_rls
+
+            def transaction(self):
+                return Transaction()
+
             def execute(self, sql, params=None):
                 if "to_regclass" in sql:
                     return Cursor([{"tenants": True, "assets": True, "evidence": True}])
-                return Cursor([
-                    {"relname": name, "relrowsecurity": True,
-                     "relforcerowsecurity": not (self.missing_rls and name == "assets")}
-                    for name in ("assets", "evidence_events")
-                ])
+                return Cursor(
+                    [
+                        {
+                            "relname": name,
+                            "relrowsecurity": True,
+                            "relforcerowsecurity": not (self.missing_rls and name == "assets"),
+                        }
+                        for name in ("assets", "evidence_events")
+                    ]
+                )
 
         class Pool:
-            def __init__(self, missing_rls=False): self.conn = Connection(missing_rls)
+            def __init__(self, missing_rls=False):
+                self.conn = Connection(missing_rls)
+
             def connection(self):
                 class Context:
-                    def __enter__(inner): return self.conn  # noqa: N805
-                    def __exit__(inner, *args): return False  # noqa: N805
+                    def __enter__(inner):  # noqa: N805
+                        return self.conn
+
+                    def __exit__(inner, *args):  # noqa: N805
+                        return False
+
                 return Context()
 
         ready, checks = database_readiness(Pool())
@@ -51,7 +74,12 @@ class ContractTests(unittest.TestCase):
     def test_tenant_query_requires_exactly_one_valid_uuid(self):
         value = "dcc00000-0000-4000-8000-000000000001"
         self.assertEqual(parse_tenant({"tenant_id": [value]}), value)
-        for query in ({}, {"tenant_id": ["bad"]}, {"tenant_id": [value, value]}, {"tenant_id": [""]}):
+        for query in (
+            {},
+            {"tenant_id": ["bad"]},
+            {"tenant_id": [value, value]},
+            {"tenant_id": [""]},
+        ):
             with self.subTest(query=query), self.assertRaises(ValueError):
                 parse_tenant(query)
 
@@ -61,12 +89,32 @@ class ContractTests(unittest.TestCase):
 
     def test_schema_has_energy_provenance_lifecycle_and_tenant_rls(self):
         schema = (ROOT / "database" / "schema.sql").read_text()
-        for table in ("sites", "facilities", "assets", "asset_relationships", "connectors",
-                      "telemetry_readings", "meters", "tariffs", "carbon_factors", "workloads",
-                      "energy_allocations", "capacity_snapshots", "kpi_observations",
-                      "operational_workflows", "work_orders", "incidents", "change_records", "evidence_events",
-                      "cost_books", "price_observations", "estimate_projects", "estimate_line_items",
-                      "cost_actuals", "cost_allocations"):
+        for table in (
+            "sites",
+            "facilities",
+            "assets",
+            "asset_relationships",
+            "connectors",
+            "telemetry_readings",
+            "meters",
+            "tariffs",
+            "carbon_factors",
+            "workloads",
+            "energy_allocations",
+            "capacity_snapshots",
+            "kpi_observations",
+            "operational_workflows",
+            "work_orders",
+            "incidents",
+            "change_records",
+            "evidence_events",
+            "cost_books",
+            "price_observations",
+            "estimate_projects",
+            "estimate_line_items",
+            "cost_actuals",
+            "cost_allocations",
+        ):
             self.assertIn(f"CREATE TABLE {table} ", schema)
         self.assertIn("ENABLE ROW LEVEL SECURITY", schema)
         self.assertIn("FORCE ROW LEVEL SECURITY", schema)
@@ -115,22 +163,38 @@ class ContractTests(unittest.TestCase):
         payload = {
             "schema_version": "placement-tco-comparison.v1",
             "assumptions": {"currency": "USD", "horizon_months": 36},
-            "sources": {side: {"type": "Vendor quote / contract", "reference": "Q-123", "observed_on": "2026-09-25"}
-                        for side in ("onprem", "cloud")},
+            "sources": {
+                side: {
+                    "type": "Vendor quote / contract",
+                    "reference": "Q-123",
+                    "observed_on": "2026-09-25",
+                }
+                for side in ("onprem", "cloud")
+            },
             "results": {side: {"npv": 1.0} for side in ("onprem", "cloud")},
         }
-        name, encoded, digest, version = validate_placement_snapshot({"name": "Lab comparison", "payload": payload})
+        name, encoded, digest, version = validate_placement_snapshot(
+            {"name": "Lab comparison", "payload": payload}
+        )
         self.assertEqual(name, "Lab comparison")
         self.assertEqual(version, "placement-tco-comparison.v1")
         self.assertEqual(len(digest), 64)
         self.assertIn('"observed_on":"2026-09-25"', encoded)
-        invalid = {**payload, "sources": {**payload["sources"], "cloud": {**payload["sources"]["cloud"], "observed_on": "yesterday"}}}
+        invalid = {
+            **payload,
+            "sources": {
+                **payload["sources"],
+                "cloud": {**payload["sources"]["cloud"], "observed_on": "yesterday"},
+            },
+        }
         with self.assertRaisesRegex(ValueError, "observation date"):
             validate_placement_snapshot({"name": "bad", "payload": invalid})
 
     def test_placement_snapshot_schema_is_tenant_rls_and_explicit_save_only(self):
         schema = (ROOT / "database" / "schema.sql").read_text()
-        migration = (ROOT / "database" / "migrations" / "004_placement_comparison_snapshots.sql").read_text()
+        migration = (
+            ROOT / "database" / "migrations" / "004_placement_comparison_snapshots.sql"
+        ).read_text()
         ui = (ROOT / "ui" / "placement-scenarios.js").read_text()
         api = (ROOT / "src" / "dcc" / "api.py").read_text()
         self.assertIn("placement_comparison_snapshots", schema)
@@ -147,11 +211,11 @@ class ContractTests(unittest.TestCase):
         self.assertIn('data-view="analytics"', ui)
         self.assertIn('data-view="workflows"', ui)
         self.assertIn('id="refreshRate"', ui)
-        self.assertIn('trend_forecast_min_daily_points', ui)
-        self.assertIn('anomaly_min_daily_points', ui)
-        self.assertIn('maintenance_failure_labels_required', api)
+        self.assertIn("trend_forecast_min_daily_points", ui)
+        self.assertIn("anomaly_min_daily_points", ui)
+        self.assertIn("maintenance_failure_labels_required", api)
         self.assertIn('"/v1/analytics"', api)
-        self.assertIn('SET TRANSACTION READ ONLY', api)
+        self.assertIn("SET TRANSACTION READ ONLY", api)
 
     def test_seed_is_unambiguously_synthetic_and_reset_is_database_gated(self):
         seed = (ROOT / "database" / "demo_seed.sql").read_text()

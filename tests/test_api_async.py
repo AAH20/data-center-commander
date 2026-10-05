@@ -3,6 +3,7 @@
 Tests pagination, caching, rate limiting, and optimization endpoints.
 Uses httpx ASGITransport for in-process testing (no real server needed).
 """
+
 from __future__ import annotations
 
 import unittest

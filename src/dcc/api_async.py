@@ -3,6 +3,7 @@
 Replaces the monolithic ThreadingHTTPServer with FastAPI + Uvicorn.
 Adds pagination, caching, rate limiting, and optimization endpoints.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,6 +38,7 @@ from .optimization_kernels import (
 # Configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str = os.environ.get("DCC_DATABASE_URL", "")
@@ -54,6 +56,7 @@ settings = Settings()
 # Pagination
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Page:
     items: list[dict[str, Any]]
@@ -66,11 +69,13 @@ class Page:
 
 def encode_cursor(offset: int) -> str:
     import base64
+
     return base64.b64encode(json.dumps({"offset": offset}).encode()).decode()
 
 
 def decode_cursor(cursor: str) -> int:
     import base64
+
     try:
         data = json.loads(base64.b64decode(cursor.encode()))
         return int(data.get("offset", 0))
@@ -81,6 +86,7 @@ def decode_cursor(cursor: str) -> int:
 # ---------------------------------------------------------------------------
 # In-memory cache (replace with Redis in production)
 # ---------------------------------------------------------------------------
+
 
 class Cache:
     def __init__(self) -> None:
@@ -110,6 +116,7 @@ cache = Cache()
 # ---------------------------------------------------------------------------
 # Rate limiter (simple token bucket)
 # ---------------------------------------------------------------------------
+
 
 class RateLimiter:
     def __init__(self, rps: int) -> None:
@@ -173,6 +180,7 @@ async def get_pool():
 # Lifespan
 # ---------------------------------------------------------------------------
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
@@ -220,6 +228,7 @@ async def rate_limit_middleware(request: Request, call_next):
 # Health
 # ---------------------------------------------------------------------------
 
+
 @app.get("/healthz")
 async def healthz():
     return {"service": "data-center-commander", "mode": "read_only", "execution_permitted": False}
@@ -252,6 +261,7 @@ async def readyz():
 # Overview
 # ---------------------------------------------------------------------------
 
+
 @app.get("/v2/overview")
 async def overview(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
@@ -264,27 +274,27 @@ async def overview(
 
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
-            await conn.execute("SET TRANSACTION READ ONLY")
-            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-            facilities = await conn.fetchrow(
-                "SELECT count(*)::int AS facility_count FROM dcc.facilities WHERE tenant_id=$1::uuid AND status='active'",
-                tenant_id,
-            )
-            kpis = await conn.fetch(
-                "SELECT DISTINCT ON (d.metric_key) d.metric_key,d.name,d.unit,o.value_numeric,o.window_start,o.window_end,o.observed_at,o.coverage,o.uncertainty,o.quality_status,o.reason_codes,o.provenance "
-                "FROM dcc.kpi_observations o JOIN dcc.kpi_definitions d ON d.tenant_id=o.tenant_id AND d.id=o.kpi_definition_id "
-                "WHERE o.tenant_id=$1::uuid ORDER BY d.metric_key,o.window_end DESC,o.observed_at DESC LIMIT 100",
-                tenant_id,
-            )
-            open_work = await conn.fetchrow(
-                "SELECT count(*)::int AS open_count FROM dcc.operational_workflows WHERE tenant_id=$1::uuid AND status NOT IN ('closed','cancelled')",
-                tenant_id,
-            )
-            latest = await conn.fetchrow(
-                "SELECT max(ingested_at) AS latest_ingested_at FROM dcc.telemetry_readings WHERE tenant_id=$1::uuid",
-                tenant_id,
-            )
+        facilities = await conn.fetchrow(
+            "SELECT count(*)::int AS facility_count FROM dcc.facilities WHERE tenant_id=$1::uuid AND status='active'",
+            tenant_id,
+        )
+        kpis = await conn.fetch(
+            "SELECT DISTINCT ON (d.metric_key) d.metric_key,d.name,d.unit,o.value_numeric,o.window_start,o.window_end,o.observed_at,o.coverage,o.uncertainty,o.quality_status,o.reason_codes,o.provenance "
+            "FROM dcc.kpi_observations o JOIN dcc.kpi_definitions d ON d.tenant_id=o.tenant_id AND d.id=o.kpi_definition_id "
+            "WHERE o.tenant_id=$1::uuid ORDER BY d.metric_key,o.window_end DESC,o.observed_at DESC LIMIT 100",
+            tenant_id,
+        )
+        open_work = await conn.fetchrow(
+            "SELECT count(*)::int AS open_count FROM dcc.operational_workflows WHERE tenant_id=$1::uuid AND status NOT IN ('closed','cancelled')",
+            tenant_id,
+        )
+        latest = await conn.fetchrow(
+            "SELECT max(ingested_at) AS latest_ingested_at FROM dcc.telemetry_readings WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
 
     result = {
         "tenant_id": tenant_id,
@@ -303,6 +313,7 @@ async def overview(
 # Paginated list endpoints
 # ---------------------------------------------------------------------------
 
+
 @app.get("/v2/assets")
 async def list_assets(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
@@ -312,20 +323,22 @@ async def list_assets(
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
-            await conn.execute("SET TRANSACTION READ ONLY")
-            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-            rows = await conn.fetch(
-                "SELECT a.external_id,a.asset_type,a.name,a.manufacturer,a.model,a.lifecycle_state,a.criticality,a.observed_at,f.name AS facility_name,s.name AS space_name "
-                "FROM dcc.assets a LEFT JOIN dcc.spaces s ON s.tenant_id=a.tenant_id AND s.id=a.space_id "
-                "LEFT JOIN dcc.facilities f ON f.tenant_id=s.tenant_id AND f.id=s.facility_id "
-                "WHERE a.tenant_id=$1::uuid ORDER BY a.lifecycle_state,a.name LIMIT $2 OFFSET $3",
-                tenant_id, limit + 1, offset,
-            )
-            total = await conn.fetchrow(
-                "SELECT count(*)::int AS total FROM dcc.assets WHERE tenant_id=$1::uuid",
-                tenant_id,
-            )
+        rows = await conn.fetch(
+            "SELECT a.external_id,a.asset_type,a.name,a.manufacturer,a.model,a.lifecycle_state,a.criticality,a.observed_at,f.name AS facility_name,s.name AS space_name "
+            "FROM dcc.assets a LEFT JOIN dcc.spaces s ON s.tenant_id=a.tenant_id AND s.id=a.space_id "
+            "LEFT JOIN dcc.facilities f ON f.tenant_id=s.tenant_id AND f.id=s.facility_id "
+            "WHERE a.tenant_id=$1::uuid ORDER BY a.lifecycle_state,a.name LIMIT $2 OFFSET $3",
+            tenant_id,
+            limit + 1,
+            offset,
+        )
+        total = await conn.fetchrow(
+            "SELECT count(*)::int AS total FROM dcc.assets WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
 
     has_more = len(rows) > limit
     items = [dict(r) for r in rows[:limit]]
@@ -350,15 +363,17 @@ async def list_facilities(
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
-            await conn.execute("SET TRANSACTION READ ONLY")
-            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-            rows = await conn.fetch(
-                "SELECT f.id::text,f.code,f.name,f.facility_type,f.status,s.code AS site_code,s.name AS site_name "
-                "FROM dcc.facilities f JOIN dcc.sites s ON s.tenant_id=f.tenant_id AND s.id=f.site_id "
-                "WHERE f.tenant_id=$1::uuid ORDER BY s.name,f.name LIMIT $2 OFFSET $3",
-                tenant_id, limit + 1, offset,
-            )
+        rows = await conn.fetch(
+            "SELECT f.id::text,f.code,f.name,f.facility_type,f.status,s.code AS site_code,s.name AS site_name "
+            "FROM dcc.facilities f JOIN dcc.sites s ON s.tenant_id=f.tenant_id AND s.id=f.site_id "
+            "WHERE f.tenant_id=$1::uuid ORDER BY s.name,f.name LIMIT $2 OFFSET $3",
+            tenant_id,
+            limit + 1,
+            offset,
+        )
 
     has_more = len(rows) > limit
     items = [dict(r) for r in rows[:limit]]
@@ -384,22 +399,22 @@ async def list_workflows(
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
-            await conn.execute("SET TRANSACTION READ ONLY")
-            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-            where = "WHERE w.tenant_id=$1::uuid"
-            params: list[Any] = [tenant_id]
-            if status:
-                where += " AND w.status=$2"
-                params.append(status)
+        where = "WHERE w.tenant_id=$1::uuid"
+        params: list[Any] = [tenant_id]
+        if status:
+            where += " AND w.status=$2"
+            params.append(status)
 
-            rows = await conn.fetch(
-                f"SELECT id::text,workflow_type,stage,status,priority,title,accountable_owner,opened_at,due_at,closed_at "
-                f"FROM dcc.operational_workflows w {where} ORDER BY "
-                f"CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,priority,due_at NULLS LAST,opened_at DESC "
-                f"LIMIT {limit + 1} OFFSET {offset}",
-                *params,
-            )
+        rows = await conn.fetch(
+            f"SELECT id::text,workflow_type,stage,status,priority,title,accountable_owner,opened_at,due_at,closed_at "
+            f"FROM dcc.operational_workflows w {where} ORDER BY "
+            f"CASE status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,priority,due_at NULLS LAST,opened_at DESC "
+            f"LIMIT {limit + 1} OFFSET {offset}",
+            *params,
+        )
 
     has_more = len(rows) > limit
     items = [dict(r) for r in rows[:limit]]
@@ -419,6 +434,7 @@ async def list_workflows(
 # Analytics (uses materialized views)
 # ---------------------------------------------------------------------------
 
+
 @app.get("/v2/analytics")
 async def analytics(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
@@ -431,38 +447,39 @@ async def analytics(
 
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
-            await conn.execute("SET TRANSACTION READ ONLY")
-            await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
-            # Use materialized view for daily rollup
-            series = await conn.fetch(
-                "SELECT metric_key,name,unit,bucket,value,coverage,uncertainty,samples,synthetic "
-                "FROM dcc.mv_daily_kpi_rollup WHERE tenant_id=$1::uuid ORDER BY metric_key,bucket LIMIT 5000",
-                tenant_id,
-            )
-            quality = await conn.fetch(
-                "SELECT d.metric_key,d.name,d.unit,count(o.id)::int AS observations, "
-                "count(o.id) FILTER (WHERE o.quality_status IN ('good','estimated'))::int AS usable_observations, "
-                "avg(o.coverage) AS mean_coverage,avg(o.uncertainty) AS mean_uncertainty, "
-                "max(o.window_end) AS latest_window_end, "
-                "count(o.id) FILTER (WHERE o.provenance->>'synthetic'='true')::int AS synthetic_observations "
-                "FROM dcc.kpi_definitions d LEFT JOIN dcc.kpi_observations o "
-                "ON o.tenant_id=d.tenant_id AND o.kpi_definition_id=d.id "
-                "AND o.window_end>=now()-($2*interval '1 day') "
-                "WHERE d.tenant_id=$1::uuid AND d.active GROUP BY d.metric_key,d.name,d.unit "
-                "ORDER BY d.name LIMIT 500",
-                tenant_id, window_days,
-            )
-            telemetry = await conn.fetch(
-                "SELECT quality_status,samples,metrics,assets,latest_observed_at "
-                "FROM dcc.mv_telemetry_quality WHERE tenant_id=$1::uuid",
-                tenant_id,
-            )
-            workflows = await conn.fetch(
-                "SELECT workflow_type,status,priority,items,overdue,mean_age_days "
-                "FROM dcc.mv_workflow_health WHERE tenant_id=$1::uuid",
-                tenant_id,
-            )
+        # Use materialized view for daily rollup
+        series = await conn.fetch(
+            "SELECT metric_key,name,unit,bucket,value,coverage,uncertainty,samples,synthetic "
+            "FROM dcc.mv_daily_kpi_rollup WHERE tenant_id=$1::uuid ORDER BY metric_key,bucket LIMIT 5000",
+            tenant_id,
+        )
+        quality = await conn.fetch(
+            "SELECT d.metric_key,d.name,d.unit,count(o.id)::int AS observations, "
+            "count(o.id) FILTER (WHERE o.quality_status IN ('good','estimated'))::int AS usable_observations, "
+            "avg(o.coverage) AS mean_coverage,avg(o.uncertainty) AS mean_uncertainty, "
+            "max(o.window_end) AS latest_window_end, "
+            "count(o.id) FILTER (WHERE o.provenance->>'synthetic'='true')::int AS synthetic_observations "
+            "FROM dcc.kpi_definitions d LEFT JOIN dcc.kpi_observations o "
+            "ON o.tenant_id=d.tenant_id AND o.kpi_definition_id=d.id "
+            "AND o.window_end>=now()-($2*interval '1 day') "
+            "WHERE d.tenant_id=$1::uuid AND d.active GROUP BY d.metric_key,d.name,d.unit "
+            "ORDER BY d.name LIMIT 500",
+            tenant_id,
+            window_days,
+        )
+        telemetry = await conn.fetch(
+            "SELECT quality_status,samples,metrics,assets,latest_observed_at "
+            "FROM dcc.mv_telemetry_quality WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
+        workflows = await conn.fetch(
+            "SELECT workflow_type,status,priority,items,overdue,mean_age_days "
+            "FROM dcc.mv_workflow_health WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
 
     result = {
         "tenant_id": tenant_id,
@@ -481,6 +498,7 @@ async def analytics(
 # ---------------------------------------------------------------------------
 # Optimization endpoints
 # ---------------------------------------------------------------------------
+
 
 @app.post("/v2/optimize/placement")
 async def optimize_placement(request: Request):
@@ -547,7 +565,8 @@ async def optimize_maintenance_routing(request: Request):
     ]
 
     result = clarke_wright_savings(
-        work_orders, technicians,
+        work_orders,
+        technicians,
         depot_lat=body.get("depot_latitude", 0),
         depot_lon=body.get("depot_longitude", 0),
     )
@@ -631,6 +650,7 @@ async def optimize_energy_allocation(request: Request):
 # Evidence chain verification
 # ---------------------------------------------------------------------------
 
+
 @app.get("/v2/evidence/verify")
 async def verify_evidence_chain(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
@@ -654,12 +674,14 @@ async def verify_evidence_chain(
         computed = hashlib.sha256(
             f"{previous_hash}{row['event_type']}{row['occurred_at']}".encode()
         ).hexdigest()
-        results.append({
-            "sequence": row["sequence"],
-            "event_type": row["event_type"],
-            "occurred_at": row["occurred_at"],
-            "is_valid": computed == row["event_hash"],
-        })
+        results.append(
+            {
+                "sequence": row["sequence"],
+                "event_type": row["event_type"],
+                "occurred_at": row["occurred_at"],
+                "is_valid": computed == row["event_hash"],
+            }
+        )
         previous_hash = row["event_hash"]
 
     return {
@@ -676,6 +698,7 @@ async def verify_evidence_chain(
 # Cache management
 # ---------------------------------------------------------------------------
 
+
 @app.post("/v2/cache/invalidate")
 async def invalidate_cache(
     pattern: str = Query(..., description="Cache key pattern to invalidate"),
@@ -688,9 +711,11 @@ async def invalidate_cache(
 # Serve UI (for development)
 # ---------------------------------------------------------------------------
 
+
 @app.get("/")
 async def serve_ui():
     from pathlib import Path
+
     ui_path = Path(__file__).resolve().parents[2] / "ui" / "index.html"
     if ui_path.exists():
         return Response(

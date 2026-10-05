@@ -3,6 +3,7 @@
 Each view is a self-contained module that can be lazy-loaded.
 Replaces the 84KB monolithic index.html with focused components.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

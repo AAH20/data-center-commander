@@ -35,7 +35,9 @@ def fetch_azure_retail_prices(
     *, service_name: str, region: str = "", sku: str = "", currency: str = "USD"
 ) -> dict[str, Any]:
     """Fetch one bounded catalog page; never follows a provider-supplied next link."""
-    service_name = _filter_value(service_name, "service_name", r"[A-Za-z0-9 ()&._/-]+", required=True)
+    service_name = _filter_value(
+        service_name, "service_name", r"[A-Za-z0-9 ()&._/-]+", required=True
+    )
     region = _filter_value(region, "region", r"[A-Za-z0-9._-]*")
     sku = _filter_value(sku, "sku", r"[A-Za-z0-9._-]*")
     currency = currency.strip().upper()
@@ -48,11 +50,13 @@ def fetch_azure_retail_prices(
     if sku:
         filters.append(f"armSkuName eq '{sku}'")
     filters.append("priceType eq 'Consumption'")
-    query = urllib.parse.urlencode({
-        "api-version": API_VERSION,
-        "$filter": " and ".join(filters),
-        "currencyCode": currency,
-    })
+    query = urllib.parse.urlencode(
+        {
+            "api-version": API_VERSION,
+            "$filter": " and ".join(filters),
+            "currencyCode": currency,
+        }
+    )
     request = urllib.request.Request(
         f"{ENDPOINT}?{query}",
         headers={"Accept": "application/json", "User-Agent": "DataCenterCommander/0.1"},
@@ -68,7 +72,9 @@ def fetch_azure_retail_prices(
     except urllib.error.HTTPError as exc:
         raise ConnectionError(f"Azure price catalog returned HTTP {exc.code}") from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ConnectionError(f"Azure price catalog is unavailable ({type(exc).__name__})") from None
+        raise ConnectionError(
+            f"Azure price catalog is unavailable ({type(exc).__name__})"
+        ) from None
     except json.JSONDecodeError:
         raise ConnectionError("Azure price catalog returned invalid JSON") from None
     if not isinstance(payload, dict) or not isinstance(payload.get("Items"), list):
@@ -84,18 +90,37 @@ def fetch_azure_retail_prices(
             continue
         if not price.is_finite() or price < 0:
             continue
-        rows.append({key: item.get(key) for key in (
-            "serviceName", "productName", "skuName", "armSkuName", "armRegionName",
-            "meterName", "unitOfMeasure", "currencyCode", "effectiveStartDate",
-            "priceType", "isPrimaryMeterRegion",
-        )} | {"retailPrice": str(price)})
+        rows.append(
+            {
+                key: item.get(key)
+                for key in (
+                    "serviceName",
+                    "productName",
+                    "skuName",
+                    "armSkuName",
+                    "armRegionName",
+                    "meterName",
+                    "unitOfMeasure",
+                    "currencyCode",
+                    "effectiveStartDate",
+                    "priceType",
+                    "isPrimaryMeterRegion",
+                )
+            }
+            | {"retailPrice": str(price)}
+        )
 
     return {
         "provider": "Microsoft Azure Retail Prices API",
         "api_version": API_VERSION,
         "retrieved_at": dt.datetime.now(dt.UTC).isoformat(),
         "source_url": ENDPOINT,
-        "query": {"service_name": service_name, "region": region or None, "sku": sku or None, "currency": currency},
+        "query": {
+            "service_name": service_name,
+            "region": region or None,
+            "sku": sku or None,
+            "currency": currency,
+        },
         "prices": rows,
         "returned": len(rows),
         "truncated": len(payload["Items"]) > MAX_ROWS or bool(payload.get("NextPageLink")),

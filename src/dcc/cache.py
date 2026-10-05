@@ -3,6 +3,7 @@
 In-memory TTL cache for API responses and external price fetches.
 Thread-safe with automatic eviction.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -137,9 +138,7 @@ def cached(
                 key = key_func(*args, **kwargs)
             else:
                 # Default key: function name + hashed arguments
-                key_data = json.dumps(
-                    {"args": args, "kwargs": kwargs}, sort_keys=True, default=str
-                )
+                key_data = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str)
                 key = f"{func.__name__}:{hashlib.sha256(key_data.encode()).hexdigest()[:16]}"
 
             result = cache.get(key)

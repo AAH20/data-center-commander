@@ -4,6 +4,7 @@ Each kernel implements an approximation algorithm with guaranteed bounds.
 All kernels are pure functions with no I/O — they operate on plain data
 structures and return results that can be persisted by the caller.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,9 +13,11 @@ from dataclasses import dataclass, field
 # Data structures
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Workload:
     """A workload to be placed on an asset."""
+
     id: str
     name: str
     cpu_cores: float
@@ -28,6 +31,7 @@ class Workload:
 @dataclass
 class Asset:
     """A server/asset that can host workloads."""
+
     id: str
     name: str
     total_cpu: float
@@ -75,6 +79,7 @@ class Asset:
 @dataclass(frozen=True)
 class WorkOrder:
     """A maintenance work order for routing."""
+
     id: str
     asset_id: str
     priority: int
@@ -89,6 +94,7 @@ class WorkOrder:
 @dataclass(frozen=True)
 class Technician:
     """A technician available for maintenance routing."""
+
     id: str
     skills: frozenset[str]
     base_latitude: float
@@ -99,6 +105,7 @@ class Technician:
 @dataclass
 class CapacityDimension:
     """A capacity dimension for allocation."""
+
     name: str
     total: float
     used: float = 0.0
@@ -113,6 +120,7 @@ class CapacityDimension:
 @dataclass(frozen=True)
 class NetworkNode:
     """A network node for zoning."""
+
     id: str
     zone: str | None = None
     neighbors: tuple[str, ...] = ()
@@ -121,6 +129,7 @@ class NetworkNode:
 @dataclass(frozen=True)
 class EnergyRequest:
     """An energy allocation request from a workload."""
+
     workload_id: str
     energy_kwh: float
     useful_work_per_kwh: float
@@ -130,6 +139,7 @@ class EnergyRequest:
 # ---------------------------------------------------------------------------
 # 1. Workload Placement — First-Fit Decreasing (Bin Packing)
 # ---------------------------------------------------------------------------
+
 
 def first_fit_decreasing(
     workloads: list[Workload],
@@ -193,13 +203,18 @@ def first_fit_decreasing(
 # 2. Maintenance Routing — Clarke-Wright Savings + 2-opt
 # ---------------------------------------------------------------------------
 
+
 def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Compute haversine distance in km."""
     import math
+
     earth_radius = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    )
     return earth_radius * 2 * math.asin(math.sqrt(a))
 
 
@@ -236,7 +251,8 @@ def clarke_wright_savings(
     for wo in sorted_wos:
         # Find compatible technicians with enough remaining hours
         compatible = [
-            t for t in technicians
+            t
+            for t in technicians
             if wo.skill_required in t.skills and remaining_hours[t.id] >= wo.duration_hours
         ]
         if not compatible:
@@ -304,15 +320,19 @@ def clarke_wright_savings(
             elif len(route) == len(best_route) and best_route:
                 d1 = sum(
                     _haversine(
-                        best_route[k].latitude, best_route[k].longitude,
-                        best_route[k + 1].latitude, best_route[k + 1].longitude,
+                        best_route[k].latitude,
+                        best_route[k].longitude,
+                        best_route[k + 1].latitude,
+                        best_route[k + 1].longitude,
                     )
                     for k in range(len(best_route) - 1)
                 )
                 d2 = sum(
                     _haversine(
-                        route[k].latitude, route[k].longitude,
-                        route[k + 1].latitude, route[k + 1].longitude,
+                        route[k].latitude,
+                        route[k].longitude,
+                        route[k + 1].latitude,
+                        route[k + 1].longitude,
                     )
                     for k in range(len(route) - 1)
                 )
@@ -357,6 +377,7 @@ def _two_opt(route: list[WorkOrder], depot_lat: float, depot_lon: float) -> list
 # 3. Capacity Allocation — LP Relaxation + Greedy Rounding
 # ---------------------------------------------------------------------------
 
+
 def capacity_allocation(
     dimensions: list[CapacityDimension],
     demands: dict[str, dict[str, float]],
@@ -384,13 +405,13 @@ def capacity_allocation(
     for demand_id, requirements in sorted_demands:
         allocation: dict[str, float] = {}
         for dim_name, required in requirements.items():
-            dim = next((d for d in dimensions if d.name == dim_name), None)
-            if dim is None:
+            matching_dim = next((d for d in dimensions if d.name == dim_name), None)
+            if matching_dim is None:
                 allocation[dim_name] = 0.0
                 continue
-            available = dim.available
+            available = matching_dim.available
             allocated = min(available, required)
-            dim.used += allocated
+            matching_dim.used += allocated
             allocation[dim_name] = allocated
         result[demand_id] = allocation
 
@@ -400,6 +421,7 @@ def capacity_allocation(
 # ---------------------------------------------------------------------------
 # 4. Network Zoning — DSATUR (Degree of Saturation)
 # ---------------------------------------------------------------------------
+
 
 def dsatur_zoning(nodes: list[NetworkNode]) -> dict[str, str]:
     """Assign network nodes to zones using DSATUR heuristic.
@@ -444,6 +466,7 @@ def dsatur_zoning(nodes: list[NetworkNode]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # 5. Energy Allocation — Max-Min Fairness + Gain Density
 # ---------------------------------------------------------------------------
+
 
 def max_min_fair_energy_allocation(
     requests: list[EnergyRequest],

@@ -2,6 +2,7 @@
 
 These tests verify that the improved algorithms meet quality thresholds.
 """
+
 from __future__ import annotations
 
 import random
@@ -176,15 +177,38 @@ class TestClarkeWrightImprovement(unittest.TestCase):
     def test_all_orders_assigned_when_skills_match(self):
         """All work orders should be assigned when technicians have matching skills."""
         work_orders = [
-            WorkOrder("wo1", "a1", priority=1, duration_hours=2, skill_required="electrical",
-                      latitude=40.7128, longitude=-74.0060),
-            WorkOrder("wo2", "a2", priority=2, duration_hours=1, skill_required="electrical",
-                      latitude=40.7580, longitude=-73.9855),
-            WorkOrder("wo3", "a3", priority=3, duration_hours=3, skill_required="electrical",
-                      latitude=40.6892, longitude=-74.0445),
+            WorkOrder(
+                "wo1",
+                "a1",
+                priority=1,
+                duration_hours=2,
+                skill_required="electrical",
+                latitude=40.7128,
+                longitude=-74.0060,
+            ),
+            WorkOrder(
+                "wo2",
+                "a2",
+                priority=2,
+                duration_hours=1,
+                skill_required="electrical",
+                latitude=40.7580,
+                longitude=-73.9855,
+            ),
+            WorkOrder(
+                "wo3",
+                "a3",
+                priority=3,
+                duration_hours=3,
+                skill_required="electrical",
+                latitude=40.6892,
+                longitude=-74.0445,
+            ),
         ]
         technicians = [
-            Technician("t1", frozenset({"electrical"}), base_latitude=40.7128, base_longitude=-74.0060),
+            Technician(
+                "t1", frozenset({"electrical"}), base_latitude=40.7128, base_longitude=-74.0060
+            ),
         ]
 
         result = clarke_wright_savings(work_orders, technicians)
@@ -198,13 +222,25 @@ class TestClarkeWrightImprovement(unittest.TestCase):
     def test_respects_technician_capacity(self):
         """Technicians should not be assigned more work than their available hours."""
         work_orders = [
-            WorkOrder(f"wo{i}", f"a{i}", priority=1, duration_hours=4, skill_required="electrical",
-                      latitude=40.0 + i * 0.1, longitude=-74.0)
+            WorkOrder(
+                f"wo{i}",
+                f"a{i}",
+                priority=1,
+                duration_hours=4,
+                skill_required="electrical",
+                latitude=40.0 + i * 0.1,
+                longitude=-74.0,
+            )
             for i in range(5)
         ]
         technicians = [
-            Technician("t1", frozenset({"electrical"}), base_latitude=40.0, base_longitude=-74.0,
-                        available_hours=8.0),
+            Technician(
+                "t1",
+                frozenset({"electrical"}),
+                base_latitude=40.0,
+                base_longitude=-74.0,
+                available_hours=8.0,
+            ),
         ]
 
         result = clarke_wright_savings(work_orders, technicians)

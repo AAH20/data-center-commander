@@ -6,6 +6,7 @@ capacity allocation, network zoning, and energy allocation.
 All solvers use polynomial-time approximation algorithms with
 documented approximation ratios.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -71,11 +72,7 @@ class ResourceVector:
     def total_demand(self) -> float:
         """Sum of all resource dimensions (for sorting)."""
         return (
-            self.cpu_cores
-            + self.memory_gb
-            + self.gpu_units
-            + self.storage_tb
-            + self.network_gbps
+            self.cpu_cores + self.memory_gb + self.gpu_units + self.storage_tb + self.network_gbps
         )
 
 
@@ -164,9 +161,7 @@ class WorkloadPlacementSolver:
     def solve(self, workloads: list[Workload]) -> dict[str, str]:
         """Place workloads onto racks. Returns {workload_id: rack_id}."""
         # Sort by total resource demand descending (FFD)
-        sorted_workloads = sorted(
-            workloads, key=lambda w: w.resources.total_demand(), reverse=True
-        )
+        sorted_workloads = sorted(workloads, key=lambda w: w.resources.total_demand(), reverse=True)
 
         placement: dict[str, str] = {}
 
@@ -250,16 +245,18 @@ class MaintenanceRoutingSolver:
 
     def _distance(self, a: WorkOrder, b: WorkOrder) -> float:
         """Euclidean distance between two work orders."""
-        return ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5
+        return float(((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5)
 
     def _route_distance(self, route: list[WorkOrder]) -> float:
         """Total route distance including depot."""
         if not route:
             return 0.0
-        total = ((route[0].x - self.depot_x) ** 2 + (route[0].y - self.depot_y) ** 2) ** 0.5
+        total = float(((route[0].x - self.depot_x) ** 2 + (route[0].y - self.depot_y) ** 2) ** 0.5)
         for i in range(len(route) - 1):
             total += self._distance(route[i], route[i + 1])
-        total += ((route[-1].x - self.depot_x) ** 2 + (route[-1].y - self.depot_y) ** 2) ** 0.5
+        total += float(
+            ((route[-1].x - self.depot_x) ** 2 + (route[-1].y - self.depot_y) ** 2) ** 0.5
+        )
         return total
 
     def _nearest_neighbor(self, work_orders: list[WorkOrder]) -> list[WorkOrder]:
@@ -271,7 +268,9 @@ class MaintenanceRoutingSolver:
         while unvisited:
             nearest = min(
                 unvisited,
-                key=lambda i: ((work_orders[i].x - current_x) ** 2 + (work_orders[i].y - current_y) ** 2),
+                key=lambda i: (
+                    (work_orders[i].x - current_x) ** 2 + (work_orders[i].y - current_y) ** 2
+                ),
             )
             route.append(work_orders[nearest])
             current_x = work_orders[nearest].x
@@ -476,4 +475,8 @@ class EnergyAllocationSolver:
 
     @property
     def utilization(self) -> float:
-        return (self.total_energy_kwh - self.remaining_kwh) / self.total_energy_kwh if self.total_energy_kwh > 0 else 0.0
+        return (
+            (self.total_energy_kwh - self.remaining_kwh) / self.total_energy_kwh
+            if self.total_energy_kwh > 0
+            else 0.0
+        )

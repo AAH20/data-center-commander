@@ -2,6 +2,7 @@
 
 Covers all 5 NP-hard solvers, TTL cache, and circuit breaker.
 """
+
 from __future__ import annotations
 
 import threading
@@ -137,9 +138,15 @@ class TestMaintenanceRoutingSolver(unittest.TestCase):
 
     def test_basic_route(self) -> None:
         work_orders = [
-            WorkOrder(id="wo1", title="Fix A", priority=1, duration_hours=2, location="A", x=0, y=0),
-            WorkOrder(id="wo2", title="Fix B", priority=2, duration_hours=1, location="B", x=3, y=4),
-            WorkOrder(id="wo3", title="Fix C", priority=3, duration_hours=3, location="C", x=6, y=8),
+            WorkOrder(
+                id="wo1", title="Fix A", priority=1, duration_hours=2, location="A", x=0, y=0
+            ),
+            WorkOrder(
+                id="wo2", title="Fix B", priority=2, duration_hours=1, location="B", x=3, y=4
+            ),
+            WorkOrder(
+                id="wo3", title="Fix C", priority=3, duration_hours=3, location="C", x=6, y=8
+            ),
         ]
         solver = MaintenanceRoutingSolver(depot_x=0, depot_y=0)
         route = solver.solve(work_orders)
@@ -186,9 +193,18 @@ class TestCapacityAllocationSolver(unittest.TestCase):
     def test_basic_allocation(self) -> None:
         capacity = ResourceVector(cpu_cores=16, memory_gb=64)
         workloads = [
-            Workload(id="w1", name="Web", resources=ResourceVector(cpu_cores=4, memory_gb=16), priority=3),
-            Workload(id="w2", name="DB", resources=ResourceVector(cpu_cores=8, memory_gb=32), priority=5),
-            Workload(id="w3", name="Cache", resources=ResourceVector(cpu_cores=2, memory_gb=8), priority=1),
+            Workload(
+                id="w1", name="Web", resources=ResourceVector(cpu_cores=4, memory_gb=16), priority=3
+            ),
+            Workload(
+                id="w2", name="DB", resources=ResourceVector(cpu_cores=8, memory_gb=32), priority=5
+            ),
+            Workload(
+                id="w3",
+                name="Cache",
+                resources=ResourceVector(cpu_cores=2, memory_gb=8),
+                priority=1,
+            ),
         ]
         solver = CapacityAllocationSolver(capacity)
         allocated, unallocated = solver.solve(workloads)
@@ -201,7 +217,9 @@ class TestCapacityAllocationSolver(unittest.TestCase):
     def test_utilization(self) -> None:
         capacity = ResourceVector(cpu_cores=16, memory_gb=64)
         workloads = [
-            Workload(id="w1", name="Web", resources=ResourceVector(cpu_cores=8, memory_gb=32), priority=1),
+            Workload(
+                id="w1", name="Web", resources=ResourceVector(cpu_cores=8, memory_gb=32), priority=1
+            ),
         ]
         solver = CapacityAllocationSolver(capacity)
         solver.solve(workloads)
@@ -211,7 +229,9 @@ class TestCapacityAllocationSolver(unittest.TestCase):
     def test_over_capacity(self) -> None:
         capacity = ResourceVector(cpu_cores=4, memory_gb=16)
         workloads = [
-            Workload(id="w1", name="Big", resources=ResourceVector(cpu_cores=8, memory_gb=32), priority=1),
+            Workload(
+                id="w1", name="Big", resources=ResourceVector(cpu_cores=8, memory_gb=32), priority=1
+            ),
         ]
         solver = CapacityAllocationSolver(capacity)
         allocated, unallocated = solver.solve(workloads)

@@ -3,6 +3,7 @@
 Each test verifies the approximation guarantee or a specific property
 of the algorithm. Tests use real data structures, not mocks.
 """
+
 from __future__ import annotations
 
 import unittest
@@ -97,14 +98,8 @@ class TestFirstFitDecreasing(unittest.TestCase):
     def test_ffd_uses_at_most_opt_plus_one(self):
         """FFD guarantee: uses ≤ 11/9 × OPT + 1 bins."""
         # Create workloads that perfectly pack into 2 bins
-        workloads = [
-            Workload(f"w{i}", f"wl{i}", cpu_cores=1, ram_gb=1)
-            for i in range(10)
-        ]
-        assets = [
-            Asset(f"a{i}", f"server{i}", total_cpu=5, total_ram=5)
-            for i in range(2)
-        ]
+        workloads = [Workload(f"w{i}", f"wl{i}", cpu_cores=1, ram_gb=1) for i in range(10)]
+        assets = [Asset(f"a{i}", f"server{i}", total_cpu=5, total_ram=5) for i in range(2)]
 
         result = first_fit_decreasing(workloads, assets)
 
@@ -118,15 +113,38 @@ class TestClarkeWrightSavings(unittest.TestCase):
 
     def test_routes_all_work_orders(self):
         work_orders = [
-            WorkOrder("wo1", "a1", priority=1, duration_hours=2, skill_required="electrical",
-                      latitude=40.7128, longitude=-74.0060),
-            WorkOrder("wo2", "a2", priority=2, duration_hours=1, skill_required="electrical",
-                      latitude=40.7580, longitude=-73.9855),
-            WorkOrder("wo3", "a3", priority=3, duration_hours=3, skill_required="electrical",
-                      latitude=40.6892, longitude=-74.0445),
+            WorkOrder(
+                "wo1",
+                "a1",
+                priority=1,
+                duration_hours=2,
+                skill_required="electrical",
+                latitude=40.7128,
+                longitude=-74.0060,
+            ),
+            WorkOrder(
+                "wo2",
+                "a2",
+                priority=2,
+                duration_hours=1,
+                skill_required="electrical",
+                latitude=40.7580,
+                longitude=-73.9855,
+            ),
+            WorkOrder(
+                "wo3",
+                "a3",
+                priority=3,
+                duration_hours=3,
+                skill_required="electrical",
+                latitude=40.6892,
+                longitude=-74.0445,
+            ),
         ]
         technicians = [
-            Technician("t1", frozenset({"electrical"}), base_latitude=40.7128, base_longitude=-74.0060),
+            Technician(
+                "t1", frozenset({"electrical"}), base_latitude=40.7128, base_longitude=-74.0060
+            ),
         ]
 
         result = clarke_wright_savings(work_orders, technicians)
@@ -139,13 +157,29 @@ class TestClarkeWrightSavings(unittest.TestCase):
 
     def test_filters_by_skill(self):
         work_orders = [
-            WorkOrder("wo1", "a1", priority=1, duration_hours=2, skill_required="electrical",
-                      latitude=40.7128, longitude=-74.0060),
-            WorkOrder("wo2", "a2", priority=2, duration_hours=1, skill_required="mechanical",
-                      latitude=40.7580, longitude=-73.9855),
+            WorkOrder(
+                "wo1",
+                "a1",
+                priority=1,
+                duration_hours=2,
+                skill_required="electrical",
+                latitude=40.7128,
+                longitude=-74.0060,
+            ),
+            WorkOrder(
+                "wo2",
+                "a2",
+                priority=2,
+                duration_hours=1,
+                skill_required="mechanical",
+                latitude=40.7580,
+                longitude=-73.9855,
+            ),
         ]
         technicians = [
-            Technician("t1", frozenset({"electrical"}), base_latitude=40.7128, base_longitude=-74.0060),
+            Technician(
+                "t1", frozenset({"electrical"}), base_latitude=40.7128, base_longitude=-74.0060
+            ),
         ]
 
         result = clarke_wright_savings(work_orders, technicians)
