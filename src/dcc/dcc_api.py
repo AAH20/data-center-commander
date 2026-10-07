@@ -31,7 +31,7 @@ except Exception:  # pragma: no cover
     _NERVE_AVAILABLE = False
 
 # ── SOC connector imports ──────────────────────────────────────────────────
-from dcc.soc.wazuh.dashboards import get_dashboard_by_id, get_dashboards
+from dcc.soc.wazuh.dashboards import get_dashboards
 from dcc.soc.wazuh.rules import get_rules
 
 # ── cognee knowledge graph singleton ───────────────────────────────────────
