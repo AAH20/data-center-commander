@@ -318,6 +318,7 @@ class TestInfrastructureDefinition(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
 class TestResourceTypeStrEnumEdgeCases(unittest.TestCase):
     """Test ResourceType StrEnum edge cases."""
 
