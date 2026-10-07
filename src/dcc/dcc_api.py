@@ -38,7 +38,7 @@ from dcc.soc.wazuh.rules import get_rules
 _kg: Any | None = None
 
 
-def _ensure_kg() -> Any:
+def _ensure_kg() -> Any | None:
     """Initialize and return the cognee knowledge graph instance."""
     global _kg
     _kg = KnowledgeGraph() if _COGNEE_AVAILABLE else None
