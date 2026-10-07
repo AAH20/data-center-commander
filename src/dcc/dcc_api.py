@@ -47,7 +47,6 @@ def _ensure_kg() -> Any | None:
 
 # ── API function wrappers ──────────────────────────────────────────────────
 
-
 def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Look up threat intelligence matches for a telemetry record via cognee.
 
@@ -59,7 +58,6 @@ def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
 
     Returns:
         List of match dicts keyed by IOC field, enriched with nerve-validated context.
-    }
     """
     from dcc.soc.metron.threat_intel.threat_intel import ThreatIntelManager
 
@@ -68,11 +66,9 @@ def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
 
     # Apply nerve context governance if available
     if _NERVE_AVAILABLE and curate_context is not None:
-        try:
+        with contextlib.suppress(Exception):
             curated = curate_context({"record": record, "matches": matches})
             matches = curated.get("matches", matches)
-        except Exception:  # pragma: no cover
-            pass
 
     return matches
 
@@ -91,96 +87,75 @@ def alert_correlation(
 
     Returns:
         List of correlation groups, each containing matching records and reasons.
-    }
     """
-    kg = _ensure_kg()
+    from dcc.soc.metron.threat_intel.threat_intel import ThreatIntelManager
+
+    manager = ThreatIntelManager()
+    all_iocs: set[str] = set()
     groups: list[dict[str, Any]] = []
 
-    if kg is not None and _COGNEE_AVAILABLE:
-        try:
-            # Index records into cognee for association
-            for rec in records:
-                add_knowledge(type="telemetry_record", data=rec)
+    for record in records:
+        iocs = manager.extract_iocs(record)
+        all_iocs.update(iocs)
 
-            # Query for correlated records — simplified clustering
-            for rec in records:
-                ip = rec.get("source_ip") or rec.get("srcaddr") or ""
-                if ip:
-                    # Pull recent matches from the knowledge graph
-                    matches = kg.query(f"retrieve telemetry_record where source_ip contains '{ip}'")
-                    if matches:
-                        groups.append(
-                            {
-                                "records": [rec],
-                                "correlation_reason": f"Shared IP: {ip}",
-                                "window_minutes": window_minutes,
-                            }
-                        )
-        except Exception:  # pragma: no cover
-            # Fall back to simple IP-based grouping
-            pass
+    # Group records by shared IOCs
+    ioc_to_records: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        record_iocs = manager.extract_iocs(record)
+        for ioc in record_iocs:
+            ioc_to_records.setdefault(ioc, []).append(record)
 
-    # Fallback: simple grouping by source IP
-    ip_groups: dict[str, list[dict[str, Any]]] = {}
-    for rec in records:
-        ip = rec.get("source_ip") or rec.get("srcaddr") or "unknown"
-        ip_groups.setdefault(ip, []).append(rec)
-
-    for ip, recs in ip_groups.items():
-        if len(recs) > 1:
-            groups.append(
-                {
-                    "records": recs,
-                    "correlation_reason": f"Shared IP: {ip}",
-                    "window_minutes": window_minutes,
-                }
-            )
+    # Build groups from shared IOCs
+    seen: set[int] = set()
+    for ioc, recs in ioc_to_records.items():
+        idx = id(recs)
+        if idx in seen:
+            continue
+        seen.add(idx)
+        groups.append({"ioc": ioc, "records": recs, "reason": f"Shared IOC: {ioc}"})
 
     return groups
 
 
-def dashboard_metrics(dashboard_id: str, time_range: str = "24h") -> dict[str, Any]:
-    """Retrieve enriched dashboard metrics for a given dashboard ID.
-
-    Looks up the dashboard definition and enriches panel data with
-    cognee-sourced threat intel and nerve-governed context.
+def dashboard_metrics(
+    dashboard_id: str, time_range: str = "24h"
+) -> dict[str, Any]:
+    """Fetch metrics for a specific dashboard.
 
     Args:
-        dashboard_id: The dashboard identifier (e.g. "wazuh-overview").
-        time_range: Time window for metrics (default "24h").
+        dashboard_id: The dashboard identifier.
+        time_range: Time range for metric collection (e.g. "24h", "7d", "30d").
 
     Returns:
-        Dashboard dict with enriched metrics and IOC annotations.
-    }
+        Dashboard metrics dict.
     """
-    dashboard = get_dashboard_by_id(dashboard_id)
+    from dcc.soc.wazuh.dashboards import get_dashboard_by_id as _get
+
+    dashboard = _get(dashboard_id)
     if dashboard is None:
-        return {"error": f"Dashboard '{dashboard_id}' not found"}
+        return {"error": f"Dashboard {dashboard_id} not found"}
 
-    # Enrich with cognee threat intel context if available
-    kg = _ensure_kg()
-    enrichment: dict[str, Any] = {}
-    if kg is not None and _COGNEE_AVAILABLE:
-        try:
-            enrichment = {"threat_intel_enriched": True, "source": "cognee_kg"}
-        except Exception:  # pragma: no cover
-            enrichment = {}
-
-    return {
-        "id": dashboard.get("id"),
-        "name": dashboard.get("name"),
-        "description": dashboard.get("description"),
-        "refresh_interval": dashboard.get("refresh_interval"),
-        "panels": dashboard.get("panels", []),
+    # Build metrics from dashboard config
+    metrics: dict[str, Any] = {
+        "dashboard_id": dashboard_id,
         "time_range": time_range,
-        "enrichment": enrichment,
+        "widgets": [],
     }
+
+    for widget in dashboard.get("widgets", []):
+        metrics["widgets"].append(
+            {
+                "id": widget.get("id"),
+                "type": widget.get("type"),
+                "metrics": widget.get("metrics", []),
+            }
+        )
+
+    return metrics
 
 
 def connector_traffic(
-    connector: str,
-    source: str = "",
-    limit: int = 100,
+    connector: str, start: str, end: str, limit: int = 100
 ) -> list[dict[str, Any]]:
     """Fetch recent traffic records from a named SOC connector.
 
@@ -189,43 +164,36 @@ def connector_traffic(
 
     Args:
         connector: Connector name — "cef", "http", "netflow", or "syslog".
-        source: Optional source IP/host to filter by.
+        start: Start timestamp (ISO format).
+        end: End timestamp (ISO format).
         limit: Maximum records to return.
 
     Returns:
         List of parsed record dicts from the requested connector.
-    }
     """
-    connector = connector.lower()
-
-    if connector == "cef":
-        # CEF connector processes a file or stream; here we return a sample
-        # pattern-based parse is used for demo; real usage reads from CEF logs
-        records: list[dict[str, Any]] = []
-        # Sample: return empty list — actual deployment reads from Kafka/CEF files
-        # enriched via cognee below
-
-    elif connector == "http":
-        records = []  # placeholder: read from HTTP log files/Kafka
-
-    elif connector == "netflow":
-        records = []  # placeholder: read from NetFlow UDP listener
-
-    elif connector == "syslog":
-        records = []  # placeholder: read from syslog UDP/TCP listener
-
+    connector_lower = connector.lower()
+    if connector_lower == "cef":
+        from dcc.soc.metron.cef_parser import parse_cef
+        records = parse_cef(start, end, limit)
+    elif connector_lower == "http":
+        from dcc.soc.metron.http_parser import parse_http
+        records = parse_http(start, end, limit)
+    elif connector_lower == "netflow":
+        from dcc.soc.metron.netflow_parser import parse_netflow
+        records = parse_netflow(start, end, limit)
+    elif connector_lower == "syslog":
+        from dcc.soc.metron.syslog_parser import parse_syslog
+        records = parse_syslog(start, end, limit)
     else:
-        raise ValueError(f"Unknown connector: {connector}")
+        return []
 
-    # Enrich with cognee threat intel
-    enriched: list[dict[str, Any]] = []
-    for rec in records[:limit]:
-        matches = threat_detection_lookup(rec)
-        if matches:
-            rec["ti_matches"] = [m["ioc"] for m in matches]
-        enriched.append(rec)
+    # Apply nerve context governance if available
+    if _NERVE_AVAILABLE and curate_context is not None:
+        with contextlib.suppress(Exception):
+            curated = curate_context({"records": records})
+            records = curated.get("records", records)
 
-    return enriched
+    return records
 
 
 def wazuh_dashboards() -> list[dict[str, Any]]:
@@ -236,12 +204,12 @@ def wazuh_dashboards() -> list[dict[str, Any]]:
 
     Returns:
         List of dashboard definition dicts.
-    }
     """
     dashboards = get_dashboards()
     kg = _ensure_kg()
     for d in dashboards:
-        d["_enrichment"] = {"threat_intel": True, "source": "cognee"} if kg is not None else {}
+        if kg is not None:
+            d["_enrichment"] = {"threat_intel": True, "source": "cognee"}
         d["_nerve_governed"] = _NERVE_AVAILABLE
     return dashboards
 
@@ -257,42 +225,17 @@ def wazuh_rules(
     Args:
         category: Rule category filter (e.g. "brute_force", "malware").
         severity: Severity filter (e.g. "HIGH", "CRITICAL").
-        mitre_technique: MITRE ATT&CK technique ID (e.g. "T1110").
+        mitre_technique: MITRE ATT&CK technique filter.
 
     Returns:
-        List of rule dicts matching the filters.
-    }
+        List of rule dicts, optionally filtered.
     """
-    rules = get_rules()
-
-    # Apply filters
-    filtered: list[dict[str, Any]] = []
-    for rule in rules:
-        rule_category = rule.get("category", "")
-        rule_severity = rule.get("severity", "")
-        rule_mitre = rule.get("mitre_technique", "")
-
-        cat_match = category is None or rule_category == category
-        sev_match = severity is None or rule_severity == severity
-        mitre_match = mitre_technique is None or rule_mitre == mitre_technique
-
-        if cat_match and sev_match and mitre_match:
-            filtered.append(rule)
+    rules = get_rules(category=category, severity=severity, mitre_technique=mitre_technique)
 
     # Apply nerve context governance if available
-    if _NERVE_AVAILABLE and curate_context is not None and filtered:
+    if _NERVE_AVAILABLE and curate_context is not None:
         with contextlib.suppress(Exception):
-            _ = curate_context({"rules": filtered})  # validate/curate; result ignored
+            curated = curate_context({"rules": rules})
+            rules = curated.get("rules", rules)
 
-    return filtered
-
-
-# ── Public API export ─────────────────────────────────────────────────────
-__all__ = [
-    "threat_detection_lookup",
-    "alert_correlation",
-    "dashboard_metrics",
-    "connector_traffic",
-    "wazuh_dashboards",
-    "wazuh_rules",
-]
+    return rules
