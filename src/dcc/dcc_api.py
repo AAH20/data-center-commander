@@ -5,6 +5,7 @@ cognee memory integration for threat intel enrichment, nerve context governance,
 and dashboard data enrichment for the Data Center Commander stack.
 """
 
+import contextlib
 from typing import Any
 
 # ── cognee memory integration ──────────────────────────────────────────────
@@ -40,11 +41,7 @@ _kg: Any | None = None
 def _ensure_kg() -> Any:
     """Initialize and return the cognee knowledge graph instance."""
     global _kg
-    if _kg is None:
-        if _COGNEE_AVAILABLE:
-            _kg = KnowledgeGraph()
-        else:
-            _kg = None
+    _kg = KnowledgeGraph() if _COGNEE_AVAILABLE else None
     return _kg
 
 
@@ -284,10 +281,8 @@ def wazuh_rules(
 
     # Apply nerve context governance if available
     if _NERVE_AVAILABLE and curate_context is not None and filtered:
-        try:
+        with contextlib.suppress(Exception):
             _ = curate_context({"rules": filtered})  # validate/curate; result ignored
-        except Exception:  # pragma: no cover
-            pass
 
     return filtered
 
