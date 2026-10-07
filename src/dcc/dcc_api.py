@@ -5,7 +5,7 @@ cognee memory integration for threat intel enrichment, nerve context governance,
 and dashboard data enrichment for the Data Center Commander stack.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # ── cognee memory integration ──────────────────────────────────────────────
 try:
@@ -30,28 +30,11 @@ except Exception:  # pragma: no cover
     _NERVE_AVAILABLE = False
 
 # ── SOC connector imports ──────────────────────────────────────────────────
-from dcc.soc.metron.connectors.cef_connector import (
-    parse_cef_message,
-    CEFToMetronConnector,
-)
-from dcc.soc.metron.connectors.http_connector import (
-    parse_combined_log_line,
-    parse_iis_log_line,
-    HTTPLogToMetronConnector,
-)
-from dcc.soc.metron.connectors.netflow_connector import (
-    parse_netflow_v5_packet,
-    NetFlowToMetronConnector,
-)
-from dcc.soc.metron.connectors.syslog_connector import (
-    parse_syslog,
-    SyslogToMetronConnector,
-)
-from dcc.soc.wazuh.dashboards import get_dashboards, get_dashboard_by_id
-from dcc.soc.wazuh.rules import get_rules, get_rule_by_id
+from dcc.soc.wazuh.dashboards import get_dashboard_by_id, get_dashboards
+from dcc.soc.wazuh.rules import get_rules
 
 # ── cognee knowledge graph singleton ───────────────────────────────────────
-_kg: Optional[Any] = None
+_kg: Any | None = None
 
 
 def _ensure_kg() -> Any:
@@ -68,7 +51,7 @@ def _ensure_kg() -> Any:
 # ── API function wrappers ──────────────────────────────────────────────────
 
 
-def threat_detection_lookup(record: Dict[str, Any]) -> List[Dict[str, Any]]:
+def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Look up threat intelligence matches for a telemetry record via cognee.
 
     Enriches the record with IOC matches from all registered threat intel feeds.
@@ -98,8 +81,8 @@ def threat_detection_lookup(record: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def alert_correlation(
-    records: List[Dict[str, Any]], window_minutes: int = 60
-) -> List[Dict[str, Any]]:
+    records: list[dict[str, Any]], window_minutes: int = 60
+) -> list[dict[str, Any]]:
     """Correlate a window of alert records using cognee knowledge graph.
 
     Builds contextual associations between records (same source IP, related
@@ -114,7 +97,7 @@ def alert_correlation(
     }
     """
     kg = _ensure_kg()
-    groups: List[Dict[str, Any]] = []
+    groups: list[dict[str, Any]] = []
 
     if kg is not None and _COGNEE_AVAILABLE:
         try:
@@ -127,9 +110,7 @@ def alert_correlation(
                 ip = rec.get("source_ip") or rec.get("srcaddr") or ""
                 if ip:
                     # Pull recent matches from the knowledge graph
-                    matches = kg.query(
-                        f"retrieve telemetry_record where source_ip contains '{ip}'"
-                    )
+                    matches = kg.query(f"retrieve telemetry_record where source_ip contains '{ip}'")
                     if matches:
                         groups.append(
                             {
@@ -143,7 +124,7 @@ def alert_correlation(
             pass
 
     # Fallback: simple grouping by source IP
-    ip_groups: Dict[str, List[Dict[str, Any]]] = {}
+    ip_groups: dict[str, list[dict[str, Any]]] = {}
     for rec in records:
         ip = rec.get("source_ip") or rec.get("srcaddr") or "unknown"
         ip_groups.setdefault(ip, []).append(rec)
@@ -161,9 +142,7 @@ def alert_correlation(
     return groups
 
 
-def dashboard_metrics(
-    dashboard_id: str, time_range: str = "24h"
-) -> Dict[str, Any]:
+def dashboard_metrics(dashboard_id: str, time_range: str = "24h") -> dict[str, Any]:
     """Retrieve enriched dashboard metrics for a given dashboard ID.
 
     Looks up the dashboard definition and enriches panel data with
@@ -183,7 +162,7 @@ def dashboard_metrics(
 
     # Enrich with cognee threat intel context if available
     kg = _ensure_kg()
-    enrichment: Dict[str, Any] = {}
+    enrichment: dict[str, Any] = {}
     if kg is not None and _COGNEE_AVAILABLE:
         try:
             enrichment = {"threat_intel_enriched": True, "source": "cognee_kg"}
@@ -205,7 +184,7 @@ def connector_traffic(
     connector: str,
     source: str = "",
     limit: int = 100,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetch recent traffic records from a named SOC connector.
 
     Routes to the appropriate Metron connector parser (CEF/HTTP/NetFlow/Syslog)
@@ -225,7 +204,7 @@ def connector_traffic(
     if connector == "cef":
         # CEF connector processes a file or stream; here we return a sample
         # pattern-based parse is used for demo; real usage reads from CEF logs
-        records: List[Dict[str, Any]] = []
+        records: list[dict[str, Any]] = []
         # Sample: return empty list — actual deployment reads from Kafka/CEF files
         # enriched via cognee below
 
@@ -242,7 +221,7 @@ def connector_traffic(
         raise ValueError(f"Unknown connector: {connector}")
 
     # Enrich with cognee threat intel
-    enriched: List[Dict[str, Any]] = []
+    enriched: list[dict[str, Any]] = []
     for rec in records[:limit]:
         matches = threat_detection_lookup(rec)
         if matches:
@@ -252,7 +231,7 @@ def connector_traffic(
     return enriched
 
 
-def wazuh_dashboards() -> List[Dict[str, Any]]:
+def wazuh_dashboards() -> list[dict[str, Any]]:
     """Return all Wazuh dashboard definitions with enrichment metadata.
 
     Returns the full dashboard catalog from the Wazuh module, tagged with
@@ -265,18 +244,16 @@ def wazuh_dashboards() -> List[Dict[str, Any]]:
     dashboards = get_dashboards()
     kg = _ensure_kg()
     for d in dashboards:
-        d["_enrichment"] = (
-            {"threat_intel": True, "source": "cognee"} if kg is not None else {}
-        )
+        d["_enrichment"] = {"threat_intel": True, "source": "cognee"} if kg is not None else {}
         d["_nerve_governed"] = _NERVE_AVAILABLE
     return dashboards
 
 
 def wazuh_rules(
-    category: Optional[str] = None,
-    severity: Optional[str] = None,
-    mitre_technique: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    category: str | None = None,
+    severity: str | None = None,
+    mitre_technique: str | None = None,
+) -> list[dict[str, Any]]:
     """Return Wazuh detection rules, optionally filtered by category, severity,
     or MITRE technique. Rules are post-processed through nerve context governance.
 
@@ -292,7 +269,7 @@ def wazuh_rules(
     rules = get_rules()
 
     # Apply filters
-    filtered: List[Dict[str, Any]] = []
+    filtered: list[dict[str, Any]] = []
     for rule in rules:
         rule_category = rule.get("category", "")
         rule_severity = rule.get("severity", "")
