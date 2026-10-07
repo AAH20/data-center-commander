@@ -35,7 +35,104 @@ from .optimization_kernels import (
 )
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Circuit breaker pattern
+# ---------------------------------------------------------------------------
+
+
+class CircuitBreaker:
+    """Circuit breaker with states: closed, open, half-open.
+
+    - closed: normal operation, failures tracked; trips to open on threshold
+    - open: rejects calls; after recovery_timeout transitions to half-open
+    - half-open: allows limited calls through to test recovery
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 30.0,
+        half_open_max_calls: int = 3,
+    ) -> None:
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.half_open_max_calls = half_open_max_calls
+
+        self.state: str = "closed"  # closed, open, half-open
+        self.failure_count: int = 0
+        self.success_count: int = 0
+        self.last_failure_time: float = 0.0
+        self.last_success_time: float = 0.0
+        self.call_count: int = 0
+
+    def record_success(self) -> None:
+        """Record a successful call."""
+        self.call_count += 1
+        self.success_count += 1
+        self.failure_count = 0
+
+        if self.state == "half-open" and self.success_count >= self.half_open_max_calls:
+            self.state = "closed"
+            self.success_count = 0
+            self.call_count = 0
+            self.last_success_time = time.time()
+
+    def record_failure(self) -> None:
+        """Record a failed call."""
+        self.call_count += 1
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.state == "closed":
+            if self.failure_count >= self.failure_threshold:
+                self.state = "open"
+                self.failure_count = 0
+                self.success_count = 0
+                self.call_count = 0
+        elif self.state == "half-open":
+            # Any failure in half-open reopens the circuit
+            self.state = "open"
+            self.failure_count = 0
+            self.success_count = 0
+            self.call_count = 0
+
+    def can_call(self) -> bool:
+        """Check if a call is allowed through the circuit breaker."""
+        if self.state == "closed":
+            return True
+        elif self.state == "open":
+            if time.time() - self.last_failure_time >= self.recovery_timeout:
+                self.state = "half-open"
+                self.success_count = 0
+                self.call_count = 0
+                return True
+            return False
+        elif self.state == "half-open":
+            return self.call_count < self.half_open_max_calls
+        return False
+
+    def reset(self) -> None:
+        """Reset the circuit breaker to closed state."""
+        self.state = "closed"
+        self.failure_count = 0
+        self.success_count = 0
+        self.call_count = 0
+        self.last_failure_time = 0.0
+        self.last_success_time = 0.0
+
+
+# Global circuit breakers per service key
+_circuit_breakers: dict[str, CircuitBreaker] = {}
+
+
+def get_circuit_breaker(key: str, **kwargs: Any) -> CircuitBreaker:
+    """Get or create a circuit breaker keyed by service identifier."""
+    if key not in _circuit_breakers:
+        _circuit_breakers[key] = CircuitBreaker(**kwargs)
+    return _circuit_breakers[key]
+
+
+# ---------------------------------------------------------------------------
+# API async layer
 # ---------------------------------------------------------------------------
 
 
@@ -50,7 +147,6 @@ class Settings:
 
 
 settings = Settings()
-
 
 # ---------------------------------------------------------------------------
 # Pagination
@@ -112,7 +208,6 @@ class Cache:
 
 cache = Cache()
 
-
 # ---------------------------------------------------------------------------
 # Rate limiter (simple token bucket)
 # ---------------------------------------------------------------------------
@@ -141,7 +236,6 @@ class RateLimiter:
 
 
 rate_limiter = RateLimiter(settings.rate_limit_rps)
-
 
 # ---------------------------------------------------------------------------
 # Database pool (lazy import)

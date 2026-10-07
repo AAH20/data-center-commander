@@ -168,5 +168,51 @@ class TestEvidenceVerification(unittest.TestCase):
         self.assertTrue(tampered)
 
 
+class TestCircuitBreakerResilience(unittest.TestCase):
+    """Test circuit breaker failure resilience with state transitions.
+
+    Verifies: closed->open transition on failure threshold,
+    open state rejecting calls, half-open recovery transition,
+    and circuit recovery after successful calls.
+    """
+
+    def test_circuit_breaker_resilience(self):
+        import time
+
+        from dcc.api_async import get_circuit_breaker
+
+        cb = get_circuit_breaker(
+            "resilience-test", failure_threshold=3, recovery_timeout=0.1, half_open_max_calls=2
+        )
+
+        # Closed state allows calls
+        self.assertTrue(cb.can_call())
+
+        # Record failures to trip the circuit
+        cb.record_failure()
+        cb.record_failure()
+        cb.record_failure()
+        self.assertEqual(cb.state, "open")
+
+        # Open state rejects calls
+        for _ in range(3):
+            self.assertFalse(cb.can_call())
+
+        # Wait for recovery timeout -> transition to half-open
+        time.sleep(0.15)
+        self.assertTrue(cb.can_call())
+        self.assertEqual(cb.state, "half-open")
+
+        # Half-open allows limited calls; 2 successes closes the circuit
+        self.assertTrue(cb.can_call())
+        cb.record_success()
+        self.assertTrue(cb.can_call())
+        cb.record_success()
+        self.assertEqual(cb.state, "closed")
+
+        # Circuit is back to normal
+        self.assertEqual(cb.state, "closed")
+
+
 if __name__ == "__main__":
     unittest.main()
