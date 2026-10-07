@@ -188,7 +188,7 @@ class InfrastructureDefinition:
 
 def define_resource(
     name: str,
-    resource_type: ResourceType | str,
+    resource_type: ResourceType | str | None,
     region: str,
     cpu_cores: float = 0.0,
     memory_gb: float = 0.0,
@@ -222,6 +222,9 @@ def define_resource(
     Raises:
         ValidationError: If resource definition is invalid
     """
+    if resource_type is None:
+        raise ValidationError("resource_type must not be None")
+
     if isinstance(resource_type, str):
         try:
             resource_type = ResourceType(resource_type)
@@ -253,16 +256,17 @@ def define_tenant(
     """Define a complete tenant infrastructure.
 
     Args:
-        name: Tenant name
-        region: Primary deployment region
-        resources: List of resources
-        metadata: Additional metadata
+        name: Tenant name (must be non-empty, validated at construction)
+        region: Primary deployment region (must be non-empty, validated at construction)
+        resources: List of Infrastructure Resource instances for this tenant
+        metadata: Additional metadata keyed by arbitrary string keys
 
     Returns:
         Validated InfrastructureDefinition instance
 
     Raises:
-        ValidationError: If tenant definition is invalid
+        ValidationError: If tenant definition is invalid (empty name, empty region,
+            or invalid resource definitions)
     """
     return InfrastructureDefinition(
         name=name,

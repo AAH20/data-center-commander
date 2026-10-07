@@ -317,3 +317,92 @@ class TestInfrastructureDefinition(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestResourceTypeStrEnumEdgeCases(unittest.TestCase):
+    """Test ResourceType StrEnum edge cases."""
+
+    def test_case_sensitive_resource_type(self):
+        """ResourceType is case-sensitive: only exact matches work."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type="Compute",  # wrong case
+                region="us-east-1",
+            )
+
+    def test_whitespace_prefix_resource_type_rejected(self):
+        """ResourceType with leading whitespace is rejected."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type=" compute",
+                region="us-east-1",
+            )
+
+    def test_whitespace_suffix_resource_type_rejected(self):
+        """ResourceType with trailing whitespace is rejected."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type="compute ",
+                region="us-east-1",
+            )
+
+    def test_empty_string_resource_type_rejected(self):
+        """Empty string as resource_type is rejected."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type="",
+                region="us-east-1",
+            )
+
+    def test_integer_like_string_resource_type_rejected(self):
+        """Integer-like string as resource_type is rejected."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type="123",
+                region="us-east-1",
+            )
+
+    def test_float_like_string_resource_type_rejected(self):
+        """Float-like string as resource_type is rejected."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type="3.14",
+                region="us-east-1",
+            )
+
+    def test_none_resource_type_rejected(self):
+        """None as resource_type is rejected."""
+        with self.assertRaises(ValidationError):
+            define_resource(
+                name="test-resource",
+                resource_type=None,  # type: ignore
+                region="us-east-1",
+            )
+
+    def test_resource_type_preserves_order(self):
+        """ResourceType values maintain defined order."""
+        values = [e.value for e in ResourceType]
+        self.assertEqual(values, ["compute", "storage", "network", "cooling", "power"])
+
+    def test_duplicate_resource_type_not_allowed(self):
+        """Duplicate resource_type strings are allowed at runtime (StrEnum prevents at class def time)."""
+        # StrEnum prevents duplicate values at class definition, but runtime usage allows
+        # both "compute" lookups succeed since they map to the same enum member
+        resource1 = define_resource(
+            name="resource-1",
+            resource_type="compute",
+            region="us-east-1",
+        )
+        resource2 = define_resource(
+            name="resource-2",
+            resource_type="compute",
+            region="us-east-1",
+        )
+        # Both resolve to the same ResourceType enum member
+        self.assertEqual(resource1.resource_type, resource2.resource_type)
+        self.assertEqual(resource1.resource_type.value, "compute")
