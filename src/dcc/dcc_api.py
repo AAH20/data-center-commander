@@ -196,7 +196,7 @@ def connector_traffic(
             curated = curate_context({"records": records})
             records = curated.get("records", records)
 
-    return records
+    return records  # type: ignore[return-value]
 
 
 def wazuh_dashboards() -> list[dict[str, Any]]:
