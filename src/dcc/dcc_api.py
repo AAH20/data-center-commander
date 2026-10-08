@@ -47,6 +47,7 @@ def _ensure_kg() -> Any | None:
 
 # ── API function wrappers ──────────────────────────────────────────────────
 
+
 def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Look up threat intelligence matches for a telemetry record via cognee.
 
@@ -117,9 +118,7 @@ def alert_correlation(
     return groups
 
 
-def dashboard_metrics(
-    dashboard_id: str, time_range: str = "24h"
-) -> dict[str, Any]:
+def dashboard_metrics(dashboard_id: str, time_range: str = "24h") -> dict[str, Any]:
     """Fetch metrics for a specific dashboard.
 
     Args:
@@ -174,15 +173,19 @@ def connector_traffic(
     connector_lower = connector.lower()
     if connector_lower == "cef":
         from dcc.soc.metron.cef_parser import parse_cef
+
         records = parse_cef(start, end, limit)
     elif connector_lower == "http":
         from dcc.soc.metron.http_parser import parse_http
+
         records = parse_http(start, end, limit)
     elif connector_lower == "netflow":
         from dcc.soc.metron.netflow_parser import parse_netflow
+
         records = parse_netflow(start, end, limit)
     elif connector_lower == "syslog":
         from dcc.soc.metron.syslog_parser import parse_syslog
+
         records = parse_syslog(start, end, limit)
     else:
         return []
