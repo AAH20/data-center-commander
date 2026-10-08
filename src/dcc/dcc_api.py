@@ -196,7 +196,7 @@ def connector_traffic(
             curated = curate_context({"records": records})
             records = curated.get("records", records)
 
-    return records  # type: ignore[return-value]
+    return records  # type: ignore
 
 
 def wazuh_dashboards() -> list[dict[str, Any]]:
@@ -214,7 +214,7 @@ def wazuh_dashboards() -> list[dict[str, Any]]:
         if kg is not None:
             d["_enrichment"] = {"threat_intel": True, "source": "cognee"}
         d["_nerve_governed"] = _NERVE_AVAILABLE
-    return dashboards  # type: ignore[return-value]
+    return dashboards  # type: ignore
 
 
 def wazuh_rules(
@@ -241,4 +241,4 @@ def wazuh_rules(
             curated = curate_context({"rules": rules})
             rules = curated.get("rules", rules)
 
-    return rules  # type: ignore[return-value]
+    return rules  # type: ignore
