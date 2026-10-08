@@ -48,7 +48,7 @@ def _ensure_kg() -> Any | None:
 # ── API function wrappers ──────────────────────────────────────────────────
 
 
-def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
+def threat_detection_lookup(record: dict[str, Any]) -> Any:
     """Look up threat intelligence matches for a telemetry record via cognee.
 
     Enriches the record with IOC matches from all registered threat intel feeds.
@@ -71,7 +71,7 @@ def threat_detection_lookup(record: dict[str, Any]) -> list[dict[str, Any]]:
             curated = curate_context({"record": record, "matches": matches})
             matches = curated.get("matches", matches)
 
-    return matches  # type: ignore[return-value]
+    return matches
 
 
 def alert_correlation(
