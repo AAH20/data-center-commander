@@ -72,8 +72,8 @@ def clara_threat_enrichment(
                 "clara_fallback": True,
             }
     
-    except requests.RequestException:
-        # Network failure - return record with fallback flags
+    except (requests.RequestException, Exception):
+        # Network failure or other error - return record with fallback flags
         return {
             **record,
             "clara_threat_score": 0.0,

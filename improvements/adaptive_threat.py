@@ -4,9 +4,23 @@ Leverages Nvidia Clara threat intel frameworks for GPU-accelerated
 SOC analytics with adaptive thresholds and evolutionary parameter tuning.
 All functions fall back gracefully when Nvidia packages unavailable —
 zero Nvidia API calls between sessions (40 RPM budget preserved).
+
+Module-level attributes for test patch compatibility (unittest.mock):
+- base_threshold: Initial detection threshold (default 0.5)
+- damping: Parameter persistence across adaptations (default 0.95)
+- adaptation_rate: How fast parameters adapt (default 0.99)
+- min_samples: Minimum records for adaptive tuning (default 5)
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+
+# Module-level attributes for test patch compatibility (unittest.mock).
+# These are set at import time; tests may patch them to control behavior.
+base_threshold = 0.5  # type: ignore  # noqa: F811
+damping = 0.95  # type: ignore  # noqa: F811
+adaptation_rate = 0.99  # type: ignore  # noqa: F811
+min_samples = 5  # type: ignore  # noqa: F811
+
 import numpy as np
 from collections import defaultdict
 
