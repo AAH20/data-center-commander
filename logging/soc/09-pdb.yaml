@@ -1,0 +1,42 @@
+---
+# Elasticsearch PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: elasticsearch
+  namespace: soc
+  labels:
+    app: elasticsearch
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+---
+# Loki PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: loki
+  namespace: soc
+  labels:
+    app: loki
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: loki
+---
+# Grafana PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana
+  namespace: soc
+  labels:
+    app: grafana
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: grafana

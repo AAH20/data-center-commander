@@ -1,0 +1,198 @@
+---
+# Wazuh Manager Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wazuh-manager
+  namespace: soc
+  labels:
+    app: wazuh-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wazuh-manager
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: wazuh-manager
+    spec:
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+      containers:
+        - name: wazuh-manager
+          image: wazuh/wazuh-manager:4.9.0
+          ports:
+            - containerPort: 1514
+              name: agents
+              protocol: TCP
+            - containerPort: 1515
+              name: registration
+              protocol: TCP
+            - containerPort: 55000
+              name: api
+              protocol: TCP
+            - containerPort: 514
+              name: syslog-udp
+              protocol: UDP
+            - containerPort: 514
+              name: syslog-tcp
+              protocol: TCP
+          env:
+            - name: INDEXER_URL
+              value: "http://elasticsearch-soc:9200"
+            - name: INDEXER_USERNAME
+              value: "admin"
+            - name: INDEXER_PASSWORD
+              value: "SecretPassword"
+            - name: FILEBEAT_VERIFICATION_MODE
+              value: "full"
+            - name: API_USERNAME
+              value: "wazuh-wui"
+            - name: API_PASSWORD
+              value: "MyS3cr37P450.*-"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: config
+              mountPath: /var/ossec/etc/ossec.conf
+              subPath: ossec.conf
+            - name: data
+              mountPath: /var/ossec/data
+            - name: ruleset
+              mountPath: /var/ossec/ruleset
+            - name: queue
+              mountPath: /var/ossec/queue
+            - name: logs
+              mountPath: /var/ossec/logs
+            - name: integrations
+              mountPath: /var/ossec/integrations
+            - name: api-configuration
+              mountPath: /var/ossec/api/configuration
+            - name: etc
+              mountPath: /etc/filebeat
+          readinessProbe:
+            tcpSocket:
+              port: 1514
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 1514
+            initialDelaySeconds: 60
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: wazuh-manager-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: wazuh-manager-data
+        - name: ruleset
+          emptyDir: {}
+        - name: queue
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: integrations
+          emptyDir: {}
+        - name: api-configuration
+          emptyDir: {}
+        - name: etc
+          emptyDir: {}
+---
+# Wazuh Agent DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wazuh-agent
+  namespace: soc
+  labels:
+    app: wazuh-agent
+spec:
+  selector:
+    matchLabels:
+      app: wazuh-agent
+  template:
+    metadata:
+      labels:
+        app: wazuh-agent
+    spec:
+      hostNetwork: true
+      hostPID: true
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      containers:
+        - name: wazuh-agent
+          image: wazuh/wazuh-agent:4.9.0
+          securityContext:
+            privileged: true
+          env:
+            - name: WAZUH_MANAGER
+              value: "wazuh-manager.soc.svc.cluster.local"
+            - name: WAZUH_REGISTRATION_SERVER
+              value: "wazuh-manager.soc.svc.cluster.local"
+            - name: WAZUH_AGENT_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: WAZUH_AGENT_GROUP
+              value: "default"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: agent-data
+              mountPath: /var/ossec/data
+            - name: etc-ossec
+              mountPath: /etc/ossec
+            - name: var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: var-lib-docker
+              mountPath: /var/lib/docker
+              readOnly: true
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+            - name: sys
+              mountPath: /host/sys
+              readOnly: true
+            - name: etc-ossec-host
+              mountPath: /host/etc/ossec
+              readOnly: true
+      volumes:
+        - name: agent-data
+          persistentVolumeClaim:
+            claimName: wazuh-agent-data
+        - name: etc-ossec
+          emptyDir: {}
+        - name: var-log
+          hostPath:
+            path: /var/log
+        - name: var-lib-docker
+          hostPath:
+            path: /var/lib/docker
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: etc-ossec-host
+          hostPath:
+            path: /etc/ossec

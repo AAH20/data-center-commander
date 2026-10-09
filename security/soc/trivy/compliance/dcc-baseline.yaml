@@ -1,0 +1,360 @@
+# DCC Security Baseline — Custom Compliance Framework
+# Data Center Commander Container Security Baseline
+# Version: 1.0.0
+
+apiVersion: compliance.mitre.org/v1
+kind: SecurityBaseline
+metadata:
+  name: dcc-container-baseline
+  namespace: data-center-commander
+  labels:
+    app: data-center-commander
+    component: security
+    compliance: dcc-baseline
+spec:
+  # Baseline metadata
+  name: "DCC Container Security Baseline"
+  version: "1.0.0"
+  description: "Custom security baseline for Data Center Commander containers"
+  author: "Security Team"
+  created: "2026-09-29"
+
+  # =============================================================================
+  # CONTAINER IMAGE REQUIREMENTS
+  # =============================================================================
+  containerImages:
+    # Required base images
+    allowedBaseImages:
+      - "alpine:3.19"
+      - "debian:12-slim"
+      - "ubuntu:22.04"
+      - "distroless/static-debian12"
+      - "gcr.io/distroless/static-debian12"
+      - "registry.data-center-commander.local/base/alpine:3.19"
+      - "registry.data-center-commander.local/base/debian:12-slim"
+
+    # Forbidden base images
+    forbiddenBaseImages:
+      - "latest"
+      - "*:*"
+      - "alpine:3.18"
+      - "alpine:3.17"
+      - "debian:11"
+      - "ubuntu:20.04"
+      - "ubuntu:18.04"
+
+    # Required image digest
+    requireDigest: true
+
+    # Required image signature
+    requireSignature: true
+
+    # Required SBOM
+    requireSBOM: true
+
+    # Required provenance
+    requireProvenance: true
+
+    # Maximum image age (days)
+    maxImageAge: 30
+
+    # Required vulnerability scan
+    requireVulnerabilityScan: true
+
+    # Maximum vulnerabilities
+    maxVulnerabilities:
+      critical: 0
+      high: 0
+      medium: 5
+      low: 10
+
+  # =============================================================================
+  # CONTAINER RUNTIME REQUIREMENTS
+  # =============================================================================
+  containerRuntime:
+    # Read-only root filesystem
+    readOnlyRootFilesystem: true
+
+    # Run as non-root
+    runAsNonRoot: true
+
+    # Run as user
+    runAsUser: 1000
+
+    # Run as group
+    runAsGroup: 1000
+
+    # Privilege escalation
+    allowPrivilegeEscalation: false
+
+    # Privileged mode
+    privileged: false
+
+    # Required capabilities
+    requiredCapabilities: []
+
+    # Forbidden capabilities
+    forbiddenCapabilities:
+      - SYS_ADMIN
+      - NET_ADMIN
+      - SYS_PTRACE
+      - SYS_MODULE
+      - DAC_READ_SEARCH
+      - SETUID
+      - SETGID
+      - NET_RAW
+      - SYS_TIME
+      - SYS_RESOURCE
+      - SYS_BOOT
+      - LINUX_IMMUTABLE
+      - NET_BROADCAST
+      - IPC_LOCK
+      - IPC_OWNER
+      - SYS_RAWIO
+      - SYS_CHROOT
+      - SYS_PACCT
+      - SYS_NICE
+      - SYS_CONFIG
+      - LEASE
+      - AUDIT_CONTROL
+      - AUDIT_WRITE
+      - SETFCAP
+      - MAC_ADMIN
+      - MAC_OVERRIDE
+      - SYSLOG
+      - WAKE_ALARM
+      - BLOCK_SUSPEND
+      - PERFMON
+      - BPF
+      - CHECKPOINT_RESTORE
+
+    # Seccomp profile
+    seccompProfile: RuntimeDefault
+
+    # AppArmor profile
+    apparmorProfile: runtime/default
+
+    # SELinux options
+    selinuxOptions:
+      level: "s0"
+      role: "system_r"
+      type: "container_t"
+      user: "system_u"
+
+  # =============================================================================
+  # NETWORK REQUIREMENTS
+  # =============================================================================
+  network:
+    # Required network policy
+    requireNetworkPolicy: true
+
+    # Allowed ingress ports
+    allowedIngressPorts:
+      - 80
+      - 443
+      - 8080
+      - 8443
+      - 9090
+      - 3000
+      - 3100
+      - 5601
+      - 9200
+      - 9300
+
+    # Allowed egress ports
+    allowedEgressPorts:
+      - 53
+      - 80
+      - 443
+      - 8080
+      - 8443
+      - 9200
+      - 9300
+      - 3100
+      - 5601
+      - 5044
+      - 24224
+
+    # Forbidden egress ports
+    forbiddenEgressPorts:
+      - 22
+      - 23
+      - 25
+      - 110
+      - 143
+      - 161
+      - 162
+      - 389
+      - 636
+      - 1433
+      - 1521
+      - 3306
+      - 5432
+      - 5900
+      - 5984
+      - 6379
+      - 9200
+      - 11211
+      - 27017
+
+    # Required TLS
+    requireTLS: true
+
+    # Minimum TLS version
+    minTLSVersion: "1.2"
+
+  # =============================================================================
+  # RESOURCE REQUIREMENTS
+  # =============================================================================
+  resources:
+    # Required resource requests
+    requireRequests: true
+
+    # Required resource limits
+    requireLimits: true
+
+    # Maximum CPU
+    maxCPU: "4"
+
+    # Maximum memory
+    maxMemory: "8Gi"
+
+    # Minimum CPU request
+    minCPURequest: "100m"
+
+    # Minimum memory request
+    minMemoryRequest: "128Mi"
+
+    # Maximum CPU limit
+    maxCPULimit: "8"
+
+    # Maximum memory limit
+    maxMemoryLimit: "16Gi"
+
+  # =============================================================================
+  # STORAGE REQUIREMENTS
+  # =============================================================================
+  storage:
+    # Required encryption at rest
+    encryptionAtRest: true
+
+    # Required encryption in transit
+    encryptionInTransit: true
+
+    # Allowed volume types
+    allowedVolumeTypes:
+      - emptyDir
+      - configMap
+      - secret
+      - persistentVolumeClaim
+      - projected
+      - downwardAPI
+
+    # Forbidden volume types
+    forbiddenVolumeTypes:
+      - hostPath
+      - local
+
+    # Required PVC encryption
+    requirePVCEncryption: true
+
+  # =============================================================================
+  # ACCESS CONTROL REQUIREMENTS
+  # =============================================================================
+  accessControl:
+    # Required service account
+    requireServiceAccount: true
+
+    # Automount service account token
+    automountServiceAccountToken: false
+
+    # Required RBAC
+    requireRBAC: true
+
+    # Required network policies
+    requireNetworkPolicies: true
+
+    # Required pod security policies
+    requirePodSecurityPolicies: true
+
+    # Required audit logging
+    requireAuditLogging: true
+
+  # =============================================================================
+  # MONITORING REQUIREMENTS
+  # =============================================================================
+  monitoring:
+    # Required liveness probe
+    requireLivenessProbe: true
+
+    # Required readiness probe
+    requireReadinessProbe: true
+
+    # Required startup probe
+    requireStartupProbe: true
+
+    # Required metrics endpoint
+    requireMetricsEndpoint: true
+
+    # Required logging
+    requireLogging: true
+
+    # Required tracing
+    requireTracing: true
+
+  # =============================================================================
+  # AUTOSCALING REQUIREMENTS
+  # =============================================================================
+  autoscaling:
+    # Required HPA
+    requireHPA: true
+
+    # Required VPA
+    requireVPA: true
+
+    # Required PDB
+    requirePDB: true
+
+    # Minimum replicas
+    minReplicas: 2
+
+    # Maximum replicas
+    maxReplicas: 10
+
+    # Target CPU utilization
+    targetCPUUtilization: 70
+
+    # Target memory utilization
+    targetMemoryUtilization: 80
+
+  # =============================================================================
+  # SUPPLY CHAIN REQUIREMENTS
+  # =============================================================================
+  supplyChain:
+    # Required image digest
+    requireImageDigest: true
+
+    # Required image signature
+    requireImageSignature: true
+
+    # Required SBOM
+    requireSBOM: true
+
+    # Required provenance
+    requireProvenance: true
+
+    # Required vulnerability scan
+    requireVulnerabilityScan: true
+
+    # Required license scan
+    requireLicenseScan: true
+
+    # Allowed registries
+    allowedRegistries:
+      - docker.io/data-center-commander/
+      - ghcr.io/data-center-commander/
+      - registry.data-center-commander.local/
+
+    # Forbidden registries
+    forbiddenRegistries:
+      - "*"

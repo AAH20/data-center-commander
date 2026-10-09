@@ -1,0 +1,68 @@
+# Filebeat Configuration
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/*.log
+      - /var/log/iac/*.log
+      - /var/log/terraform/*.log
+    fields:
+      log_type: iac
+      datacenter: dc1
+    fields_under_root: true
+    multiline.pattern: '^\s'
+    multiline.negate: true
+    multiline.match: after
+
+  - type: container
+    enabled: true
+    paths:
+      - '/var/lib/docker/containers/*/*.log'
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      - decode_json_fields:
+          fields: ["message"]
+          target: "json"
+          overwrite_keys: true
+
+  - type: syslog
+    enabled: true
+    protocol.udp:
+      host: "0.0.0.0:5140"
+
+filebeat.modules:
+  - module: system
+    syslog:
+      enabled: true
+    auth:
+      enabled: true
+
+  - module: auditd
+    log:
+      enabled: true
+
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+  - add_kubernetes_metadata: ~
+  - drop_fields:
+      fields: ["agent.ephemeral_id", "agent.id", "agent.name", "agent.type", "agent.version", "ecs.version", "input.type"]
+      ignore_missing: true
+
+output.logstash:
+  hosts: ["logstash:5044"]
+  loadbalance: true
+  compression_level: 3
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+monitoring.enabled: false

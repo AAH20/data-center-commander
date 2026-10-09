@@ -1,0 +1,168 @@
+---
+# Wazuh Manager Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager
+  namespace: soc
+  labels:
+    app: wazuh-manager
+spec:
+  type: ClusterIP
+  ports:
+    - port: 1514
+      targetPort: 1514
+      protocol: TCP
+      name: agents
+    - port: 1515
+      targetPort: 1515
+      protocol: TCP
+      name: registration
+    - port: 55000
+      targetPort: 55000
+      protocol: TCP
+      name: api
+    - port: 514
+      targetPort: 514
+      protocol: UDP
+      name: syslog-udp
+    - port: 514
+      targetPort: 514
+      protocol: TCP
+      name: syslog-tcp
+  selector:
+    app: wazuh-manager
+---
+# TheHive Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: thehive
+  namespace: soc
+  labels:
+    app: thehive
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9000
+      targetPort: 9000
+      protocol: TCP
+      name: http
+  selector:
+    app: thehive
+---
+# Cortex Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortex
+  namespace: soc
+  labels:
+    app: cortex
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9001
+      targetPort: 9001
+      protocol: TCP
+      name: http
+  selector:
+    app: cortex
+---
+# Elasticsearch SOC Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-soc
+  namespace: soc
+  labels:
+    app: elasticsearch-soc
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9200
+      targetPort: 9200
+      protocol: TCP
+      name: http
+    - port: 9300
+      targetPort: 9300
+      protocol: TCP
+      name: transport
+  selector:
+    app: elasticsearch-soc
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: soc
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
+  selector:
+    app: postgres
+---
+# Alertmanager Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: soc
+  labels:
+    app: alertmanager
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9093
+      targetPort: 9093
+      protocol: TCP
+      name: http
+    - port: 9094
+      targetPort: 9094
+      protocol: TCP
+      name: cluster
+  selector:
+    app: alertmanager
+---
+# SOC Dashboard Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: soc-dashboard
+  namespace: soc
+  labels:
+    app: soc-dashboard
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: soc-dashboard
+---
+# Trivy Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: trivy
+  namespace: soc
+  labels:
+    app: trivy
+spec:
+  type: ClusterIP
+  ports:
+    - port: 4954
+      targetPort: 4954
+      protocol: TCP
+      name: http
+  selector:
+    app: trivy

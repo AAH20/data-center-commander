@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: 'Data Center Commander'
+    orgId: 1
+    folder: 'IaC Monitoring'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

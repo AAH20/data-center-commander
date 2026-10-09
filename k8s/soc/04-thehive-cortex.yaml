@@ -1,0 +1,158 @@
+---
+# TheHive Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: thehive
+  namespace: soc
+  labels:
+    app: thehive
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: thehive
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: thehive
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: thehive
+          image: strangebee/thehive:5.4.0
+          ports:
+            - containerPort: 9000
+              name: http
+              protocol: TCP
+          env:
+            - name: TH_SECRET
+              value: "changeme-secret-key-min-32-chars-long!!"
+            - name: TH_DATABASE_URL
+              value: "jdbc:postgresql://postgres:5432/thehive"
+            - name: TH_DATABASE_USERNAME
+              value: "thehive"
+            - name: TH_DATABASE_PASSWORD
+              value: "thehive"
+            - name: TH_SEARCH_URI
+              value: "http://elasticsearch-soc:9200"
+            - name: TH_CORTEX_SERVERS
+              value: "cortex:9001"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/thehive/application.conf
+              subPath: application.conf
+            - name: data
+              mountPath: /opt/thehive/data
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 9000
+            initialDelaySeconds: 60
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: thehive-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: thehive-data
+---
+# Cortex Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cortex
+  namespace: soc
+  labels:
+    app: cortex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cortex
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: cortex
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: cortex
+          image: thehiveproject/cortex:3.1.8
+          ports:
+            - containerPort: 9001
+              name: http
+              protocol: TCP
+          env:
+            - name: CORTEX_SECRET
+              value: "changeme-cortex-secret-key-32-chars!!"
+            - name: CORTEX_DATABASE_URL
+              value: "jdbc:postgresql://postgres:5432/cortex"
+            - name: CORTEX_DATABASE_USERNAME
+              value: "cortex"
+            - name: CORTEX_DATABASE_PASSWORD
+              value: "cortex"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cortex/application.conf
+              subPath: application.conf
+            - name: data
+              mountPath: /opt/cortex/data
+            - name: analyzers
+              mountPath: /opt/cortex/analyzers
+            - name: responders
+              mountPath: /opt/cortex/responders
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 9001
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 9001
+            initialDelaySeconds: 60
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: cortex-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: cortex-data
+        - name: analyzers
+          emptyDir: {}
+        - name: responders
+          emptyDir: {}

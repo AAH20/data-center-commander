@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: soc
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmaps.yaml
+  - 02-storage.yaml
+  - 03-elasticsearch.yaml
+  - 04-loki.yaml
+  - 05-fluent-bit.yaml
+  - 06-services.yaml
+  - 07-ingress.yaml
+  - 08-hpa.yaml
+  - 09-pdb.yaml
+  - 10-rbac.yaml
+  - 11-network-policies.yaml
+  - 12-soc-rules.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: data-center-commander
+      app.kubernetes.io/managed-by: kustomize

@@ -1,0 +1,88 @@
+# =============================================================================
+# Data Center Commander — Falco Custom Rules
+# =============================================================================
+
+- rule: Unauthorized Container Privilege Escalation
+  desc: Detect when a container attempts to escalate privileges
+  condition: >
+    spawned_process and
+    container and
+    (proc.name in (sudo, su, chmod, chown) or
+     proc.name contains "setuid" or
+     proc.name contains "setgid")
+  output: >
+    Unauthorized privilege escalation in container
+    (user=%user.name command=%proc.cmdline container=%container.name)
+  priority: WARNING
+  tags: [container, privilege_escalation]
+
+- rule: Sensitive File Access in Container
+  desc: Detect access to sensitive files within containers
+  condition: >
+    open_read and
+    container and
+    (fd.name contains "/etc/shadow" or
+     fd.name contains "/etc/passwd" or
+     fd.name contains "/etc/sudoers" or
+     fd.name contains ".ssh")
+  output: >
+    Sensitive file accessed in container
+    (file=%fd.name user=%user.name container=%container.name)
+  priority: WARNING
+  tags: [container, sensitive_file]
+
+- rule: Outbound Connection from Container
+  desc: Detect unexpected outbound network connections
+  condition: >
+    outbound and
+    container and
+    not fd.sport in (80, 443, 8080, 8443)
+  output: >
+    Unexpected outbound connection from container
+    (connection=%fd.name user=%user.name container=%container.name)
+  priority: INFO
+  tags: [container, network]
+
+- rule: Cryptocurrency Mining Detection
+  desc: Detect potential cryptocurrency mining activity
+  condition: >
+    spawned_process and
+    container and
+    (proc.cmdline contains "stratum" or
+     proc.cmdline contains "minerd" or
+     proc.cmdline contains "xmrig" or
+     proc.cmdline contains "cryptonight")
+  output: >
+    Potential cryptocurrency mining detected
+    (command=%proc.cmdline container=%container.name)
+  priority: CRITICAL
+  tags: [container, cryptomining]
+
+- rule: Reverse Shell Detection
+  desc: Detect potential reverse shell attempts
+  condition: >
+    spawned_process and
+    container and
+    (proc.cmdline contains "/bin/bash -i" or
+     proc.cmdline contains "/bin/sh -i" or
+     proc.cmdline contains "nc -e" or
+     proc.cmdline contains "ncat -e")
+  output: >
+    Potential reverse shell detected
+    (command=%proc.cmdline container=%container.name)
+  priority: CRITICAL
+  tags: [container, reverse_shell]
+
+- rule: Container Escape Attempt
+  desc: Detect attempts to escape container boundaries
+  condition: >
+    spawned_process and
+    container and
+    (proc.name in (mount, umount, insmod, rmmod) or
+     proc.cmdline contains "/proc/1/" or
+     proc.cmdline contains "cgroup")
+  output: >
+    Potential container escape attempt
+    (command=%proc.cmdline container=%container.name)
+  priority: CRITICAL
+  tags: [container, escape]

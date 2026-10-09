@@ -1,0 +1,85 @@
+---
+# Fluent Bit ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: soc
+  labels:
+    app: fluent-bit
+---
+# Fluent Bit ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit
+  labels:
+    app: fluent-bit
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: [""]
+    resources:
+      - nodes/stats
+    verbs:
+      - get
+---
+# Fluent Bit ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit
+  labels:
+    app: fluent-bit
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: soc
+roleRef:
+  kind: ClusterRole
+  name: fluent-bit
+  apiGroup: rbac.authorization.k8s.io
+---
+# SOC Reader Role (for SOC analysts to read logs)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: soc-reader
+  namespace: soc
+  labels:
+    app: soc
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+---
+# SOC Reader RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: soc-reader
+  namespace: soc
+  labels:
+    app: soc
+subjects:
+  - kind: Group
+    name: soc-analysts
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: soc-reader
+  apiGroup: rbac.authorization.k8s.io

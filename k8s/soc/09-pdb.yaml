@@ -1,0 +1,112 @@
+---
+# Wazuh Manager PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wazuh-manager
+  namespace: soc
+  labels:
+    app: wazuh-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: wazuh-manager
+---
+# TheHive PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: thehive
+  namespace: soc
+  labels:
+    app: thehive
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: thehive
+---
+# Cortex PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cortex
+  namespace: soc
+  labels:
+    app: cortex
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cortex
+---
+# Elasticsearch SOC PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: elasticsearch-soc
+  namespace: soc
+  labels:
+    app: elasticsearch-soc
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: elasticsearch-soc
+---
+# PostgreSQL PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres
+  namespace: soc
+  labels:
+    app: postgres
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: postgres
+---
+# SOC Dashboard PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: soc-dashboard
+  namespace: soc
+  labels:
+    app: soc-dashboard
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: soc-dashboard
+---
+# Alertmanager PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: alertmanager
+  namespace: soc
+  labels:
+    app: alertmanager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: alertmanager
+---
+# Trivy PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: trivy
+  namespace: soc
+  labels:
+    app: trivy
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: trivy

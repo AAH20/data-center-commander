@@ -1,0 +1,82 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# IaC scan targets (don't copy into image)
+terraform/
+*.tf
+*.tfvars
+*.tfplan
+*.tfstate
+.terraform/
+
+# Reports (generated at runtime)
+reports/
+*.json
+*.xml
+*.html
+
+# Logs
+*.log
+logs/
+
+# Node
+node_modules/
+
+# Documentation
+*.md
+LICENSE
+CONTRIBUTING.md

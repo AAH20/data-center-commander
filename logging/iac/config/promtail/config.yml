@@ -1,0 +1,108 @@
+# Promtail Configuration
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: info
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
+    timeout: 10s
+
+scrape_configs:
+  # System logs
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          __path__: /var/log/*.log
+
+  # Docker container logs
+  - job_name: docker
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          __path__: /var/lib/docker/containers/*/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            attrs:
+      - json:
+          expressions:
+            tag:
+          source: attrs
+      - regex:
+          source: tag
+          expression: ^(?P<image_name>([^:]+)):(?P<container_name>([^:]+))$
+      - labels:
+          stream:
+          image_name:
+          container_name:
+      - output:
+          source: output
+
+  # IaC-specific logs
+  - job_name: iac
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: iac
+          __path__: /var/log/iac/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            service: service
+            message: message
+      - labels:
+          level:
+          service:
+      - timestamp:
+          source: time
+          format: RFC3339
+
+  # Terraform logs
+  - job_name: terraform
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: terraform
+          __path__: /var/log/terraform/*.log
+    pipeline_stages:
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+\[(?P<level>\w+)\]\s+(?P<message>.*)$'
+      - labels:
+          level:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # Application logs
+  - job_name: application
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: application
+          __path__: /var/log/app/*.log
+    pipeline_stages:
+      - json:
+          expressions:
+            level: level
+            logger: logger
+            message: message
+      - labels:
+          level:
+          logger:

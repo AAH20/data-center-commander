@@ -1,0 +1,158 @@
+# OPA Configuration — Data Center Commander SOC
+# Version: 2.0.0
+# OPA server configuration for container security policy evaluation
+
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
+server:
+  # Server address
+  address: 0.0.0.0
+  port: 8181
+
+  # TLS configuration
+  tls:
+    enabled: true
+    cert-file: /etc/opa/tls/tls.crt
+    key-file: /etc/opa/tls/tls.key
+
+  # Authentication
+  authentication:
+    enabled: true
+    type: token
+    token: ${OPA_API_TOKEN}
+
+  # Authorization
+  authorization:
+    enabled: true
+    type: basic
+
+# =============================================================================
+# BUNDLE CONFIGURATION
+# =============================================================================
+bundle:
+  # Bundle source
+  source: /etc/opa/bundles
+
+  # Bundle name
+  name: security-bundle
+
+  # Bundle polling interval
+  polling-interval: 60s
+
+  # Bundle activation
+  activate: true
+
+# =============================================================================
+# POLICY CONFIGURATION
+# =============================================================================
+policies:
+  # Container security policy
+  container-security:
+    path: /etc/opa/policies/container-security.rego
+    package: container-security
+    enabled: true
+
+  # Autoscaling policy
+  autoscaling:
+    path: /etc/opa/policies/autoscaling.rego
+    package: autoscaling
+    enabled: true
+
+  # SOC integration policy
+  soc:
+    path: /etc/opa/policies/soc.rego
+    package: soc
+    enabled: true
+
+# =============================================================================
+# DATA CONFIGURATION
+# =============================================================================
+data:
+  # Trivy scan results
+  trivy:
+    path: /var/log/trivy
+    format: json
+
+  # Kubernetes data
+  kubernetes:
+    path: /etc/opa/data/kubernetes
+    format: json
+
+  # Compliance data
+  compliance:
+    path: /etc/opa/data/compliance
+    format: json
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+logging:
+  # Log level
+  level: info
+
+  # Log format
+  format: json
+
+  # Log output
+  output: /var/log/opa/opa.log
+
+  # Decision logging
+  decision-logs:
+    enabled: true
+    output: /var/log/opa/decision.log
+
+# =============================================================================
+# METRICS CONFIGURATION
+# =============================================================================
+metrics:
+  # Enable metrics
+  enabled: true
+
+  # Metrics endpoint
+  endpoint: /metrics
+
+  # Metrics port
+  port: 8182
+
+# =============================================================================
+# HEALTH CHECK CONFIGURATION
+# =============================================================================
+health:
+  # Health check endpoint
+  endpoint: /health
+
+  # Readiness check endpoint
+  readiness-endpoint: /health/ready
+
+  # Liveness check endpoint
+  liveness-endpoint: /health/live
+
+# =============================================================================
+# INTEGRATION CONFIGURATION
+# =============================================================================
+integration:
+  # Trivy integration
+  trivy:
+    enabled: true
+    endpoint: http://trivy.data-center-commander.svc.cluster.local:4954
+    timeout: 30s
+
+  # Kubernetes integration
+  kubernetes:
+    enabled: true
+    in-cluster: true
+    kubeconfig: ~/.kube/config
+
+  # SOC integration
+  soc:
+    enabled: true
+    endpoint: http://soc.data-center-commander.svc.cluster.local:8080
+    timeout: 30s
+
+  # Notification integration
+  notification:
+    enabled: true
+    slack-webhook: ${SLACK_WEBHOOK_URL}
+    email-smtp: ${SMTP_HOST}
+    pagerduty-key: ${PAGERDUTY_KEY}

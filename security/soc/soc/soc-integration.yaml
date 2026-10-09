@@ -1,0 +1,354 @@
+# SOC Integration Configuration — Data Center Commander
+# Version: 2.0.0
+# Trivy + OPA integration for Security Operations Center
+
+# =============================================================================
+# SOC CONFIGURATION
+# =============================================================================
+soc:
+  # SOC server configuration
+  server:
+    host: soc.data-center-commander.svc.cluster.local
+    port: 8080
+    tls:
+      enabled: true
+      cert-file: /etc/soc/tls/tls.crt
+      key-file: /etc/soc/tls/tls.key
+
+  # API configuration
+  api:
+    version: v1
+    timeout: 30s
+    retry:
+      max-attempts: 3
+      backoff: exponential
+
+  # Authentication
+  authentication:
+    type: token
+    token: ${SOC_API_TOKEN}
+
+# =============================================================================
+# TRIVY INTEGRATION
+# =============================================================================
+trivy:
+  # Trivy scanner configuration
+  scanner:
+    enabled: true
+    endpoint: http://trivy.data-center-commander.svc.cluster.local:4954
+    timeout: 10m
+
+  # Scan configuration
+  scan:
+    severity:
+      - CRITICAL
+      - HIGH
+      - MEDIUM
+      - LOW
+    scanners:
+      - vuln
+      - secret
+      - config
+      - license
+    format: json
+    output: /var/log/trivy/report.json
+
+  # Scan schedule
+  schedule:
+    full-scan: "0 2 * * *"
+    quick-scan: "0 */6 * * *"
+    compliance-scan: "0 0 * * 0"
+
+  # Report configuration
+  report:
+    format: json
+    template: /etc/trivy/templates/report.tpl
+    retention-days: 90
+
+# =============================================================================
+# OPA INTEGRATION
+# =============================================================================
+opa:
+  # OPA server configuration
+  server:
+    enabled: true
+    endpoint: http://opa.opa.svc.cluster.local:8181
+    timeout: 30s
+
+  # Policy configuration
+  policies:
+    container-security:
+      path: /v1/data/container-security
+      enabled: true
+      cache: true
+      cache-ttl: 300s
+
+    autoscaling:
+      path: /v1/data/autoscaling
+      enabled: true
+      cache: true
+      cache-ttl: 300s
+
+    soc:
+      path: /v1/data/soc
+      enabled: true
+      cache: false
+
+  # Bundle configuration
+  bundle:
+    enabled: true
+    source: /etc/opa/bundles
+    polling-interval: 60s
+
+# =============================================================================
+# ALERT CONFIGURATION
+# =============================================================================
+alerts:
+  # Alert routing
+  routing:
+    critical:
+      channels:
+        - pagerduty
+        - slack
+        - email
+      auto-remediate: true
+      escalation:
+        level: 1
+        timeout: 30m
+
+    high:
+      channels:
+        - slack
+        - email
+      auto-remediate: true
+      escalation:
+        level: 2
+        timeout: 1h
+
+    medium:
+      channels:
+        - slack
+      auto-remediate: false
+      escalation:
+        level: 3
+        timeout: 4h
+
+    low:
+      channels:
+        - email
+      auto-remediate: false
+      escalation:
+        level: 4
+        timeout: 24h
+
+  # Alert suppression
+  suppression:
+    enabled: true
+    maintenance-window: true
+    duplicate-window: 1h
+    max-alerts-per-hour: 10
+
+  # Alert enrichment
+  enrichment:
+    enabled: true
+    add-metadata: true
+    add-context: true
+    add-runbook: true
+
+# =============================================================================
+# NOTIFICATION CONFIGURATION
+# =============================================================================
+notifications:
+  # Slack
+  slack:
+    enabled: true
+    webhook-url: ${SLACK_WEBHOOK_URL}
+    channel: "#security-alerts"
+    mention: "@security-team"
+
+  # Email
+  email:
+    enabled: true
+    smtp-host: ${SMTP_HOST}
+    smtp-port: 587
+    smtp-username: ${SMTP_USERNAME}
+    smtp-password: ${SMTP_PASSWORD}
+    from: security@data-center-commander.local
+    to:
+      - soc@data-center-commander.local
+      - security-team@data-center-commander.local
+
+  # PagerDuty
+  pagerduty:
+    enabled: true
+    integration-key: ${PAGERDUTY_KEY}
+    severity-mapping:
+      CRITICAL: critical
+      HIGH: error
+      MEDIUM: warning
+      LOW: info
+
+  # Webhook
+  webhook:
+    enabled: true
+    url: ${WEBHOOK_URL}
+    headers:
+      Authorization: Bearer ${WEBHOOK_TOKEN}
+      Content-Type: application/json
+
+# =============================================================================
+# AUTO-REMEDIATION CONFIGURATION
+# =============================================================================
+auto-remediation:
+  # Auto-remediation settings
+  enabled: true
+  dry-run: false
+  max-attempts: 3
+  backoff: exponential
+
+  # Remediation actions
+  actions:
+    rollback:
+      enabled: true
+      description: "Rollback to previous version"
+
+    reschedule:
+      enabled: true
+      description: "Reschedule to different node"
+
+    patch:
+      enabled: true
+      description: "Apply security patch"
+
+    quarantine:
+      enabled: true
+      description: "Quarantine affected pods"
+
+    scale-down:
+      enabled: true
+      description: "Scale down deployment"
+
+  # Approval requirements
+  approval:
+    critical: auto
+    high: auto
+    medium: required
+    low: required
+
+# =============================================================================
+# COMPLIANCE CONFIGURATION
+# =============================================================================
+compliance:
+  # Compliance frameworks
+  frameworks:
+    - cis-docker
+    - cis-kubernetes
+    - nist-800-53
+    - iso27001
+    - pci-dss
+    - gdpr
+    - hipaa
+    - soc2
+
+  # Compliance schedule
+  schedule:
+    full-scan: "0 0 * * 0"
+    quick-scan: "0 0 * * 1"
+
+  # Compliance reporting
+  reporting:
+    enabled: true
+    format: json
+    output: /var/log/compliance/report.json
+    retention-days: 365
+
+# =============================================================================
+# DASHBOARD CONFIGURATION
+# =============================================================================
+dashboard:
+  # Grafana configuration
+  grafana:
+    enabled: true
+    endpoint: http://grafana.monitoring.svc.cluster.local:3000
+    api-key: ${GRAFANA_API_KEY}
+
+  # Dashboard configuration
+  dashboards:
+    - name: "Container Security"
+      uid: "dcc-container-security"
+      url: /d/dcc-container-security
+
+    - name: "Autoscaling Security"
+      uid: "dcc-autoscaling-security"
+      url: /d/dcc-autoscaling-security
+
+    - name: "SOC Overview"
+      uid: "dcc-soc-overview"
+      url: /d/dcc-soc-overview
+
+    - name: "Compliance Status"
+      uid: "dcc-compliance-status"
+      url: /d/dcc-compliance-status
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+logging:
+  # Log configuration
+  level: info
+  format: json
+  output: /var/log/soc/soc.log
+
+  # Log rotation
+  rotation:
+    enabled: true
+    max-size: 100MB
+    max-age: 30d
+    max-backups: 10
+
+  # Decision logging
+  decision-logs:
+    enabled: true
+    output: /var/log/soc/decision.log
+    include-input: true
+    include-result: true
+
+# =============================================================================
+# METRICS CONFIGURATION
+# =============================================================================
+metrics:
+  # Metrics configuration
+  enabled: true
+  endpoint: /metrics
+  port: 8182
+
+  # Metric retention
+  retention:
+    raw: 15d
+    aggregated: 1y
+
+  # Custom metrics
+  custom:
+    - name: trivy_vulnerabilities_total
+      type: gauge
+      labels:
+        - image
+        - severity
+
+    - name: opa_policy_evaluations_total
+      type: counter
+      labels:
+        - policy
+        - result
+
+    - name: soc_alerts_total
+      type: counter
+      labels:
+        - severity
+        - component
+
+    - name: compliance_violations_total
+      type: gauge
+      labels:
+        - framework
+        - control

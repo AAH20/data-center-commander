@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: data-center-commander
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmaps.yaml
+  - 02-storage.yaml
+  - 03-elasticsearch.yaml
+  - 04-loki.yaml
+  - 05-shippers.yaml
+  - 06-services.yaml
+  - 07-ingress.yaml
+  - 08-hpa.yaml
+  - 09-pdb.yaml
+  - 10-rbac.yaml
+  - 11-network-policies.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: data-center-commander
+  app.kubernetes.io/managed-by: kustomize

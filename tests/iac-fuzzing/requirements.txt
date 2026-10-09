@@ -1,0 +1,6 @@
+hypothesis>=6.0.0
+atheris>=2.0.0
+pytest>=7.0.0
+pytest-cov>=4.0.0
+jsonschema>=4.0.0
+pyhcl2>=4.0.0

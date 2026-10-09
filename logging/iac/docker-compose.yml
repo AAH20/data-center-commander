@@ -1,0 +1,213 @@
+# =============================================================================
+# Data Center Commander — IaC Logging Stack
+# =============================================================================
+# Deploys a complete ELK + Loki logging infrastructure for IaC operations.
+#
+# Components:
+#   - Elasticsearch: Log storage and search
+#   - Logstash: Log processing and routing
+#   - Kibana: Log visualization and exploration
+#   - Loki: Log aggregation (lightweight alternative)
+#   - Promtail: Log shipping to Loki
+#   - Grafana: Unified dashboards (ELK + Loki)
+#   - Filebeat: Log shipping to Logstash
+#   - Fluentd: Alternative log shipper
+#   - Log Processor: Custom enrichment and routing
+#
+# Quick Start:
+#   docker compose up -d
+#
+# Access:
+#   Kibana:    http://localhost:5601
+#   Grafana:   http://localhost:3000 (admin/admin)
+#   ES API:    http://localhost:9200
+#   Loki API:  http://localhost:3100
+#
+# Terraform:
+#   cd terraform/environments/dev
+#   terraform init && terraform apply
+# =============================================================================
+
+x-logging-defaults: &logging-defaults
+  restart: unless-stopped
+  networks:
+    - logging
+
+volumes:
+  elasticsearch_data:
+    driver: local
+  loki_data:
+    driver: local
+
+networks:
+  logging:
+    driver: bridge
+
+services:
+
+  # ===========================================================================
+  # ELK Stack
+  # ===========================================================================
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: elasticsearch
+    <<: *logging-defaults
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.15.0
+    container_name: logstash
+    <<: *logging-defaults
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    volumes:
+      - ./config/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./config/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+    ports:
+      - "5044:5044"    # Beats input
+      - "5000:5000/tcp" # TCP input
+      - "5000:5000/udp" # UDP input (syslog)
+      - "9600:9600"    # Monitoring API
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: kibana
+    <<: *logging-defaults
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  # ===========================================================================
+  # Loki Stack
+  # ===========================================================================
+
+  loki:
+    image: grafana/loki:3.2.0
+    container_name: loki
+    <<: *logging-defaults
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./config/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    container_name: promtail
+    <<: *logging-defaults
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./config/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "9080:9080"
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    <<: *logging-defaults
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_INSTALL_PLUGINS=grafana-lokiexplore-app
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - loki
+      - elasticsearch
+
+  # ===========================================================================
+  # Log Shippers / Forwarders
+  # ===========================================================================
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    container_name: filebeat
+    <<: *logging-defaults
+    user: root
+    command: filebeat -e --strict.perms=false
+    volumes:
+      - ./config/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "5066:5066"
+    depends_on:
+      - logstash
+      - elasticsearch
+
+  fluentd:
+    image: fluent/fluentd:v1.17-1
+    container_name: fluentd
+    <<: *logging-defaults
+    volumes:
+      - ./config/fluentd/fluent.conf:/fluentd/etc/fluent.conf:ro
+      - /var/log:/var/log:ro
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    depends_on:
+      - elasticsearch
+
+  # ===========================================================================
+  # Log Processor / Enricher
+  # ===========================================================================
+
+  log-processor:
+    image: python:3.12-slim
+    container_name: log-processor
+    <<: *logging-defaults
+    command: >
+      sh -c "pip install requests elasticsearch schedule &&
+             python /app/log_processor.py"
+    volumes:
+      - ./scripts:/app:ro
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - LOKI_URL=http://loki:3100
+      - LOG_LEVEL=INFO
+    depends_on:
+      - elasticsearch
+      - loki

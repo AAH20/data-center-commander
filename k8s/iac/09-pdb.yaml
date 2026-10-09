@@ -1,0 +1,70 @@
+---
+# Elasticsearch PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: elasticsearch
+  namespace: data-center-commander
+  labels:
+    app: elasticsearch
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+---
+# Logstash PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: logstash
+  namespace: data-center-commander
+  labels:
+    app: logstash
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: logstash
+---
+# Kibana PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kibana
+  namespace: data-center-commander
+  labels:
+    app: kibana
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kibana
+---
+# Loki PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: loki
+  namespace: data-center-commander
+  labels:
+    app: loki
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: loki
+---
+# Grafana PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana
+  namespace: data-center-commander
+  labels:
+    app: grafana
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: grafana

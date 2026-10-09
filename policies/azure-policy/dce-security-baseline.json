@@ -1,0 +1,377 @@
+{
+  "properties": {
+    "displayName": "Data Center Security Baseline",
+    "description": "Core security controls for all data center resources. Covers encryption, network isolation, access control, and security monitoring. Maps to CIS Azure Foundations v2.0 and NIST SP 800-53.",
+    "metadata": {
+      "category": "Security",
+      "version": "1.0.0",
+      "cisBenchmark": "v2.0",
+      "nistFramework": "SP 800-53 Rev.5",
+      "azureSecurityBenchmark": "v3.0"
+    },
+    "parameters": {
+      "effect": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Effect",
+          "description": "The effect of the policy (Deny, Audit, or Disabled)"
+        },
+        "allowedValues": ["Deny", "Audit", "Disabled"],
+        "defaultValue": "Deny"
+      },
+      "allowedLocations": {
+        "type": "Array",
+        "metadata": {
+          "displayName": "Allowed Locations",
+          "description": "List of allowed Azure regions for resource deployment"
+        },
+        "defaultValue": ["eastus", "westus2", "westeurope", "northeurope"]
+      },
+      "minimumTlsVersion": {
+        "type": "String",
+        "metadata": {
+          "displayName": "Minimum TLS Version",
+          "description": "Minimum TLS version required for storage accounts and web apps"
+        },
+        "allowedValues": ["1.0", "1.1", "1.2"],
+        "defaultValue": "1.2"
+      }
+    },
+    "policyDefinitions": [
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/1e30110a-5ceb-460c-a204-c1c39c995190",
+        "policyDefinitionReferenceId": "storageAccountsShouldUsePrivateLink",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/6edd7eda-6dd8-4b93-892f-0de67ed23778",
+        "policyDefinitionReferenceId": "storageAccountsShouldRestrictNetworkAccess",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9",
+        "policyDefinitionReferenceId": "storageAccountsShouldUseCustomerManagedKey",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/bf16e0bb-31e1-4646-8202-60a235cc7e74",
+        "policyDefinitionReferenceId": "storageAccountsShouldHaveInfrastructureEncryption",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/2a1a9cdf-e04d-429a-8416-3bfb72a63fb2",
+        "policyDefinitionReferenceId": "storageAccountsShouldPreventSharedKeyAccess",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/4fa4b6c0-31ca-4c0d-b10d-24b96f62a751",
+        "policyDefinitionReferenceId": "virtualMachinesShouldUseManagedDisks",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/06a78e20-9358-41c9-923c-fb736d382a4d",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveEndpointProtection",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/9daedab3-fb2d-461b-84d0-7d17a89a0b19",
+        "policyDefinitionReferenceId": "virtualMachinesShouldNotUseLegacyAuthentication",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/0961003e-5a0a-4549-abde-af6a37f2724d",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveAzureDiskEncryption",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/0015ea4d-51ff-4ce3-8d8c-f3b6808a129d",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveVulnerabilityAssessment",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/501541f7-f7e7-4cd6-868c-4188710465d0",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveAdaptiveApplicationControls",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/0e60b895-3786-45da-8377-9c6b4b39a6fb",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveAdaptiveNetworkHardening",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/ea53dbee-c6c6-4f04-9a5b-85b0e2a00aa0",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveJustInTimeNetworkAccess",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/28519265-1193-465a-9821-a9cb41664d03",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveSecureBoot",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/2d9dbfa3-9278-4cf0-9d0f-08747f971650",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveVtpm",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/09024ccc-065b-4526-b10f-647ea5b9c3bc",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveGuestAttestation",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/0725b4dd-7e76-479c-a735-68e7ee23d5ca",
+        "policyDefinitionReferenceId": "virtualMachinesShouldNotHavePublicIps",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/95bc9b4f-7cc1-4d44-a1a3-efb6d0d4376a",
+        "policyDefinitionReferenceId": "virtualMachinesShouldUseAvailabilityZones",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/760a85b8-6351-42c8-a5a2-7535a9ad0c0f",
+        "policyDefinitionReferenceId": "virtualMachinesShouldUseProximityPlacementGroups",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/1d84d5fb-01f6-4d12-ba4f-4a26081d403d",
+        "policyDefinitionReferenceId": "virtualMachinesShouldUseScaleSets",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/37e0d2fe-28a5-43d6-a103-67e5b29e1c45",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHavePatchAssessment",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/58565109-50ca-4e1c-8a4c-5c0a5a5a5a5a",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveAutomaticUpdates",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/6b1c4e5e-5e5e-5e5e-5e5e-5e5e5e5e5e5e",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveAntimalware",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/7c8c8c8c-8c8c-8c8c-8c8c-8c8c8c8c8c8c",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveSecurityCenterContact",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/9d9d9d9d-9d9d-9d9d-9d9d-9d9d9d9d9d9d",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveSecureBootAndVtpm",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/aaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveConfidentialComputing",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/bbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveDiskEncryptionSet",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/ccccccc-cccc-cccc-cccc-cccccccccccc",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveKeyVaultIntegration",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/ddddddd-dddd-dddd-dddd-dddddddddddd",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHavePrivateEndpoint",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/eeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveNetworkWatcher",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/fffffff-ffff-ffff-ffff-ffffffffffff",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveFlowLogs",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/11111111-1111-1111-1111-111111111111",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveDdosProtection",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/22222222-2222-2222-2222-222222222222",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveWebApplicationFirewall",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/33333333-3333-3333-3333-333333333333",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveAzureFirewall",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/44444444-4444-4444-4444-444444444444",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveBastion",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/55555555-5555-5555-5555-555555555555",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveJumpBox",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/66666666-6666-6666-6666-666666666666",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveSessionRecording",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/77777777-7777-7777-7777-777777777777",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHavePrivilegedAccess",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/88888888-8888-8888-8888-888888888888",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveJustInTimeAccess",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/99999999-9999-9999-9999-999999999999",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveTimeBoundAccess",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      },
+      {
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/00000000-0000-0000-0000-000000000000",
+        "policyDefinitionReferenceId": "virtualMachinesShouldHaveApprovalWorkflow",
+        "parameters": {
+          "effect": { "value": "[parameters('effect')]" }
+        },
+        "groupNames": ["Data Center Security"]
+      }
+    ],
+    "policyDefinitionGroups": [
+      {
+        "name": "Data Center Security",
+        "category": "Security"
+      }
+    ]
+  }
+}

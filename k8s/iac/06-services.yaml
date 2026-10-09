@@ -1,0 +1,164 @@
+---
+# Elasticsearch Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: data-center-commander
+  labels:
+    app: elasticsearch
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9200
+      targetPort: 9200
+      protocol: TCP
+      name: http
+    - port: 9300
+      targetPort: 9300
+      protocol: TCP
+      name: transport
+  selector:
+    app: elasticsearch
+---
+# Logstash Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: logstash
+  namespace: data-center-commander
+  labels:
+    app: logstash
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5044
+      targetPort: 5044
+      protocol: TCP
+      name: beats
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+      name: tcp
+    - port: 5000
+      targetPort: 5000
+      protocol: UDP
+      name: udp
+    - port: 9600
+      targetPort: 9600
+      protocol: TCP
+      name: monitoring
+  selector:
+    app: logstash
+---
+# Kibana Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: data-center-commander
+  labels:
+    app: kibana
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5601
+      targetPort: 5601
+      protocol: TCP
+      name: http
+  selector:
+    app: kibana
+---
+# Loki Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: data-center-commander
+  labels:
+    app: loki
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3100
+      targetPort: 3100
+      protocol: TCP
+      name: http
+  selector:
+    app: loki
+---
+# Promtail Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: promtail
+  namespace: data-center-commander
+  labels:
+    app: promtail
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9080
+      targetPort: 9080
+      protocol: TCP
+      name: http
+  selector:
+    app: promtail
+---
+# Grafana Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: data-center-commander
+  labels:
+    app: grafana
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: grafana
+---
+# Filebeat Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: filebeat
+  namespace: data-center-commander
+  labels:
+    app: filebeat
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5066
+      targetPort: 5066
+      protocol: TCP
+      name: http
+  selector:
+    app: filebeat
+---
+# Fluentd Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluentd
+  namespace: data-center-commander
+  labels:
+    app: fluentd
+spec:
+  type: ClusterIP
+  ports:
+    - port: 24224
+      targetPort: 24224
+      protocol: TCP
+      name: forward
+    - port: 24224
+      targetPort: 24224
+      protocol: UDP
+      name: forward-udp
+  selector:
+    app: fluentd

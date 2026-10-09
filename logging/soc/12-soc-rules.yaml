@@ -1,0 +1,125 @@
+---
+# SOC PrometheusRule for alerting
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: soc-alerts
+  namespace: soc
+  labels:
+    app: soc
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: soc-container-alerts
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            sum(rate({job="fluent-bit", container!=""} | json | __error__ != "" [5m])) by (namespace, pod, container)
+              / sum(rate({job="fluent-bit", container!=""} [5m])) by (namespace, pod, container) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "High error rate in {{ $labels.namespace }}/{{ $labels.pod }}/{{ $labels.container }}"
+            description: "Error rate is above 10% for more than 5 minutes"
+
+        - alert: ContainerCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace!=""}[15m]) * 60 * 15 > 5
+          for: 5m
+          labels:
+            severity: critical
+            team: soc
+          annotations:
+            summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: "Container has restarted {{ $value }} times in the last 15 minutes"
+
+        - alert: HighMemoryUsage
+          expr: |
+            container_memory_usage_bytes{namespace!=""} / container_spec_memory_limit_bytes{namespace!=""} > 0.85
+          for: 10m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "High memory usage in {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Memory usage is above 85% for more than 10 minutes"
+
+        - alert: HighCPUUsage
+          expr: |
+            rate(container_cpu_usage_seconds_total{namespace!=""}[5m]) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "High CPU usage in {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "CPU usage is above 80% for more than 10 minutes"
+
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{namespace!=""} == 0
+          for: 15m
+          labels:
+            severity: critical
+            team: soc
+          annotations:
+            summary: "Pod {{ $labels.pod }} in {{ $labels.namespace }} is not ready"
+            description: "Pod has been not ready for more than 15 minutes"
+
+        - alert: SuspiciousNetworkActivity
+          expr: |
+            sum(rate(container_network_receive_bytes_total{namespace!=""}[5m])) by (namespace, pod) > 104857600
+          for: 5m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "High network traffic in {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "Network receive rate exceeds 100MB/s for more than 5 minutes"
+
+        - alert: LokiIngestionRateHigh
+          expr: |
+            sum(rate(loki_distributor_bytes_received_total[5m])) > 10485760
+          for: 5m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "Loki ingestion rate is high"
+            description: "Loki is receiving more than 10MB/s of log data"
+
+        - alert: ElasticsearchHeapHigh
+          expr: |
+            elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"} > 0.85
+          for: 10m
+          labels:
+            severity: critical
+            team: soc
+          annotations:
+            summary: "Elasticsearch heap usage is high"
+            description: "JVM heap usage is above 85% for more than 10 minutes"
+
+        - alert: FluentBitBufferOverflow
+          expr: |
+            rate(fluentbit_output_dropped_records_total[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "Fluent Bit is dropping records"
+            description: "Fluent Bit output buffer is overflowing, records are being dropped"
+
+        - alert: LogIngestionLag
+          expr: |
+            time() - fluentbit_input_records_timestamp > 300
+          for: 5m
+          labels:
+            severity: warning
+            team: soc
+          annotations:
+            summary: "Log ingestion lag detected"
+            description: "Logs are being ingested with more than 5 minutes delay"

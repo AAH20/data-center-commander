@@ -1,0 +1,227 @@
+# =============================================================================
+# Data Center Commander — SOC + AutoScaling + Container Stack
+# =============================================================================
+# Full stack: Security monitoring + autoscaling + container management
+#
+# Components:
+#   - Prometheus: Metrics collection
+#   - Grafana: Visualization and dashboards
+#   - Alertmanager: Alert routing and notifications
+#   - SOC Tools: Falco, Trivy, custom security monitoring
+#   - Autoscaler: Custom container autoscaler
+#   - Node Exporter: Host metrics
+#   - cAdvisor: Container metrics
+#
+# Usage:
+#   docker compose -f docker/soc/docker-compose.yml up -d
+#   docker compose -f docker/soc/docker-compose.yml run --rm soc-scan
+# =============================================================================
+
+x-soc-defaults: &soc-defaults
+  image: data-center-commander:soc
+  build:
+    context: ..
+    dockerfile: docker/soc/Dockerfile.soc
+  networks:
+    - soc-monitoring
+  restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+  soc-reports:
+  trivy-cache:
+  falco-logs:
+
+networks:
+  soc-monitoring:
+    driver: bridge
+
+services:
+
+  # ===========================================================================
+  # Prometheus — Metrics Collection
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: dcc-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    networks:
+      - soc-monitoring
+
+  # ===========================================================================
+  # Grafana — Visualization
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: dcc-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://localhost:3000}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-clock-panel
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - soc-monitoring
+
+  # ===========================================================================
+  # Alertmanager — Alert Routing
+  # ===========================================================================
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: dcc-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - soc-monitoring
+
+  # ===========================================================================
+  # Node Exporter — Host Metrics
+  # ===========================================================================
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: dcc-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - soc-monitoring
+
+  # ===========================================================================
+  # cAdvisor — Container Metrics
+  # ===========================================================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: dcc-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - soc-monitoring
+
+  # ===========================================================================
+  # SOC Autoscaler — Custom Container Autoscaler
+  # ===========================================================================
+  autoscaler:
+    <<: *soc-defaults
+    container_name: dcc-autoscaler
+    entrypoint: ["python", "-m", "autoscaler.autoscaler"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - soc-reports:/reports
+      - trivy-cache:/data/trivy-cache
+    environment:
+      - PROMETHEUS_PORT=9102
+      - AUTOSCALER_INTERVAL=${AUTOSCALER_INTERVAL:-30}
+      - AUTOSCALER_MIN_REPLICAS=${AUTOSCALER_MIN_REPLICAS:-2}
+      - AUTOSCALER_MAX_REPLICAS=${AUTOSCALER_MAX_REPLICAS:-10}
+      - AUTOSCALER_CPU_THRESHOLD=${AUTOSCALER_CPU_THRESHOLD:-75}
+      - AUTOSCALER_MEMORY_THRESHOLD=${AUTOSCALER_MEMORY_THRESHOLD:-80}
+      - DOCKER_SOCKET=/var/run/docker.sock
+    ports:
+      - "9102:9102"
+
+  # ===========================================================================
+  # SOC Scanner — Vulnerability & Compliance Scanning
+  # ===========================================================================
+  soc-scanner:
+    <<: *soc-defaults
+    container_name: dcc-soc-scanner
+    entrypoint: ["python", "-m", "autoscaler.scanner"]
+    volumes:
+      - ../terraform:/iac:ro
+      - ../policies:/app/policies:ro
+      - soc-reports:/reports
+      - trivy-cache:/data/trivy-cache
+    environment:
+      - REPORTS_DIR=/reports
+      - TRIVY_CACHE_DIR=/data/trivy-cache
+      - CHECKOV_EXTERNAL_CHECKS_DIR=/app/policies/checkov/terraform/
+    profiles:
+      - scanning
+
+  # ===========================================================================
+  # Falco — Runtime Threat Detection
+  # ===========================================================================
+  falco:
+    <<: *soc-defaults
+    container_name: dcc-falco
+    entrypoint: ["falco"]
+    command:
+      - "-c"
+      - "/etc/falco/falco.yaml"
+      - "-r"
+      - "/app/soc-tools/falco-rules.yaml"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - falco-logs:/var/log/falco
+    environment:
+      - FALCO_BPF_PROBE=
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    security_opt:
+      - apparmor:unconfined
+    privileged: true
+    profiles:
+      - runtime-security
+
+  # ===========================================================================
+  # Trivy — Image Vulnerability Scanner
+  # ===========================================================================
+  trivy:
+    <<: *soc-defaults
+    container_name: dcc-trivy
+    entrypoint: ["trivy"]
+    command: ["server", "--listen", "0.0.0.0:4954"]
+    ports:
+      - "4954:4954"
+    volumes:
+      - trivy-cache:/root/.cache/trivy
+    profiles:
+      - vulnerability

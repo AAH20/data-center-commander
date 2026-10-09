@@ -1,0 +1,172 @@
+# Alert Rules — Data Center Commander SOC
+# Version: 1.0.0
+# Prometheus alert rules for Trivy + OPA security monitoring
+
+groups:
+  - name: container_security_alerts
+    interval: 30s
+    rules:
+      # Critical vulnerability detected
+      - alert: CriticalVulnerabilityDetected
+        expr: trivy_vulnerabilities_total{severity="CRITICAL"} > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+          component: trivy
+        annotations:
+          summary: "Critical vulnerability detected in {{ $labels.image }}"
+          description: "Image {{ $labels.image }} has {{ $value }} critical vulnerabilities"
+          runbook: "https://wiki.data-center-commander.local/runbooks/critical-vulnerability"
+
+      # High vulnerability detected
+      - alert: HighVulnerabilityDetected
+        expr: trivy_vulnerabilities_total{severity="HIGH"} > 0
+        for: 5m
+        labels:
+          severity: high
+          team: security
+          component: trivy
+        annotations:
+          summary: "High vulnerability detected in {{ $labels.image }}"
+          description: "Image {{ $labels.image }} has {{ $value }} high vulnerabilities"
+          runbook: "https://wiki.data-center-commander.local/runbooks/critical-vulnerability"
+
+      # OPA policy denial
+      - alert: OpaPolicyDenial
+        expr: rate(opa_policy_evaluations_total{result="deny"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: high
+          team: security
+          component: opa
+        annotations:
+          summary: "OPA policy denial detected"
+          description: "OPA policy has denied {{ $value }} requests in the last 5 minutes"
+          runbook: "https://wiki.data-center-commander.local/runbooks/opa-policy-violation"
+
+      # Secret detected in image
+      - alert: SecretDetectedInImage
+        expr: trivy_secrets_total > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+          component: trivy
+        annotations:
+          summary: "Secret detected in container image"
+          description: "Trivy detected {{ $value }} secrets in scanned images"
+          runbook: "https://wiki.data-center-commander.local/runbooks/critical-vulnerability"
+
+      # Misconfiguration detected
+      - alert: MisconfigurationDetected
+        expr: trivy_misconfigurations_total > 0
+        for: 5m
+        labels:
+          severity: medium
+          team: security
+          component: trivy
+        annotations:
+          summary: "Misconfiguration detected in container image"
+          description: "Trivy detected {{ $value }} misconfigurations in scanned images"
+
+  - name: autoscaling_security_alerts
+    interval: 30s
+    rules:
+      # HPA scaling anomaly
+      - alert: HpaScalingAnomaly
+        expr: |
+          (
+            hpa_current_replicas > hpa_desired_replicas * 2
+          ) or (
+            hpa_current_replicas < hpa_desired_replicas * 0.5
+          )
+        for: 5m
+        labels:
+          severity: medium
+          team: security
+          component: autoscaling
+        annotations:
+          summary: "HPA scaling anomaly detected"
+          description: "HPA {{ $labels.hpa }} has {{ $value }} replicas, expected {{ $labels.desired_replicas }}"
+          runbook: "https://wiki.data-center-commander.local/runbooks/autoscaling-security-event"
+
+      # HPA at max replicas
+      - alert: HpaAtMaxReplicas
+        expr: hpa_current_replicas >= hpa_max_replicas
+        for: 10m
+        labels:
+          severity: high
+          team: security
+          component: autoscaling
+        annotations:
+          summary: "HPA at maximum replicas"
+          description: "HPA {{ $labels.hpa }} has been at max replicas for 10 minutes"
+
+      # Resource exhaustion risk
+      - alert: ResourceExhaustionRisk
+        expr: |
+          (
+            hpa_current_cpu_utilization > 90
+          ) or (
+            hpa_current_memory_utilization > 90
+          )
+        for: 5m
+        labels:
+          severity: high
+          team: security
+          component: autoscaling
+        annotations:
+          summary: "Resource exhaustion risk detected"
+          description: "HPA {{ $labels.hpa }} resource utilization is above 90%"
+
+      # PDB violation risk
+      - alert: PdbViolationRisk
+        expr: pdb_allowed_disruptions == 0
+        for: 0m
+        labels:
+          severity: medium
+          team: security
+          component: autoscaling
+        annotations:
+          summary: "PDB violation risk"
+          description: "PDB {{ $labels.pdb }} allows 0 disruptions"
+
+  - name: soc_alerts
+    interval: 30s
+    rules:
+      # Critical SOC alert
+      - alert: CriticalSocAlert
+        expr: soc_alerts_total{severity="critical"} > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: security
+          component: soc
+        annotations:
+          summary: "Critical SOC alert"
+          description: "{{ $value }} critical alerts in the last 5 minutes"
+
+      # Auto-remediation failure
+      - alert: AutoRemediationFailure
+        expr: soc_auto_remediations_failed_total > 0
+        for: 0m
+        labels:
+          severity: high
+          team: security
+          component: soc
+        annotations:
+          summary: "Auto-remediation failed"
+          description: "{{ $value }} auto-remediation attempts failed"
+
+      # Compliance violation
+      - alert: ComplianceViolation
+        expr: compliance_violations_total > 0
+        for: 5m
+        labels:
+          severity: high
+          team: security
+          component: compliance
+        annotations:
+          summary: "Compliance violation detected"
+          description: "{{ $value }} compliance violations detected"

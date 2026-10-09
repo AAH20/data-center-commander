@@ -1,0 +1,345 @@
+# Trivy Configuration — Data Center Commander SOC
+# Version: 2.0.0
+# Integration: Trivy + OPA for container security scanning and policy enforcement
+
+# =============================================================================
+# SCAN CONFIGURATION
+# =============================================================================
+scan:
+  # Severity levels to report
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+    - LOW
+
+  # Vulnerability types to scan
+  vuln-type:
+    - os
+    - library
+
+  # Scan scanners
+  scanners:
+    - vuln
+    - secret
+    - config
+    - license
+
+  # Skip files
+  skip-files:
+    - "**/node_modules/**"
+    - "**/vendor/**"
+    - "**/.git/**"
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/*_test.go"
+    - "**/*.test.js"
+    - "**/*.spec.ts"
+    - "**/dist/**"
+    - "**/build/**"
+
+  # Skip directories
+  skip-dirs:
+    - node_modules
+    - vendor
+    - .git
+    - test
+    - tests
+    - dist
+    - build
+    - .cache
+    - __pycache__
+
+  # Cache settings
+  cache:
+    dir: /tmp/trivy-cache
+    ttl: 24h
+
+  # DB settings
+  db:
+    repository: ghcr.io/aquasecurity/trivy-db
+    java-repository: ghcr.io/aquasecurity/trivy-java-db
+    update: true
+
+  # Timeout
+  timeout: 10m
+
+  # Offline scan
+  offline-scan: false
+
+# =============================================================================
+# POLICY CONFIGURATION (OPA Integration)
+# =============================================================================
+policy:
+  # Rego policy directory
+  policy-dir: /etc/trivy/policies
+
+  # Policy namespaces
+  namespaces:
+    - data-center-commander
+    - security
+    - compliance
+    - container-security
+    - autoscaling
+
+  # OPA server URL for remote policy evaluation
+  opa-url: http://opa.opa.svc.cluster.local:8181
+
+  # Policy bundle
+  bundle: /etc/trivy/bundles/security-bundle.tar.gz
+
+# =============================================================================
+# REPORT CONFIGURATION
+# =============================================================================
+report:
+  # Output format
+  format: json
+
+  # Output file
+  output: /var/log/trivy/report.json
+
+  # Template
+  template: /etc/trivy/templates/report.tpl
+
+  # SARIF output for CI/CD integration
+  sarif-output: /var/log/trivy/report.sarif
+
+  # Table output for console
+  table-output: true
+
+# =============================================================================
+# COMPLIANCE CONFIGURATION
+# =============================================================================
+compliance:
+  # Compliance frameworks
+  frameworks:
+    - cis-docker
+    - cis-kubernetes
+    - nist-800-53
+    - iso27001
+    - pci-dss
+    - gdpr
+    - hipaa
+    - soc2
+
+  # Custom compliance files
+  custom-compliance:
+    - /etc/trivy/compliance/dcc-baseline.yaml
+
+  # Compliance report output
+  compliance-report: /var/log/trivy/compliance-report.json
+
+# =============================================================================
+# SECRET SCANNING CONFIGURATION
+# =============================================================================
+secret:
+  # Secret patterns
+  patterns:
+    - name: AWS Access Key
+      regex: "(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}"
+    - name: AWS Secret Key
+      regex: "(?i)aws(.{0,20})?(?-i)['\"][0-9a-zA-Z\\/+]{40}['\"]"
+    - name: GitHub Token
+      regex: "ghp_[a-zA-Z0-9]{36}"
+    - name: Slack Token
+      regex: "xox[baprs]-([0-9a-zA-Z]{10,48})?"
+    - name: Private Key
+      regex: "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+    - name: JWT Token
+      regex: "eyJ[A-Za-z0-9-_=]+\\.eyJ[A-Za-z0-9-_=]+\\.[A-Za-z0-9-_.+/=]*"
+    - name: Azure Storage Key
+      regex: "AccountKey=[a-zA-Z0-9+/=]{88}"
+    - name: Google API Key
+      regex: "AIza[0-9A-Za-z\\-_]{35}"
+    - name: MongoDB Connection String
+      regex: "mongodb(\\+srv)?://[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+"
+    - name: PostgreSQL Connection String
+      regex: "postgres(ql)?://[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+"
+    - name: MySQL Connection String
+      regex: "mysql://[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+"
+    - name: Redis Connection String
+      regex: "redis://:[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+"
+    - name: Docker Registry Credential
+      regex: "https?://[a-zA-Z0-9._-]+:[a-zA-Z0-9._-]+@[a-z0-9._-]+"
+    - name: npm Token
+      regex: "npm_[a-zA-Z0-9]{36}"
+    - name: PayPal Braintree Access Token
+      regex: "access_token\\$production\\$[a-z0-9]{16}\\$[a-f0-9]{32}"
+    - name: Stripe API Key
+      regex: "sk_live_[a-zA-Z0-9]{24}"
+    - name: Twilio API Key
+      regex: "SK[a-f0-9]{32}"
+    - name: SendGrid API Key
+      regex: "SG\\.[a-zA-Z0-9_-]{22}\\.[a-zA-Z0-9_-]{43}"
+
+  # Secret exclusions
+  exclusions:
+    - pattern: "test|example|dummy|sample|fake|mock"
+      paths:
+        - "test/**"
+        - "tests/**"
+        - "**/*_test.go"
+        - "**/*.test.js"
+        - "**/*.spec.ts"
+        - "examples/**"
+        - "docs/**"
+
+# =============================================================================
+# MISCONFIGURATION SCANNING
+# =============================================================================
+misconfig:
+  # Policy types
+  policy-types:
+    - dockerfile
+    - kubernetes
+    - terraform
+    - cloudformation
+    - helm
+
+  # Custom policies
+  custom-policy:
+    - /etc/trivy/misconfig/dcc-policy.rego
+
+  # Misconfig report
+  misconfig-report: /var/log/trivy/misconfig-report.json
+
+# =============================================================================
+# KUBERNETES SCANNING
+# =============================================================================
+kubernetes:
+  # Namespace to scan
+  namespace: data-center-commander
+
+  # Resources to scan
+  resources:
+    - deployments
+    - daemonsets
+    - statefulsets
+    - pods
+    - services
+    - configmaps
+    - secrets
+    - serviceaccounts
+    - roles
+    - rolebindings
+    - networkpolicies
+    - poddisruptionbudgets
+    - horizontalpodautoscalers
+    - verticalpodautoscalers
+    - priorityclasses
+    - runtimeclasses
+
+  # Exclude namespaces
+  exclude-namespaces:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+
+  # K8s scan report
+  k8s-report: /var/log/trivy/k8s-report.json
+
+# =============================================================================
+# REGISTRY CONFIGURATION
+# =============================================================================
+registry:
+  # Insecure registries
+  insecure:
+    - registry.data-center-commander.local
+
+  # Registry credentials
+  credentials:
+    - registry: registry.data-center-commander.local
+      username: ${REGISTRY_USERNAME}
+      password: ${REGISTRY_PASSWORD}
+
+  # Registry scan timeout
+  timeout: 5m
+
+# =============================================================================
+# NOTIFICATION CONFIGURATION
+# =============================================================================
+notification:
+  # Slack webhook
+  slack:
+    webhook-url: ${SLACK_WEBHOOK_URL}
+    channel: "#security-alerts"
+    mention: "@security-team"
+
+  # Email
+  email:
+    smtp-host: ${SMTP_HOST}
+    smtp-port: 587
+    smtp-username: ${SMTP_USERNAME}
+    smtp-password: ${SMTP_PASSWORD}
+    from: security@data-center-commander.local
+    to:
+      - soc@data-center-commander.local
+      - security-team@data-center-commander.local
+
+  # Webhook
+  webhook:
+    url: ${WEBHOOK_URL}
+    headers:
+      Authorization: Bearer ${WEBHOOK_TOKEN}
+      Content-Type: application/json
+
+  # PagerDuty
+  pagerduty:
+    integration-key: ${PAGERDUTY_KEY}
+    severity-mapping:
+      CRITICAL: critical
+      HIGH: error
+      MEDIUM: warning
+      LOW: info
+
+# =============================================================================
+# SCHEDULED SCANNING
+# =============================================================================
+schedule:
+  # Cron expression for full scan
+  full-scan: "0 2 * * *"
+
+  # Cron expression for quick scan
+  quick-scan: "0 */6 * * *"
+
+  # Cron expression for compliance scan
+  compliance-scan: "0 0 * * 0"
+
+  # Cron expression for secret scan
+  secret-scan: "0 */12 * * *"
+
+  # Cron expression for misconfig scan
+  misconfig-scan: "0 */4 * * *"
+
+# =============================================================================
+# INTEGRATION CONFIGURATION
+# =============================================================================
+integration:
+  # OPA integration
+  opa:
+    enabled: true
+    endpoint: http://opa.opa.svc.cluster.local:8181
+    policy-path: /v1/data/container-security
+    timeout: 30s
+
+  # Kubernetes integration
+  kubernetes:
+    enabled: true
+    in-cluster: true
+    kubeconfig: ~/.kube/config
+
+  # CI/CD integration
+  cicd:
+    enabled: true
+    fail-on-critical: true
+    fail-on-high: true
+    max-critical: 0
+    max-high: 0
+    max-medium: 5
+    max-low: 10
+
+  # SOC integration
+  soc:
+    enabled: true
+    alert-endpoint: http://soc.data-center-commander.svc.cluster.local:8080/alerts
+    dashboard-endpoint: http://soc.data-center-commander.svc.cluster.local:8080/dashboard

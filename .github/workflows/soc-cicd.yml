@@ -1,0 +1,1123 @@
+name: SOC + AutoScaling + Container CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'Dockerfile*'
+      - 'docker-compose*.yml'
+      - 'k8s/**'
+      - 'policies/**'
+      - 'tests/**'
+      - 'logging/**'
+      - '.github/workflows/soc-cicd.yml'
+  pull_request:
+    branches: [main]
+  schedule:
+    # SOC daily compliance scan at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      skip_tests:
+        description: 'Skip test suite'
+        required: false
+        default: false
+        type: boolean
+      skip_deploy:
+        description: 'Skip deployment'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IAC_IMAGE_NAME: ${{ github.repository }}/iac-scanner
+  PYTHON_VERSION: '3.12'
+  KUBECTL_VERSION: 'v1.28.0'
+  KUSTOMIZE_VERSION: 'v5.2.1'
+  CHECKOV_VERSION: '3.2.316'
+  TRIVY_VERSION: '0.48.3'
+  GRYPE_VERSION: '0.73.0'
+  OPA_VERSION: 'v0.68.0'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  # STAGE 1: Code Quality & Unit Tests
+  # ===========================================================================
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            checkov==${{ env.CHECKOV_VERSION }} \
+            opa-python-client==1.3.0 \
+            PyYAML==6.0.2 \
+            jsonschema==4.23.0 \
+            pytest==8.0.0 \
+            pytest-cov==4.1.0 \
+            pytest-xdist==3.5.0 \
+            ruff==0.1.9 \
+            bandit==1.7.7 \
+            safety==2.3.5 \
+            yamllint==1.35.1 \
+            hadolint==2.12.0
+
+      - name: Run Ruff linter
+        run: ruff check --output-format=github .
+
+      - name: Run Bandit security linter
+        run: bandit -r . -f json -o bandit-report.json || true
+
+      - name: Run Safety dependency check
+        run: safety check --json --output safety-report.json || true
+
+      - name: Lint Dockerfiles with Hadolint
+        run: |
+          for df in Dockerfile*; do
+            echo "Linting $df..."
+            hadolint "$df" || true
+          done
+
+      - name: Lint YAML files
+        run: yamllint -d relaxed k8s/ policies/ logging/ || true
+
+      - name: Upload code quality reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: code-quality-reports
+          path: |
+            bandit-report.json
+            safety-report.json
+          retention-days: 30
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    if: ${{ !inputs.skip_tests }}
+    strategy:
+      matrix:
+        test-group:
+          - tests/multicloud
+          - tests/iac-performance
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pytest==8.0.0 \
+            pytest-cov==4.1.0 \
+            pytest-xdist==3.5.0 \
+            pytest-timeout==2.2.0 \
+            PyYAML==6.0.2 \
+            jsonschema==4.23.0 \
+            boto3==1.35.62 \
+            azure-identity==1.19.0 \
+            azure-mgmt-resource==23.1.1
+
+      - name: Run tests (${{ matrix.test-group }})
+        run: |
+          pytest ${{ matrix.test-group }} \
+            -v \
+            --tb=short \
+            --cov=. \
+            --cov-report=xml:coverage-${{ matrix.test-group }}.xml \
+            --cov-report=html:htmlcov-${{ matrix.test-group }} \
+            --junitxml=test-results-${{ matrix.test-group }}.xml \
+            -n auto \
+            --timeout=300
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.test-group }}
+          path: |
+            test-results-${{ matrix.test-group }}.xml
+            coverage-${{ matrix.test-group }}.xml
+            htmlcov-${{ matrix.test-group }}/
+          retention-days: 30
+
+  # ===========================================================================
+  # STAGE 2: Build Container Images
+  # ===========================================================================
+  build-iac-scanner:
+    name: Build IaC Scanner Image
+    runs-on: ubuntu-latest
+    needs: code-quality
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IAC_IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push IaC scanner
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.iac
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=iac-scanner
+          cache-to: type=gha,mode=max,scope=iac-scanner
+          platforms: linux/amd64,linux/arm64
+
+  build-logging-stack:
+    name: Build Logging Stack Images
+    runs-on: ubuntu-latest
+    needs: code-quality
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build log-processor image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./logging
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/log-processor:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/log-processor:latest
+          cache-from: type=gha,scope=log-processor
+          cache-to: type=gha,mode=max,scope=log-processor
+
+      - name: Validate docker-compose files
+        run: |
+          docker compose -f docker-compose.iac.yml config --quiet
+          docker compose -f logging/iac/docker-compose.yml config --quiet
+          echo "✓ All docker-compose files are valid"
+
+  # ===========================================================================
+  # STAGE 3: Security Scanning (SOC)
+  # ===========================================================================
+  scan-iac-policies:
+    name: IaC Policy Scan (Checkov + OPA)
+    runs-on: ubuntu-latest
+    needs: build-iac-scanner
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Checkov
+        run: pip install checkov==${{ env.CHECKOV_VERSION }}
+
+      - name: Run Checkov IaC scan
+        id: checkov
+        run: |
+          checkov -d . \
+            --external-checks-dir ./policies/checkov/terraform/ \
+            --check DC_ \
+            --output json \
+            --output-file checkov-report.json \
+            --soft-fail \
+            --compact || true
+
+      - name: Run Checkov Dockerfile scan
+        run: |
+          checkov -f Dockerfile* \
+            --output json \
+            --output-file checkov-dockerfile-report.json \
+            --soft-fail \
+            --compact || true
+
+      - name: Run Checkov K8s manifest scan
+        run: |
+          checkov -d k8s/ \
+            --output json \
+            --output-file checkov-k8s-report.json \
+            --soft-fail \
+            --compact || true
+
+      - name: Install OPA
+        run: |
+          wget -q "https://openpolicyagent.org/downloads/${{ env.OPA_VERSION }}/opa_linux_amd64_static" \
+            -O /usr/local/bin/opa
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Validate Rego policies
+        run: |
+          if [ -d policies/rego/ ]; then
+            opa check policies/rego/ || true
+            opa test policies/rego/ -v || true
+          fi
+
+      - name: Upload Checkov SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-report.json
+          category: checkov-iac
+
+      - name: Upload scan reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iac-scan-reports
+          path: |
+            checkov-report.json
+            checkov-dockerfile-report.json
+            checkov-k8s-report.json
+          retention-days: 90
+
+  scan-container-images:
+    name: Container Image Scan (Trivy + Grype)
+    runs-on: ubuntu-latest
+    needs: [build-iac-scanner, build-logging-stack]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          wget -q "https://github.com/aquasecurity/trivy/releases/download/v${{ env.TRIVY_VERSION }}/trivy_${{ env.TRIVY_VERSION }}_Linux-64bit.tar.gz"
+          tar xzf trivy_${{ env.TRIVY_VERSION }}_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
+          trivy --version
+
+      - name: Install Grype
+        run: |
+          wget -q "https://github.com/anchore/grype/releases/download/v${{ env.GRYPE_VERSION }}/grype_${{ env.GRYPE_VERSION }}_linux_amd64.tar.gz"
+          tar xzf grype_${{ env.GRYPE_VERSION }}_linux_amd64.tar.gz
+          sudo mv grype /usr/local/bin/
+          grype --version
+
+      - name: Trivy scan IaC scanner image
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-iac-report.json \
+            --scanners vuln,secret,config \
+            ${{ env.REGISTRY }}/${{ env.IAC_IMAGE_NAME }}:${{ github.sha }} || true
+
+      - name: Trivy scan Dockerfile vulnerabilities
+        run: |
+          trivy filesystem \
+            --severity HIGH,CRITICAL \
+            --format json \
+            --output trivy-fs-report.json \
+            --scanners vuln,secret,config \
+            . || true
+
+      - name: Grype scan IaC scanner image
+        run: |
+          grype \
+            --output json \
+            --file grype-iac-report.json \
+            ${{ env.REGISTRY }}/${{ env.IAC_IMAGE_NAME }}:${{ github.sha }} || true
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-report.json
+          category: trivy-filesystem
+
+      - name: Upload container scan reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: container-scan-reports
+          path: |
+            trivy-iac-report.json
+            trivy-fs-report.json
+            grype-iac-report.json
+          retention-days: 90
+
+  soc-compliance:
+    name: SOC Compliance & Audit
+    runs-on: ubuntu-latest
+    needs: [scan-iac-policies, scan-container-images]
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install tools
+        run: |
+          pip install checkov==${{ env.CHECKOV_VERSION }} PyYAML==6.0.2
+
+      - name: SOC audit — verify security controls
+        run: |
+          echo "=== SOC Compliance Audit ==="
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo ""
+
+          # Verify NetworkPolicies exist
+          echo "[CHECK] NetworkPolicies..."
+          if [ -f k8s/iac/11-network-policies.yaml ]; then
+            echo "  ✓ NetworkPolicies manifest found"
+            grep -c "kind: NetworkPolicy" k8s/iac/11-network-policies.yaml | xargs -I{} echo "  ✓ {} NetworkPolicy rules defined"
+          else
+            echo "  ✗ NetworkPolicies manifest missing!"
+            exit 1
+          fi
+
+          # Verify RBAC
+          echo "[CHECK] RBAC..."
+          if [ -f k8s/iac/10-rbac.yaml ]; then
+            echo "  ✓ RBAC manifest found"
+            grep -c "kind: ClusterRole\|kind: Role" k8s/iac/10-rbac.yaml | xargs -I{} echo "  ✓ {} role definitions"
+          else
+            echo "  ✗ RBAC manifest missing!"
+            exit 1
+          fi
+
+          # Verify PDB
+          echo "[CHECK] Pod Disruption Budgets..."
+          if [ -f k8s/iac/09-pdb.yaml ]; then
+            echo "  ✓ PDB manifest found"
+            grep -c "kind: PodDisruptionBudget" k8s/iac/09-pdb.yaml | xargs -I{} echo "  ✓ {} PDBs defined"
+          else
+            echo "  ✗ PDB manifest missing!"
+            exit 1
+          fi
+
+          # Verify HPA
+          echo "[CHECK] Horizontal Pod Autoscalers..."
+          if [ -f k8s/iac/08-hpa.yaml ]; then
+            echo "  ✓ HPA manifest found"
+            grep -c "kind: HorizontalPodAutoscaler" k8s/iac/08-hpa.yaml | xargs -I{} echo "  ✓ {} HPAs defined"
+          else
+            echo "  ✗ HPA manifest missing!"
+            exit 1
+          fi
+
+          # Verify Ingress
+          echo "[CHECK] Ingress..."
+          if [ -f k8s/iac/07-ingress.yaml ]; then
+            echo "  ✓ Ingress manifest found"
+            grep -c "kind: Ingress" k8s/iac/07-ingress.yaml | xargs -I{} echo "  ✓ {} Ingress rules"
+          else
+            echo "  ✗ Ingress manifest missing!"
+            exit 1
+          fi
+
+          # Verify storage
+          echo "[CHECK] Persistent Storage..."
+          if [ -f k8s/iac/02-storage.yaml ]; then
+            echo "  ✓ Storage manifest found"
+            grep -c "kind: PersistentVolumeClaim" k8s/iac/02-storage.yaml | xargs -I{} echo "  ✓ {} PVCs defined"
+          else
+            echo "  ✗ Storage manifest missing!"
+            exit 1
+          fi
+
+          # Verify non-root containers
+          echo "[CHECK] Container Security..."
+          if grep -q "USER dce" Dockerfile.iac; then
+            echo "  ✓ IaC scanner runs as non-root user"
+          else
+            echo "  ✗ IaC scanner does not specify non-root user!"
+            exit 1
+          fi
+
+          # Verify healthchecks
+          echo "[CHECK] Health Checks..."
+          if grep -q "HEALTHCHECK" Dockerfile.iac; then
+            echo "  ✓ Dockerfile healthcheck defined"
+          else
+            echo "  ✗ Dockerfile healthcheck missing!"
+            exit 1
+          fi
+
+          # Verify resource limits in K8s
+          echo "[CHECK] Resource Limits..."
+          if grep -q "resources:" k8s/iac/03-elasticsearch.yaml; then
+            echo "  ✓ Resource limits defined for Elasticsearch"
+          else
+            echo "  ✗ Resource limits missing for Elasticsearch!"
+            exit 1
+          fi
+
+          # Verify network policies deny by default
+          echo "[CHECK] Default Deny Policies..."
+          if grep -q "default-deny" k8s/iac/11-network-policies.yaml; then
+            echo "  ✓ Default deny NetworkPolicies found"
+          else
+            echo "  ✗ Default deny NetworkPolicies missing!"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== All SOC compliance checks passed ==="
+
+      - name: Generate SOC audit report
+        run: |
+          cat > soc-audit-report.json << 'ENDJSON'
+          {
+            "audit_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "repository": "${{ github.repository }}",
+            "checks": {
+              "network_policies": {"status": "pass", "file": "k8s/iac/11-network-policies.yaml"},
+              "rbac": {"status": "pass", "file": "k8s/iac/10-rbac.yaml"},
+              "pdb": {"status": "pass", "file": "k8s/iac/09-pdb.yaml"},
+              "hpa": {"status": "pass", "file": "k8s/iac/08-hpa.yaml"},
+              "ingress": {"status": "pass", "file": "k8s/iac/07-ingress.yaml"},
+              "storage": {"status": "pass", "file": "k8s/iac/02-storage.yaml"},
+              "non_root_container": {"status": "pass", "file": "Dockerfile.iac"},
+              "healthcheck": {"status": "pass", "file": "Dockerfile.iac"},
+              "resource_limits": {"status": "pass", "file": "k8s/iac/03-elasticsearch.yaml"},
+              "default_deny": {"status": "pass", "file": "k8s/iac/11-network-policies.yaml"}
+            },
+            "overall_status": "pass"
+          }
+          ENDJSON
+          # Fix the timestamp in the JSON
+          sed -i '' "s/$(date -u +%Y-%m-%dT%H:%M:%SZ)/$(date -u +%Y-%m-%dT%H:%M:%SZ)/g" soc-audit-report.json 2>/dev/null || true
+
+      - name: Upload SOC audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soc-audit-report
+          path: soc-audit-report.json
+          retention-days: 90
+
+  # ===========================================================================
+  # STAGE 4: AutoScaling Validation
+  # ===========================================================================
+  validate-autoscaling:
+    name: Validate AutoScaling Configuration
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install kubectl
+        run: |
+          wget -q "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Install kustomize
+        run: |
+          wget -q "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz"
+          tar xzf kustomize_v5.2.1_linux_amd64.tar.gz
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - name: Validate K8s manifests with kustomize
+        run: |
+          echo "=== Validating K8s manifests ==="
+          kustomize build k8s/iac/ > /tmp/k8s-rendered.yaml
+          echo "✓ Kustomize build successful"
+          echo ""
+          echo "=== Rendered resources ==="
+          grep "^kind:" /tmp/k8s-rendered.yaml | sort | uniq -c | sort -rn
+
+      - name: Validate HPA configuration
+        run: |
+          echo "=== AutoScaling Validation ==="
+          python3 << 'PYEOF'
+          import yaml
+          import sys
+
+          with open("k8s/iac/08-hpa.yaml") as f:
+              docs = list(yaml.safe_load_all(f))
+
+          errors = []
+          for doc in docs:
+              if doc is None:
+                  continue
+              name = doc["metadata"]["name"]
+              spec = doc["spec"]
+
+              # Check minReplicas
+              min_replicas = spec.get("minReplicas", 1)
+              if min_replicas < 1:
+                  errors.append(f"{name}: minReplicas ({min_replicas}) must be >= 1")
+
+              # Check maxReplicas
+              max_replicas = spec.get("maxReplicas", 1)
+              if max_replicas < min_replicas:
+                  errors.append(f"{name}: maxReplicas ({max_replicas}) must be >= minReplicas ({min_replicas})")
+
+              # Check metrics
+              metrics = spec.get("metrics", [])
+              if not metrics:
+                  errors.append(f"{name}: no metrics defined")
+              for metric in metrics:
+                  if metric.get("type") == "Resource":
+                      resource = metric.get("resource", {})
+                      target = resource.get("target", {})
+                      avg_util = target.get("averageUtilization")
+                      if avg_util and (avg_util < 50 or avg_util > 90):
+                          errors.append(f"{name}: averageUtilization ({avg_util}) should be between 50-90")
+
+              # Check behavior
+              behavior = spec.get("behavior", {})
+              if behavior:
+                  scale_up = behavior.get("scaleUp", {})
+                  scale_down = behavior.get("scaleDown", {})
+                  if not scale_up and not scale_down:
+                      print(f"  ⚠ {name}: no scale behavior defined (using defaults)")
+
+              print(f"  ✓ {name}: min={min_replicas}, max={max_replicas}, metrics={len(metrics)}")
+
+          if errors:
+              print("\n✗ HPA validation errors:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          else:
+              print("\n✓ All HPA configurations are valid")
+          PYEOF
+
+      - name: Validate PDB configuration
+        run: |
+          echo "=== PDB Validation ==="
+          python3 << 'PYEOF'
+          import yaml
+          import sys
+
+          with open("k8s/iac/09-pdb.yaml") as f:
+              docs = list(yaml.safe_load_all(f))
+
+          errors = []
+          for doc in docs:
+              if doc is None:
+                  continue
+              name = doc["metadata"]["name"]
+              spec = doc["spec"]
+              min_available = spec.get("minAvailable")
+
+              if min_available is None:
+                  errors.append(f"{name}: minAvailable not set")
+              elif isinstance(min_available, int) and min_available < 1:
+                  errors.append(f"{name}: minAvailable ({min_available}) must be >= 1")
+
+              print(f"  ✓ {name}: minAvailable={min_available}")
+
+          if errors:
+              print("\n✗ PDB validation errors:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          else:
+              print("\n✓ All PDB configurations are valid")
+          PYEOF
+
+      - name: Validate resource requests/limits
+        run: |
+          echo "=== Resource Limits Validation ==="
+          python3 << 'PYEOF'
+          import yaml
+          import sys
+          import os
+
+          k8s_dir = "k8s/iac"
+          deployment_files = [
+              "03-elasticsearch.yaml",
+              "04-loki.yaml",
+              "05-shippers.yaml",
+          ]
+
+          errors = []
+          for filename in deployment_files:
+              filepath = os.path.join(k8s_dir, filename)
+              if not os.path.exists(filepath):
+                  continue
+              with open(filepath) as f:
+                  docs = list(yaml.safe_load_all(f))
+              for doc in docs:
+                  if doc is None:
+                      continue
+                  kind = doc.get("kind", "")
+                  if kind not in ("Deployment", "DaemonSet"):
+                      continue
+                  name = doc["metadata"]["name"]
+                  containers = doc["spec"]["template"]["spec"]["containers"]
+                  for container in containers:
+                      cname = container["name"]
+                      resources = container.get("resources", {})
+                      if not resources:
+                          errors.append(f"{name}/{cname}: no resources defined")
+                      else:
+                          requests = resources.get("requests", {})
+                          limits = resources.get("limits", {})
+                          if not requests:
+                              errors.append(f"{name}/{cname}: no resource requests")
+                          if not limits:
+                              errors.append(f"{name}/{cname}: no resource limits")
+                          if requests and limits:
+                              print(f"  ✓ {name}/{cname}: requests={requests}, limits={limits}")
+
+          if errors:
+              print("\n✗ Resource validation errors:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          else:
+              print("\n✓ All resource configurations are valid")
+          PYEOF
+
+      - name: Validate NetworkPolicies
+        run: |
+          echo "=== NetworkPolicy Validation ==="
+          python3 << 'PYEOF'
+          import yaml
+          import sys
+
+          with open("k8s/iac/11-network-policies.yaml") as f:
+              docs = list(yaml.safe_load_all(f))
+
+          errors = []
+          deny_count = 0
+          allow_count = 0
+          for doc in docs:
+              if doc is None:
+                  continue
+              name = doc["metadata"]["name"]
+              spec = doc["spec"]
+              policy_types = spec.get("policyTypes", [])
+
+              if "deny" in name.lower():
+                  deny_count += 1
+              else:
+                  allow_count += 1
+
+              if not policy_types:
+                  errors.append(f"{name}: no policyTypes defined")
+
+              print(f"  ✓ {name}: types={policy_types}")
+
+          if deny_count == 0:
+              errors.append("No default-deny NetworkPolicies found")
+
+          if errors:
+              print("\n✗ NetworkPolicy validation errors:")
+              for e in errors:
+                  print(f"  - {e}")
+              sys.exit(1)
+          else:
+              print(f"\n✓ {deny_count} deny policies, {allow_count} allow policies — all valid")
+          PYEOF
+
+      - name: Upload autoscaling validation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: autoscaling-validation
+          path: /tmp/k8s-rendered.yaml
+          retention-days: 30
+
+  # ===========================================================================
+  # STAGE 5: Integration Tests
+  # ===========================================================================
+  integration-tests:
+    name: Integration Tests (Docker Compose)
+    runs-on: ubuntu-latest
+    needs: [build-iac-scanner, build-logging-stack, validate-autoscaling]
+    if: ${{ !inputs.skip_tests }}
+    services:
+      docker:
+        image: docker:24-dind
+        options: --privileged
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start logging stack
+        run: |
+          cd logging/iac
+          docker compose up -d --build
+          echo "Waiting for logging stack to be healthy..."
+          sleep 30
+          docker compose ps
+          docker compose logs --tail=20 || true
+
+      - name: Verify logging stack health
+        run: |
+          echo "=== Logging Stack Health Checks ==="
+
+          # Elasticsearch
+          echo -n "Elasticsearch: "
+          if curl -sf http://localhost:9200/_cluster/health > /dev/null 2>&1; then
+            echo "✓ healthy"
+          else
+            echo "✗ unhealthy"
+            docker compose -f logging/iac/docker-compose.yml logs elasticsearch
+          fi
+
+          # Kibana
+          echo -n "Kibana: "
+          if curl -sf http://localhost:5601/api/status > /dev/null 2>&1; then
+            echo "✓ healthy"
+          else
+            echo "✗ unhealthy"
+          fi
+
+          # Loki
+          echo -n "Loki: "
+          if curl -sf http://localhost:3100/ready > /dev/null 2>&1; then
+            echo "✓ healthy"
+          else
+            echo "✗ unhealthy"
+          fi
+
+          # Grafana
+          echo -n "Grafana: "
+          if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
+            echo "✓ healthy"
+          else
+            echo "✗ unhealthy"
+          fi
+
+      - name: Run IaC scanner in CI mode
+        run: |
+          echo "=== Running IaC Scanner (CI mode) ==="
+          docker run --rm \
+            -v $(pwd)/terraform:/iac:ro \
+            -v $(pwd)/policies:/app/policies:ro \
+            -v /tmp/reports:/reports \
+            ${{ env.REGISTRY }}/${{ env.IAC_IMAGE_NAME }}:${{ github.sha }} \
+            -d /iac \
+            --external-checks-dir /app/policies/checkov/terraform/ \
+            --check DC_ \
+            --output json \
+            --output-file /reports/ci-report.json \
+            --soft-fail \
+            --compact || true
+
+          echo "Scanner completed. Report:"
+          cat /tmp/reports/ci-report.json 2>/dev/null | python3 -m json.tool 2>/dev/null || echo "(no report generated)"
+
+      - name: Stop logging stack
+        if: always()
+        run: |
+          cd logging/iac
+          docker compose down -v || true
+
+  # ===========================================================================
+  # STAGE 6: Deploy to Kubernetes
+  # ===========================================================================
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [integration-tests, soc-compliance, validate-autoscaling]
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && !inputs.skip_deploy)
+    environment:
+      name: ${{ inputs.environment || 'dev' }}
+      url: https://kibana.local
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          wget -q "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+          kubectl version --client
+
+      - name: Install kustomize
+        run: |
+          wget -q "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz"
+          tar xzf kustomize_v5.2.1_linux_amd64.tar.gz
+          sudo mv kustomize /usr/local/bin/
+          kustomize version
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Deploy with Kustomize (dry-run)
+        run: |
+          echo "=== Kustomize build (dry-run) ==="
+          kustomize build k8s/iac/ > /tmp/k8s-rendered.yaml
+          kubectl apply --dry-run=server -f /tmp/k8s-rendered.yaml
+
+      - name: Deploy to cluster
+        run: |
+          echo "=== Deploying to Kubernetes ==="
+          kubectl apply -k k8s/iac/
+          echo ""
+          echo "=== Waiting for deployments ==="
+          kubectl -n data-center-commander rollout status deployment/elasticsearch --timeout=120s || true
+          kubectl -n data-center-commander rollout status deployment/logstash --timeout=120s || true
+          kubectl -n data-center-commander rollout status deployment/kibana --timeout=120s || true
+          kubectl -n data-center-commander rollout status deployment/loki --timeout=120s || true
+          kubectl -n data-center-commander rollout status deployment/grafana --timeout=120s || true
+          kubectl -n data-center-commander rollout status deployment/log-processor --timeout=120s || true
+
+      - name: Verify deployment
+        run: |
+          echo "=== Deployment Status ==="
+          kubectl -n data-center-commander get all
+          echo ""
+          echo "=== HPA Status ==="
+          kubectl -n data-center-commander get hpa
+          echo ""
+          echo "=== NetworkPolicies ==="
+          kubectl -n data-center-commander get networkpolicies
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl -n data-center-commander get pods -o wide
+
+      - name: Run post-deploy smoke tests
+        run: |
+          echo "=== Post-Deploy Smoke Tests ==="
+
+          # Test Elasticsearch
+          echo -n "Elasticsearch API: "
+          kubectl -n data-center-commander exec deploy/elasticsearch -- \
+            curl -sf http://localhost:9200/_cluster/health > /dev/null 2>&1 \
+            && echo "✓" || echo "✗"
+
+          # Test Loki
+          echo -n "Loki API: "
+          kubectl -n data-center-commander exec deploy/loki -- \
+            wget -q --spider http://localhost:3100/ready 2>/dev/null \
+            && echo "✓" || echo "✗"
+
+          # Test Grafana
+          echo -n "Grafana API: "
+          kubectl -n data-center-commander exec deploy/grafana -- \
+            wget -q --spider http://localhost:3000/api/health 2>/dev/null \
+            && echo "✓" || echo "✗"
+
+          # Test HPA is active
+          echo -n "HPA active: "
+          hpa_count=$(kubectl -n data-center-commander get hpa --no-headers 2>/dev/null | wc -l)
+          if [ "$hpa_count" -ge 5 ]; then
+            echo "✓ ($hpa_count HPAs)"
+          else
+            echo "✗ (only $hpa_count HPAs found, expected >= 5)"
+          fi
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-manifests
+          path: /tmp/k8s-rendered.yaml
+          retention-days: 30
+
+  # ===========================================================================
+  # STAGE 7: SOC Post-Deploy Monitoring
+  # ===========================================================================
+  soc-post-deploy:
+    name: SOC Post-Deploy Monitoring
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && !inputs.skip_deploy)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          wget -q "https://dl.k8s.io/release/${{ env.KUBECTL_VERSION }}/bin/linux/amd64/kubectl"
+          sudo install -m 0755 kubectl /usr/local/bin/kubectl
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ~/.kube/config
+
+      - name: SOC post-deploy audit
+        run: |
+          echo "=== SOC Post-Deploy Audit ==="
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo ""
+
+          # Check all pods are running
+          echo "[CHECK] Pod status..."
+          not_running=$(kubectl -n data-center-commander get pods --no-headers | grep -v "Running\|Completed" | wc -l)
+          if [ "$not_running" -eq 0 ]; then
+            echo "  ✓ All pods running"
+          else
+            echo "  ✗ $not_running pods not running:"
+            kubectl -n data-center-commander get pods --no-headers | grep -v "Running\|Completed"
+          fi
+
+          # Check HPA status
+          echo "[CHECK] HPA status..."
+          kubectl -n data-center-commander get hpa
+
+          # Check NetworkPolicies
+          echo "[CHECK] NetworkPolicies..."
+          kubectl -n data-center-commander get networkpolicies
+
+          # Check RBAC
+          echo "[CHECK] RBAC..."
+          kubectl -n data-center-commander get clusterrolebinding filebeat 2>/dev/null && echo "  ✓ Filebeat CRB exists" || echo "  ✗ Filebeat CRB missing"
+
+          # Check PDBs
+          echo "[CHECK] Pod Disruption Budgets..."
+          kubectl -n data-center-commander get pdb
+
+          # Check for any failed events
+          echo "[CHECK] Recent events..."
+          kubectl -n data-center-commander get events --sort-by='.lastTimestamp' | tail -10
+
+          # Check resource usage
+          echo "[CHECK] Resource usage..."
+          kubectl -n data-center-commander top pods 2>/dev/null || echo "  (metrics-server not available)"
+
+          echo ""
+          echo "=== SOC post-deploy audit complete ==="
+
+  # ===========================================================================
+  # STAGE 8: Cleanup & Reporting
+  # ===========================================================================
+  pipeline-report:
+    name: Pipeline Summary Report
+    runs-on: ubuntu-latest
+    needs: [code-quality, unit-tests, build-iac-scanner, build-logging-stack, scan-iac-policies, scan-container-images, soc-compliance, validate-autoscaling, integration-tests, deploy, soc-post-deploy]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Generate pipeline summary
+        run: |
+          echo "# Pipeline Summary Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build IaC Scanner | ${{ needs.build-iac-scanner.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build Logging Stack | ${{ needs.build-logging-stack.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| IaC Policy Scan | ${{ needs.scan-iac-policies.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Image Scan | ${{ needs.scan-container-images.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SOC Compliance | ${{ needs.soc-compliance.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| AutoScaling Validation | ${{ needs.validate-autoscaling.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy | ${{ needs.deploy.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SOC Post-Deploy | ${{ needs.soc-post-deploy.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,94 @@
+{
+  "index_patterns": ["iac-logs-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0,
+      "index.lifecycle.name": "iac-logs-policy",
+      "index.lifecycle.rollover_alias": "iac-logs",
+      "index.mapping.total_fields.limit": 2000,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "dynamic_templates": [
+        {
+          "strings_as_keywords": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "message": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 32766
+            }
+          }
+        },
+        "log_level": {
+          "type": "keyword"
+        },
+        "severity": {
+          "type": "integer"
+        },
+        "service": {
+          "type": "keyword"
+        },
+        "environment": {
+          "type": "keyword"
+        },
+        "datacenter": {
+          "type": "keyword"
+        },
+        "iac_stack": {
+          "type": "boolean"
+        },
+        "processed_at": {
+          "type": "date"
+        },
+        "processor": {
+          "type": "keyword"
+        },
+        "trace_id": {
+          "type": "keyword"
+        },
+        "span_id": {
+          "type": "keyword"
+        },
+        "host": {
+          "properties": {
+            "name": { "type": "keyword" },
+            "hostname": { "type": "keyword" },
+            "ip": { "type": "ip" }
+          }
+        },
+        "source": {
+          "properties": {
+            "ip": { "type": "ip" },
+            "port": { "type": "long" }
+          }
+        },
+        "client_ip": {
+          "type": "ip"
+        },
+        "geoip": {
+          "properties": {
+            "location": { "type": "geo_point" },
+            "country_name": { "type": "keyword" },
+            "city_name": { "type": "keyword" }
+          }
+        }
+      }
+    }
+  },
+  "priority": 500
+}

@@ -1,0 +1,207 @@
+{
+  "dashboards": [
+    {
+      "id": "metron-overview",
+      "name": "Metron Security Overview",
+      "description": "High-level security posture and alert summary",
+      "refresh_interval": "30s",
+      "panels": [
+        {
+          "id": "total-alerts",
+          "title": "Total Alerts (24h)",
+          "type": "stat",
+          "query": "FROM metron_alerts SELECT COUNT(*) WHERE timestamp > NOW() - INTERVAL '24' HOUR",
+          "thresholds": [10, 50, 100]
+        },
+        {
+          "id": "alerts-by-severity",
+          "title": "Alerts by Severity",
+          "type": "pie",
+          "query": "FROM metron_alerts SELECT severity, COUNT(*) WHERE timestamp > NOW() - INTERVAL '24' HOUR GROUP BY severity"
+        },
+        {
+          "id": "alerts-over-time",
+          "title": "Alert Trend",
+          "type": "line",
+          "query": "FROM metron_alerts SELECT COUNT(*) WHERE timestamp > NOW() - INTERVAL '24' HOUR GROUP BY time_bucket('1 hour', timestamp)"
+        },
+        {
+          "id": "top-source-ips",
+          "title": "Top Alert Source IPs",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, COUNT(*) as alert_count WHERE timestamp > NOW() - INTERVAL '24' HOUR GROUP BY source_ip ORDER BY alert_count DESC LIMIT 10"
+        },
+        {
+          "id": "top-rules-triggered",
+          "title": "Top Triggered Rules",
+          "type": "bar",
+          "query": "FROM metron_alerts SELECT rule_name, COUNT(*) as count WHERE timestamp > NOW() - INTERVAL '24' HOUR GROUP BY rule_name ORDER BY count DESC LIMIT 10"
+        }
+      ]
+    },
+    {
+      "id": "metron-network",
+      "name": "Network Security Monitor",
+      "description": "Network traffic analysis and threat detection",
+      "refresh_interval": "15s",
+      "panels": [
+        {
+          "id": "netflow-volume",
+          "title": "Network Traffic Volume",
+          "type": "area",
+          "query": "FROM netflow SELECT SUM(dOctets) as total_bytes, SUM(dPkts) as total_packets GROUP BY time_bucket('1 minute', timestamp)"
+        },
+        {
+          "id": "top-talkers",
+          "title": "Top Talkers by Volume",
+          "type": "table",
+          "query": "FROM netflow SELECT srcaddr, SUM(dOctets) as bytes_out, SUM(dPkts) as packets_out GROUP BY srcaddr ORDER BY bytes_out DESC LIMIT 15"
+        },
+        {
+          "id": "port-scan-alerts",
+          "title": "Port Scan Alerts",
+          "type": "stat",
+          "query": "FROM metron_alerts SELECT COUNT(*) WHERE rule_id = 'METRON-002' AND timestamp > NOW() - INTERVAL '1' HOUR"
+        },
+        {
+          "id": "lateral-movement",
+          "title": "Lateral Movement Alerts",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, destination_ip, timestamp WHERE rule_id = 'METRON-007' AND timestamp > NOW() - INTERVAL '24' HOUR ORDER BY timestamp DESC LIMIT 20"
+        },
+        {
+          "id": "exfiltration-alerts",
+          "title": "Data Exfiltration Alerts",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, destination_ip, bytes_transferred WHERE rule_id = 'METRON-003' AND timestamp > NOW() - INTERVAL '24' HOUR ORDER BY bytes_transferred DESC LIMIT 20"
+        },
+        {
+          "id": "protocol-distribution",
+          "title": "Protocol Distribution",
+          "type": "pie",
+          "query": "FROM netflow SELECT prot, COUNT(*) as count GROUP BY prot ORDER BY count DESC LIMIT 10"
+        }
+      ]
+    },
+    {
+      "id": "metron-web",
+      "name": "Web Security Monitor",
+      "description": "HTTP traffic analysis and web attack detection",
+      "refresh_interval": "15s",
+      "panels": [
+        {
+          "id": "http-requests",
+          "title": "HTTP Requests/sec",
+          "type": "line",
+          "query": "FROM http SELECT COUNT(*) as rps GROUP BY time_bucket('1 second', timestamp)"
+        },
+        {
+          "id": "status-codes",
+          "title": "HTTP Status Code Distribution",
+          "type": "pie",
+          "query": "FROM http SELECT status, COUNT(*) as count GROUP BY status ORDER BY count DESC"
+        },
+        {
+          "id": "top-urls",
+          "title": "Top Requested URLs",
+          "type": "table",
+          "query": "FROM http SELECT request, COUNT(*) as hits GROUP BY request ORDER BY hits DESC LIMIT 15"
+        },
+        {
+          "id": "sql-injection-attempts",
+          "title": "SQL Injection Attempts",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, request, timestamp WHERE rule_id = 'METRON-006' AND timestamp > NOW() - INTERVAL '24' HOUR ORDER BY timestamp DESC LIMIT 20"
+        },
+        {
+          "id": "webshell-alerts",
+          "title": "Web Shell Alerts",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, request, timestamp WHERE rule_id = 'METRON-005' AND timestamp > NOW() - INTERVAL '24' HOUR ORDER BY timestamp DESC LIMIT 20"
+        },
+        {
+          "id": "top-user-agents",
+          "title": "Top User Agents",
+          "type": "bar",
+          "query": "FROM http SELECT user_agent, COUNT(*) as count GROUP BY user_agent ORDER BY count DESC LIMIT 10"
+        }
+      ]
+    },
+    {
+      "id": "metron-endpoint",
+      "name": "Endpoint Security Monitor",
+      "description": "Host-based security event monitoring",
+      "refresh_interval": "30s",
+      "panels": [
+        {
+          "id": "ssh-brute-force",
+          "title": "SSH Brute Force Attempts",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, hostname, attempt_count, timestamp WHERE rule_id = 'METRON-001' AND timestamp > NOW() - INTERVAL '24' HOUR ORDER BY attempt_count DESC LIMIT 20"
+        },
+        {
+          "id": "priv-esc-alerts",
+          "title": "Privilege Escalation Alerts",
+          "type": "table",
+          "query": "FROM metron_alerts SELECT source_ip, hostname, timestamp WHERE rule_id = 'METRON-009' AND timestamp > NOW() - INTERVAL '24' HOUR ORDER BY timestamp DESC LIMIT 20"
+        },
+        {
+          "id": "syslog-severity",
+          "title": "Syslog Severity Distribution",
+          "type": "pie",
+          "query": "FROM syslog SELECT severity, COUNT(*) as count GROUP BY severity ORDER BY count DESC"
+        },
+        {
+          "id": "top-syslog-sources",
+          "title": "Top Syslog Sources",
+          "type": "table",
+          "query": "FROM syslog SELECT hostname, COUNT(*) as event_count GROUP BY hostname ORDER BY event_count DESC LIMIT 15"
+        },
+        {
+          "id": "failed-logins",
+          "title": "Failed Login Attempts Over Time",
+          "type": "line",
+          "query": "FROM syslog SELECT COUNT(*) as failures WHERE message CONTAINS 'Failed password' GROUP BY time_bucket('5 minutes', timestamp)"
+        }
+      ]
+    },
+    {
+      "id": "metron-threat-intel",
+      "name": "Threat Intelligence Monitor",
+      "description": "Threat intel matches and IOC tracking",
+      "refresh_interval": "60s",
+      "panels": [
+        {
+          "id": "ti-matches",
+          "title": "Threat Intel Matches (24h)",
+          "type": "stat",
+          "query": "FROM metron_threat_intel_matches SELECT COUNT(*) WHERE timestamp > NOW() - INTERVAL '24' HOUR"
+        },
+        {
+          "id": "ti-by-type",
+          "title": "Matches by IOC Type",
+          "type": "pie",
+          "query": "FROM metron_threat_intel_matches SELECT ioc_type, COUNT(*) as count GROUP BY ioc_type"
+        },
+        {
+          "id": "ti-by-source",
+          "title": "Matches by Threat Feed",
+          "type": "bar",
+          "query": "FROM metron_threat_intel_matches SELECT feed_name, COUNT(*) as count GROUP BY feed_name ORDER BY count DESC LIMIT 10"
+        },
+        {
+          "id": "ti-recent",
+          "title": "Recent Threat Intel Matches",
+          "type": "table",
+          "query": "FROM metron_threat_intel_matches SELECT ioc_value, ioc_type, feed_name, matched_ip, timestamp ORDER BY timestamp DESC LIMIT 25"
+        },
+        {
+          "id": "ti-confidence",
+          "title": "Match Confidence Distribution",
+          "type": "pie",
+          "query": "FROM metron_threat_intel_matches SELECT confidence, COUNT(*) as count GROUP BY confidence"
+        }
+      ]
+    }
+  ]
+}

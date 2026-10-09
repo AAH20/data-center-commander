@@ -1,0 +1,90 @@
+# =============================================================================
+# Data Center Commander — IaC Security Scanner
+# =============================================================================
+# Multi-stage build for running Checkov, OPA, and custom policy scans
+# against Terraform / IaC repositories.
+#
+# Usage:
+#   docker build -f Dockerfile.iac -t data-center-commander:iac .
+#   docker run --rm -v $(pwd)/terraform:/iac:ro data-center-commander:iac
+# =============================================================================
+
+# ---- Stage 1: Base dependencies ---------------------------------------------
+FROM python:3.12-slim AS base
+
+LABEL org.opencontainers.image.title="Data Center Commander — IaC Scanner"
+LABEL org.opencontainers.image.description="IaC security scanning with Checkov, OPA, and custom data center policies"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    jq \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Stage 2: Install OPA ---------------------------------------------------
+FROM base AS opa-installer
+
+ARG OPA_VERSION=v0.68.0
+RUN wget -q "https://openpolicyagent.org/downloads/${OPA_VERSION}/opa_linux_amd64_static" \
+    -O /usr/local/bin/opa \
+    && chmod +x /usr/local/bin/opa \
+    && opa version
+
+# ---- Stage 3: Install Checkov & Python deps ---------------------------------
+FROM base AS python-deps
+
+WORKDIR /app
+
+# Install Checkov and supporting tools
+RUN pip install --no-cache-dir \
+    checkov==3.2.316 \
+    opa-python-client==1.3.0 \
+    PyYAML==6.0.2 \
+    jsonschema==4.23.0 \
+    boto3==1.35.62 \
+    azure-identity==1.19.0 \
+    azure-mgmt-resource==23.1.1 \
+    && checkov --version
+
+# ---- Stage 4: Final image ---------------------------------------------------
+FROM base AS final
+
+# Copy OPA binary
+COPY --from=opa-installer /usr/local/bin/opa /usr/local/bin/opa
+
+# Copy Python packages
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-deps /usr/local/bin/checkov /usr/local/bin/checkov
+
+# Create non-root user
+RUN groupadd -r dce && useradd -r -g dce -d /home/dce -s /bin/bash dce
+
+# Copy application code
+WORKDIR /app
+COPY --chown=dce:dce policies/ /app/policies/
+COPY --chown=dce:dce logging/ /app/logging/
+
+# Create directories for IaC input and reports
+RUN mkdir -p /iac /reports && chown -R dce:dce /iac /reports /app
+
+# Environment configuration
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CHECKOV_EXTERNAL_CHECKS_DIR=/app/policies/checkov/terraform/ \
+    OPA_DATA=/app/policies/rego/ \
+    REPORTS_DIR=/reports
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD checkov --version && opa version || exit 1
+
+# Switch to non-root user
+USER dce
+
+# Default entrypoint: scan /iac with all policies
+ENTRYPOINT ["checkov"]
+CMD ["-d", "/iac", "--external-checks-dir", "/app/policies/checkov/terraform/", "--check", "DC_", "--output", "json", "--output-file", "/reports/checkov-report.json"]

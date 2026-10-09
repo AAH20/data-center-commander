@@ -1,0 +1,130 @@
+---
+# SOC Processor deployment — receives traces from OTel Collector webhook
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soc-processor
+  namespace: data-center-commander
+  labels:
+    app: soc-processor
+    app.kubernetes.io/component: soc
+    soc.criticality: critical
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: soc-processor
+  template:
+    metadata:
+      labels:
+        app: soc-processor
+        app.kubernetes.io/component: soc
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - name: soc-processor
+          image: python:3.12-slim
+          command: ["python", "-u", "/app/trace_processor.py"]
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: SIEM_URL
+              value: "http://elasticsearch:9200"
+            - name: SIEM_INDEX
+              value: "soc-traces"
+            - name: ALERT_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: soc-secrets
+                  key: alert-webhook
+                  optional: true
+            - name: TRACE_RETENTION_DAYS
+              value: "30"
+            - name: PORT
+              value: "8080"
+          volumeMounts:
+            - name: app
+              mountPath: /app
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: app
+          configMap:
+            name: soc-processor-code
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc-processor-code
+  namespace: data-center-commander
+data:
+  trace_processor.py: |
+    # Placeholder — actual code mounted via volume in production
+    # See tracing/soc/soc/trace_processor.py
+    print("SOC Processor placeholder — mount actual code")
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soc-processor
+  namespace: data-center-commander
+  labels:
+    app: soc-processor
+spec:
+  selector:
+    app: soc-processor
+  ports:
+    - port: 8080
+      name: http
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: soc-secrets
+  namespace: data-center-commander
+type: Opaque
+stringData:
+  alert-webhook: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+---
+# NetworkPolicy: only OTel Collector can reach SOC processor
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soc-processor-netpol
+  namespace: data-center-commander
+spec:
+  podSelector:
+    matchLabels:
+      app: soc-processor
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - protocol: TCP
+          port: 8080

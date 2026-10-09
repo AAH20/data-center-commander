@@ -1,0 +1,24 @@
+# Logstash Configuration
+http.host: "0.0.0.0"
+http.port: 9600
+path.config: "/usr/share/logstash/pipeline"
+path.logs: "/var/log/logstash"
+
+# Pipeline settings
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+pipeline.ordered: auto
+
+# Monitoring
+monitoring.enabled: false
+monitoring.elasticsearch.hosts: ["${ELASTICSEARCH_HOSTS}"]
+
+# Queue settings
+queue.type: persisted
+queue.max_bytes: 1gb
+queue.checkpoint.writes: 1024
+
+# Dead letter queue
+dead_letter_queue.enable: true
+dead_letter_queue.max_bytes: 512mb

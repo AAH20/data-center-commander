@@ -1,0 +1,227 @@
+# =============================================================================
+# Data Center Commander — IaC Scanning Stack
+# =============================================================================
+# Full stack: IaC scanner + OPA policy engine + report aggregator + dashboard
+#
+# Usage:
+#   docker compose -f docker-compose.iac.yml up -d
+#   docker compose -f docker-compose.iac.yml run --rm scanner
+# =============================================================================
+
+x-scanner-defaults: &scanner-defaults
+  image: data-center-commander:iac
+  build:
+    context: .
+    dockerfile: Dockerfile.iac
+  networks:
+    - iac-scanning
+  restart: unless-stopped
+
+volumes:
+  checkov_cache:
+    driver: local
+  opa_cache:
+    driver: local
+  reports:
+    driver: local
+
+networks:
+  iac-scanning:
+    driver: bridge
+
+services:
+
+  # ===========================================================================
+  # Primary IaC Scanner (Checkov + custom DC policies)
+  # ===========================================================================
+  scanner:
+    <<: *scanner-defaults
+    container_name: dce-scanner
+    volumes:
+      - ./terraform:/iac:ro
+      - ./policies:/app/policies:ro
+      - reports:/reports
+      - checkov_cache:/home/dce/.cache/checkov
+    environment:
+      - CHECKOV_EXTERNAL_CHECKS_DIR=/app/policies/checkov/terraform/
+      - REPORTS_DIR=/reports
+      - PYTHONUNBUFFERED=1
+    command: >
+      -d /iac
+      --external-checks-dir /app/policies/checkov/terraform/
+      --check DC_
+      --output json
+      --output-file /reports/checkov-report.json
+      --soft-fail
+      --compact
+
+  # ===========================================================================
+  # OPA Policy Engine (Rego policies)
+  # ===========================================================================
+  opa:
+    <<: *scanner-defaults
+    container_name: dce-opa
+    entrypoint: ["opa"]
+    command: [
+      "run",
+      "--server",
+      "--addr", ":8181",
+      "--log-level", "info",
+      "/app/policies/rego/"
+    ]
+    volumes:
+      - ./policies/rego:/app/policies/rego:ro
+      - opa_cache:/home/dce/.opa
+    ports:
+      - "8181:8181"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8181/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Report Aggregator (merges Checkov + OPA results)
+  # ===========================================================================
+  reporter:
+    <<: *scanner-defaults
+    container_name: dce-reporter
+    entrypoint: ["python"]
+    command: ["-c", "
+import json, os, sys
+from datetime import datetime, timezone
+
+reports_dir = os.environ.get('REPORTS_DIR', '/reports')
+checkov_report = os.path.join(reports_dir, 'checkov-report.json')
+opa_report = os.path.join(reports_dir, 'opa-report.json')
+merged_report = os.path.join(reports_dir, 'merged-report.json')
+
+results = {
+    'scan_time': datetime.now(timezone.utc).isoformat(),
+    'tool': 'Data Center Commander',
+    'version': '1.0.0',
+    'checkov': None,
+    'opa': None,
+    'summary': {
+        'total_checks': 0,
+        'passed': 0,
+        'failed': 0,
+        'skipped': 0,
+        'parsing_errors': 0
+    }
+}
+
+# Load Checkov results
+if os.path.exists(checkov_report):
+    with open(checkov_report) as f:
+        cv = json.load(f)
+        results['checkov'] = cv
+        if 'results' in cv:
+            for check in cv['results'].get('passed_checks', []):
+                results['summary']['passed'] += 1
+                results['summary']['total_checks'] += 1
+            for check in cv['results'].get('failed_checks', []):
+                results['summary']['failed'] += 1
+                results['summary']['total_checks'] += 1
+            for check in cv['results'].get('skipped_checks', []):
+                results['summary']['skipped'] += 1
+                results['summary']['total_checks'] += 1
+            results['summary']['parsing_errors'] = len(cv['results'].get('parsing_errors', []))
+
+# Load OPA results
+if os.path.exists(opa_report):
+    with open(opa_report) as f:
+        results['opa'] = json.load(f)
+
+# Write merged report
+with open(merged_report, 'w') as f:
+    json.dump(results, f, indent=2)
+
+print(f'Merged report written to {merged_report}')
+print(f'Summary: {results[\"summary\"][\"passed\"]} passed, {results[\"summary\"][\"failed\"]} failed, {results[\"summary\"][\"skipped\"]} skipped')
+"]
+    volumes:
+      - reports:/reports
+      - ./policies:/app/policies:ro
+    environment:
+      - REPORTS_DIR=/reports
+    depends_on:
+      - scanner
+      - opa
+
+  # ===========================================================================
+  # Policy Validator (validates Rego syntax and structure)
+  # ===========================================================================
+  policy-validator:
+    <<: *scanner-defaults
+    container_name: dce-policy-validator
+    entrypoint: ["opa"]
+    command: ["check", "/app/policies/rego/"]
+    volumes:
+      - ./policies/rego:/app/policies/rego:ro
+    profiles:
+      - validation
+
+  # ===========================================================================
+  # Terraform Plan Scanner (scans terraform plan JSON output)
+  # ===========================================================================
+  tfplan-scanner:
+    <<: *scanner-defaults
+    container_name: dce-tfplan-scanner
+    entrypoint: ["checkov"]
+    command: [
+      "-f", "/iac/tfplan.json",
+      "--external-checks-dir", "/app/policies/checkov/terraform/",
+      "--check", "DC_",
+      "--output", "json",
+      "--output-file", "/reports/tfplan-report.json",
+      "--soft-fail",
+      "--compact"
+    ]
+    volumes:
+      - ./terraform:/iac:ro
+      - ./policies:/app/policies:ro
+      - reports:/reports
+      - checkov_cache:/home/dce/.cache/checkov
+    profiles:
+      - tfplan
+
+  # ===========================================================================
+  # CI/CD Scanner (non-interactive, fails on policy violations)
+  # ===========================================================================
+  ci-scanner:
+    <<: *scanner-defaults
+    container_name: dce-ci-scanner
+    entrypoint: ["checkov"]
+    command: [
+      "-d", "/iac",
+      "--external-checks-dir", "/app/policies/checkov/terraform/",
+      "--check", "DC_",
+      "--output", "junitxml",
+      "--output-file", "/reports/ci-report.xml",
+      "--soft-fail-on", "DC_NET_001,DC_NET_002,DC_NET_003,DC_CRYPTO_001,DC_STORAGE_001,DC_STORAGE_007,DC_IAM_001,DC_IAM_008",
+      "--compact"
+    ]
+    volumes:
+      - ./terraform:/iac:ro
+      - ./policies:/app/policies:ro
+      - reports:/reports
+      - checkov_cache:/home/dce/.cache/checkov
+    profiles:
+      - ci
+
+  # ===========================================================================
+  # Dashboard (simple HTML report viewer)
+  # ===========================================================================
+  dashboard:
+    image: nginx:alpine
+    container_name: dce-dashboard
+    volumes:
+      - reports:/usr/share/nginx/html/reports:ro
+      - ./logging/iac/config/dashboard:/etc/nginx/conf.d:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      - reporter
+    profiles:
+      - dashboard
