@@ -38,6 +38,7 @@ def generate_evolutionary_correlation_report(alerts: Optional[List[Dict]] = None
 
     # Compute correlation metrics
     total_alerts = len(alerts)
+    n_records = total_alerts
     true_threats = sum(1 for a in alerts if a["ground_truth"])
     false_benign = total_alerts - true_threats
 
@@ -69,7 +70,8 @@ def generate_evolutionary_correlation_report(alerts: Optional[List[Dict]] = None
         "=" * 70,
         "",
         "Summary Statistics:",
-        f"  Total Alerts:       {total_alerts}",
+        f"  n_records:      {n_records}",
+        f"  n_stages:       3",  # Fixed: evolutionary stages (initial, adaptive, converged)
         f"  True Threats:       {true_threats}",
         f"  False Benign:       {false_benign}",
         f"  Convergence:        {convergence}",
@@ -115,6 +117,7 @@ def compute_correlation_metrics(alerts: List[Dict]) -> Dict[str, Any]:
             "true_positives": 0,
             "false_positives": 0,
             "false_negatives": 0,
+            "n_records": 0,
         }
 
     true_positives = sum(1 for a in alerts if a.get("ground_truth", False))
@@ -150,4 +153,5 @@ def compute_correlation_metrics(alerts: List[Dict]) -> Dict[str, Any]:
         "avg_benign_score": avg_benign_score,
         "severity_distribution": severity_counts,
         "total_analyzed": total,
+        "n_records": total,
     }
