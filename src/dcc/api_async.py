@@ -13,7 +13,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping, Sequence, Tuple
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -160,7 +160,7 @@ class Page:
     limit: int
     offset: int
     has_more: bool
-    next_cursor: str | None = None
+    next_cursor: Optional[str] = None
 
 
 def encode_cursor(offset: int) -> str:
@@ -216,7 +216,7 @@ cache = Cache()
 class RateLimiter:
     def __init__(self, rps: int) -> None:
         self.rps = rps
-        self._tokens: dict[str, tuple[float, float]] = {}
+        self._tokens: dict[str, Tuple[float, float]] = {}
 
     def is_allowed(self, key: str) -> bool:
         now = time.time()
@@ -359,7 +359,7 @@ async def readyz():
 @app.get("/v2/overview")
 async def overview(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
-    demo: str | None = None,
+    demo: Optional[str] = None,
 ):
     cache_key = f"overview:{tenant_id}:{demo}"
     cached = cache.get(cache_key)
@@ -412,7 +412,7 @@ async def overview(
 async def list_assets(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
-    cursor: str | None = None,
+    cursor: Optional[str] = None,
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
@@ -452,7 +452,7 @@ async def list_assets(
 async def list_facilities(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
-    cursor: str | None = None,
+    cursor: Optional[str] = None,
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
@@ -487,8 +487,8 @@ async def list_facilities(
 async def list_workflows(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
-    cursor: str | None = None,
-    status: str | None = None,
+    cursor: Optional[str] = None,
+    status: Optional[str] = None,
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
