@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 
 from dcc.iac.dsl import InfrastructureDefinition, Resource
 
 
-class EngineAction(StrEnum):
+class EngineAction(str, Enum):
     """Possible infrastructure actions."""
 
     CREATE = "create"
@@ -26,7 +26,7 @@ class EngineAction(StrEnum):
     NO_OP = "no_op"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class PlanStep:
     """A single step in an infrastructure plan."""
 
@@ -37,7 +37,7 @@ class PlanStep:
     reason: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class PlanResult:
     """Result of plan generation."""
 
@@ -49,7 +49,7 @@ class PlanResult:
         self.has_changes = len(self.steps) > 0
 
 
-@dataclass(slots=True)
+@dataclass
 class DriftReport:
     """Report of drift between desired and actual state."""
 
@@ -60,7 +60,7 @@ class DriftReport:
     actual_fingerprint: str = ""
 
 
-@dataclass(slots=True)
+@dataclass
 class ApplyResult:
     """Result of applying a plan."""
 

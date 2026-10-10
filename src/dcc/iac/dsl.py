@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 from typing import Any
 
 
@@ -19,7 +19,7 @@ class ValidationError(ValueError):
     pass
 
 
-class ResourceType(StrEnum):
+class ResourceType(str, Enum):
     """Supported infrastructure resource types."""
 
     COMPUTE = "compute"
@@ -29,7 +29,7 @@ class ResourceType(StrEnum):
     POWER = "power"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Resource:
     """A single infrastructure resource."""
 
@@ -93,7 +93,7 @@ class Resource:
         return hashlib.sha256(data.encode()).hexdigest()
 
 
-@dataclass(slots=True)
+@dataclass
 class InfrastructureDefinition:
     """A complete infrastructure definition for a tenant."""
 

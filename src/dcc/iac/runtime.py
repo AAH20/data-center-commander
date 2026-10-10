@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class FunctionDefinition:
     """A serverless function definition."""
 
@@ -41,7 +41,7 @@ class FunctionDefinition:
             raise ValueError("timeout_seconds must be positive")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class FunctionResult:
     """Result of a function execution."""
 

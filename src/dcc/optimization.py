@@ -20,7 +20,7 @@ T = TypeVar("T")
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ResourceVector:
     """Multi-dimensional resource requirements."""
 
@@ -76,7 +76,7 @@ class ResourceVector:
         )
 
 
-@dataclass(slots=True)
+@dataclass
 class Workload:
     """A workload to be placed."""
 
@@ -88,7 +88,7 @@ class Workload:
     affinity: frozenset[str] = field(default_factory=frozenset)
 
 
-@dataclass(slots=True)
+@dataclass
 class Rack:
     """A physical rack with capacity."""
 
@@ -114,7 +114,7 @@ class Rack:
         self.workloads.append(workload)
 
 
-@dataclass(slots=True)
+@dataclass
 class WorkOrder:
     """A maintenance work order."""
 
@@ -129,7 +129,7 @@ class WorkOrder:
     time_window_end: float = 24.0
 
 
-@dataclass(slots=True)
+@dataclass
 class NetworkZone:
     """A security zone in the network."""
 
@@ -408,7 +408,7 @@ class NetworkZoningSolver:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
+@dataclass
 class EnergyConsumer:
     """An energy consumer with useful work output."""
 

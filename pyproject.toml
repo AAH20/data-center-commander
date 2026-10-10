@@ -38,8 +38,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
-timeout = 30
+testpaths = ["tests", "improvements"]
+pythonpath = ["src"]
 addopts = "-v --tb=short"
 
 [tool.ruff]

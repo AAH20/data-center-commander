@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum
 
 
-class ScalingTrigger(StrEnum):
+class ScalingTrigger(str, Enum):
     """Possible scaling actions."""
 
     SCALE_UP = "scale_up"
@@ -23,7 +23,7 @@ class ScalingTrigger(StrEnum):
     COOLDOWN = "cooldown"
 
 
-@dataclass(slots=True)
+@dataclass
 class ScalingPolicy:
     """Scaling policy configuration."""
 
@@ -48,7 +48,7 @@ class ScalingPolicy:
             raise ValueError("cooldown_seconds must be non-negative")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class ScalingDecision:
     """A scaling decision."""
 
@@ -59,7 +59,7 @@ class ScalingDecision:
     metrics: dict[str, float] = field(default_factory=dict)
 
 
-@dataclass(slots=True)
+@dataclass
 class MetricsSnapshot:
     """A snapshot of system metrics."""
 
