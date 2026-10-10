@@ -13,7 +13,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -188,7 +188,7 @@ class Cache:
     def __init__(self) -> None:
         self._data: dict[str, tuple[float, Any]] = {}
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: str) -> Optional[Any]:
         if key in self._data:
             expiry, value = self._data[key]
             if time.time() < expiry:
@@ -196,7 +196,7 @@ class Cache:
             del self._data[key]
         return None
 
-    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
         ttl = ttl or settings.cache_ttl_seconds
         self._data[key] = (time.time() + ttl, value)
 
