@@ -17,3 +17,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# CI benchmark output
+evaluation_report.json

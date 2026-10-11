@@ -85,8 +85,7 @@ jobs:
             ruff==0.1.9 \
             bandit==1.7.7 \
             safety==2.3.5 \
-            yamllint==1.35.1 \
-            hadolint==2.12.0
+            yamllint==1.35.1
 
       - name: Run Ruff linter
         run: ruff check --output-format=github .
@@ -96,6 +95,14 @@ jobs:
 
       - name: Run Safety dependency check
         run: safety check --json --output safety-report.json || true
+
+      - name: Install Hadolint
+        run: |
+          HADOLINT_VERSION=2.12.0
+          wget -q "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64" \
+            -O /usr/local/bin/hadolint
+          chmod +x /usr/local/bin/hadolint
+          hadolint --version
 
       - name: Lint Dockerfiles with Hadolint
         run: |

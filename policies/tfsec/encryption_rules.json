@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "id": "DC_ENC_001",
+      "category": "encryption",
+      "title": "Encryption at rest must be enabled",
+      "severity": "CRITICAL",
+      "summary": "Storage and database resources must enable encryption at rest.",
+      "description": "Unencrypted persistent storage exposes workload data to physical and snapshot-level recovery. Encryption at rest is a control expected by ISO 42001 evidence chains and most SOC 2 mappings.",
+      "remediation": "Set encrypted = true and supply a KMS key ARN.",
+      "resource_types": ["aws_db_instance", "aws_ebs_volume", "aws_s3_bucket"],
+      "checks": [
+        {
+          "condition": "storage_encrypted is true",
+          "verdict": "fail when false"
+        }
+      ]
+    },
+    {
+      "id": "DC_ENC_002",
+      "category": "encryption",
+      "title": "Encryption in transit must be enforced",
+      "severity": "HIGH",
+      "summary": "Endpoints must reject plaintext transport.",
+      "description": "TLS termination that permits plaintext fallback allows credential interception between services inside the data-center fabric.",
+      "remediation": "Set the minimum TLS version to 1.2 and disable plaintext listeners.",
+      "resource_types": ["aws_lb_listener", "aws_elasticsearch_domain"],
+      "checks": [
+        {
+          "condition": "in_transit.required is true",
+          "verdict": "fail when false"
+        }
+      ]
+    }
+  ]
+}

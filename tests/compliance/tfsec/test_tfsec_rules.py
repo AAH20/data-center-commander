@@ -8,8 +8,10 @@ import json
 import os
 import subprocess
 import tempfile
+from pathlib import Path
 
-TFSEC_RULES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "policies", "tfsec")
+# tests/compliance/tfsec/ -> project root is three levels up, not two.
+TFSEC_RULES_DIR = str(Path(__file__).resolve().parent.parent.parent.parent / "policies" / "tfsec")
 
 
 def run_tfsec(rule_file: str, tf_file: str) -> dict:

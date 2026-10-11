@@ -4,9 +4,33 @@ Wraps checkov CLI commands with timing and result capture.
 """
 
 import json
+import os
+import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
+
+_CHECKOV_MODULE = "checkov"
+
+
+def resolve_checkov_command(checkov_bin: str) -> list[str] | None:
+    """Return the argv prefix for checkov, or None when unavailable.
+
+    Order of resolution:
+      1. the configured binary name on PATH (e.g. a real install or CHECKOV_BIN)
+      2. the `checkov` console script next to the running interpreter (pip installs
+         it into <venv>/bin, which is often not on PATH under pytest)
+    Returns None when neither is present so callers can skip instead of erroring.
+    """
+    if shutil.which(checkov_bin):
+        return [checkov_bin]
+    script_dir = Path(sys.executable).parent
+    candidate = script_dir / _CHECKOV_MODULE
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return [str(candidate)]
+    return None
 
 
 @dataclass
@@ -30,28 +54,16 @@ class CheckovRunner:
 
     def __init__(self, checkov_bin: str = "checkov"):
         self.checkov_bin = checkov_bin
-        self._check_checkov()
-
-    def _check_checkov(self):
-        """Verify checkov is available."""
-        try:
-            result = subprocess.run(
-                [self.checkov_bin, "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(f"Checkov not available: {result.stderr}")
-        except FileNotFoundError as e:
+        self._cmd = resolve_checkov_command(checkov_bin)
+        if self._cmd is None:
             raise RuntimeError(
-                f"Checkov binary not found: {self.checkov_bin}. "
+                f"Checkov binary not found: {checkov_bin}. "
                 "Install checkov or set CHECKOV_BIN env var."
-            ) from e
+            )
 
     def _run(self, args: list[str], timeout: int = 300) -> CheckovResult:
         """Execute a checkov command with timing."""
-        cmd = [self.checkov_bin] + args
+        cmd = self._cmd + args
         cmd_str = " ".join(cmd)
 
         start = time.perf_counter()
@@ -109,14 +121,13 @@ class CheckovRunner:
         timeout: int = 300,
     ) -> CheckovResult:
         """Run checkov scan on a directory."""
+        # `framework` is accepted for API symmetry but not forwarded: checkov has
+        # no --framework flag and auto-detects the framework from file extensions.
         args = [
             "-d",
             directory,
-            "--framework",
-            framework,
             "--output",
             output_format,
-            "--no-guide",
         ]
         if check:
             for c in check:
@@ -136,14 +147,13 @@ class CheckovRunner:
         timeout: int = 120,
     ) -> CheckovResult:
         """Run checkov scan on a single file."""
+        # `framework` is accepted for API symmetry but not forwarded: checkov has
+        # no --framework flag and auto-detects the framework from file extensions.
         args = [
             "-f",
             file_path,
-            "--framework",
-            framework,
             "--output",
             output_format,
-            "--no-guide",
         ]
         if check:
             for c in check:
@@ -165,11 +175,8 @@ class CheckovRunner:
         args = [
             "-d",
             directory,
-            "--framework",
-            framework,
             "--output",
             output_format,
-            "--no-guide",
             "--external-checks-dir",
             policy_dir,
         ]

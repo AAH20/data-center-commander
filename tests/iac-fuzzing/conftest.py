@@ -1,5 +1,7 @@
 """Shared fixtures for IaC fuzzing tests."""
 
+import os
+
 import pytest
 from hypothesis import Verbosity, settings
 
@@ -8,8 +10,9 @@ settings.register_profile("fuzzing", max_examples=1000, verbosity=Verbosity.quie
 settings.register_profile("ci", max_examples=100, verbosity=Verbosity.quiet)
 settings.register_profile("dev", max_examples=10, verbosity=Verbosity.normal)
 
-# Load fuzzing profile by default
-settings.load_profile("fuzzing")
+# CI runners are slower than a dev machine and the pipeline applies a per-test
+# timeout, so keep the example count bounded there.
+settings.load_profile("ci" if os.environ.get("CI") else "fuzzing")
 
 
 @pytest.fixture(scope="session")

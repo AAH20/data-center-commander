@@ -30,16 +30,51 @@ except ImportError:
 
 
 def _deep_clean(value: Any) -> Any:
-    """Recursively strip extra wrapping quotes that hcl2 adds to strings."""
+    """Recursively strip extra wrapping quotes and lists that hcl2 adds.
+
+    hcl2 wraps every scalar in a one-element list and every block/map value in a
+    list containing a single dict. Tests assert against plain scalars and maps,
+    so unwrap single-element lists before recursing.
+
+    Repeated blocks sharing a key (`ingress {}` x3) arrive as a list of dicts and
+    are left intact; `get_rules`/`get_tags` below normalise them for assertions.
+    """
+    if isinstance(value, list):
+        cleaned = [_deep_clean(v) for v in value]
+        if len(cleaned) == 1 and isinstance(cleaned[0], (str, int, float, bool)):
+            return cleaned[0]
+        return cleaned
+    if isinstance(value, dict):
+        return {k: _deep_clean(v) for k, v in value.items() if not k.startswith("__")}
     if isinstance(value, str):
         if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
             return value[1:-1]
         return value
-    if isinstance(value, list):
-        return [_deep_clean(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _deep_clean(v) for k, v in value.items()}
     return value
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    """Collapse hcl2's list-of-one-dict representation of a map/block."""
+    if isinstance(value, list):
+        if len(value) == 1 and isinstance(value[0], dict):
+            return value[0]
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def get_tags(resource: dict[str, Any]) -> dict[str, Any]:
+    """Return a resource's tags as a plain dict."""
+    return _as_dict(resource.get("tags"))
+
+
+def get_rules(resource: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    """Return a list of repeated blocks (ingress/egress/route/transition...)."""
+    value = resource.get(key)
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    if isinstance(value, dict):
+        return [value]
+    return []
 
 
 def parse_hcl(hcl_string: str) -> dict[str, Any]:
@@ -736,8 +771,8 @@ class TestVPCModule:
     def test_vpc_has_tags(self, parsed):
         vpc = get_resources(parsed, "aws_vpc")[0]
         assert "tags" in vpc
-        assert vpc["tags"]["Name"] == "prod-vpc"
-        assert vpc["tags"]["Environment"] == "production"
+        assert get_tags(vpc)["Name"] == "prod-vpc"
+        assert get_tags(vpc)["Environment"] == "production"
 
     def test_flow_log_exists(self, parsed):
         resources = get_resources(parsed, "aws_flow_log")
@@ -757,9 +792,9 @@ class TestVPCModule:
 
     def test_public_route_has_igw(self, parsed):
         route_tables = get_resources(parsed, "aws_route_table")
-        public_rt = [rt for rt in route_tables if rt["tags"]["Name"] == "public-rt"][0]
+        public_rt = [rt for rt in route_tables if get_tags(rt)["Name"] == "public-rt"][0]
         assert "route" in public_rt
-        routes = public_rt["route"]
+        routes = get_rules(public_rt, "route")
         assert any(r.get("cidr_block") == "0.0.0.0/0" for r in routes)
 
 
@@ -781,12 +816,12 @@ class TestSubnetsModule:
 
     def test_public_subnets_exist(self, parsed):
         subnets = get_resources(parsed, "aws_subnet")
-        public = [s for s in subnets if s["tags"]["Tier"] == "public"]
+        public = [s for s in subnets if get_tags(s)["Tier"] == "public"]
         assert len(public) == 2
 
     def test_private_subnets_exist(self, parsed):
         subnets = get_resources(parsed, "aws_subnet")
-        private = [s for s in subnets if s["tags"]["Tier"] == "private"]
+        private = [s for s in subnets if get_tags(s)["Tier"] == "private"]
         assert len(private) == 2
 
     def test_no_public_ip_on_launch(self, parsed):
@@ -823,31 +858,31 @@ class TestSecurityGroupsModule:
     def test_web_sg_allows_https(self, parsed):
         sgs = get_resources(parsed, "aws_security_group")
         web_sg = [sg for sg in sgs if sg["name"] == "prod-web-sg"][0]
-        ingress = web_sg["ingress"]
+        ingress = get_rules(web_sg, "ingress")
         assert any(rule["from_port"] == 443 and rule["to_port"] == 443 for rule in ingress)
 
     def test_web_sg_no_ssh(self, parsed):
         sgs = get_resources(parsed, "aws_security_group")
         web_sg = [sg for sg in sgs if sg["name"] == "prod-web-sg"][0]
-        ingress = web_sg["ingress"]
+        ingress = get_rules(web_sg, "ingress")
         assert not any(rule["from_port"] == 22 for rule in ingress)
 
     def test_app_sg_references_web_sg(self, parsed):
         sgs = get_resources(parsed, "aws_security_group")
         app_sg = [sg for sg in sgs if sg["name"] == "prod-app-sg"][0]
-        ingress = app_sg["ingress"]
+        ingress = get_rules(app_sg, "ingress")
         assert any("security_groups" in rule for rule in ingress)
 
     def test_db_sg_references_app_sg(self, parsed):
         sgs = get_resources(parsed, "aws_security_group")
         db_sg = [sg for sg in sgs if sg["name"] == "prod-db-sg"][0]
-        ingress = db_sg["ingress"]
+        ingress = get_rules(db_sg, "ingress")
         assert any("security_groups" in rule for rule in ingress)
 
     def test_ssh_sg_restricted_cidr(self, parsed):
         sgs = get_resources(parsed, "aws_security_group")
         ssh_sg = [sg for sg in sgs if sg["name"] == "prod-ssh-sg"][0]
-        ingress = ssh_sg["ingress"]
+        ingress = get_rules(ssh_sg, "ingress")
         for rule in ingress:
             if rule["from_port"] == 22:
                 assert "0.0.0.0/0" not in rule.get("cidr_blocks", [])
@@ -885,12 +920,12 @@ class TestEC2Module:
 
     def test_imdsv2_required(self, parsed):
         instance = get_resources(parsed, "aws_instance")[0]
-        metadata = instance["metadata_options"][0]
+        metadata = _as_dict(instance["metadata_options"])
         assert metadata["http_tokens"] == "required"
 
     def test_root_volume_encrypted(self, parsed):
         instance = get_resources(parsed, "aws_instance")[0]
-        root_vol = instance["root_block_device"][0]
+        root_vol = _as_dict(instance["root_block_device"])
         assert root_vol["encrypted"] is True
 
     def test_monitoring_enabled(self, parsed):
@@ -909,7 +944,7 @@ class TestEC2Module:
     def test_instance_has_tags(self, parsed):
         instance = get_resources(parsed, "aws_instance")[0]
         assert "tags" in instance
-        assert instance["tags"]["Name"] == "prod-app-1"
+        assert get_tags(instance)["Name"] == "prod-app-1"
 
 
 # ---------------------------------------------------------------------------
@@ -985,7 +1020,7 @@ class TestS3Module:
     def test_s3_versioning_enabled(self, parsed):
         resources = get_resources(parsed, "aws_s3_bucket_versioning")
         assert len(resources) == 1
-        versioning = resources[0]["versioning_configuration"][0]
+        versioning = _as_dict(resources[0]["versioning_configuration"])
         assert versioning["status"] == "Enabled"
 
     def test_s3_encryption_configured(self, parsed):
@@ -1142,7 +1177,7 @@ class TestCrossModuleIntegration:
                     if isinstance(resources, dict):
                         for resource_name, resource_config in resources.items():
                             if isinstance(resource_config, dict) and "tags" in resource_config:
-                                tags = resource_config["tags"]
+                                tags = get_tags(resource_config)
                                 assert "Name" in tags, (
                                     f"{module_name}.{resource_type}.{resource_name} missing Name tag"
                                 )

@@ -44,26 +44,35 @@ def checkov_bin():
 @pytest.fixture(scope="session")
 def terraform_runner(terraform_bin):
     """Create a TerraformRunner instance."""
-    # Use a temporary directory for the runner
-    tmpdir = tempfile.mkdtemp(prefix="tf_runner_")
     try:
-        runner = TerraformRunner(tmpdir, terraform_bin=terraform_bin)
-        yield runner
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+        # Use a temporary directory for the runner
+        tmpdir = tempfile.mkdtemp(prefix="tf_runner_")
+        try:
+            runner = TerraformRunner(tmpdir, terraform_bin=terraform_bin)
+            yield runner
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    except RuntimeError as e:
+        pytest.skip(f"terraform unavailable: {e}")
 
 
 @pytest.fixture(scope="session")
 def opa_runner(opa_bin):
     """Create an OpaRunner instance."""
-    runner = OpaRunner(opa_bin=opa_bin)
+    try:
+        runner = OpaRunner(opa_bin=opa_bin)
+    except RuntimeError as e:
+        pytest.skip(f"opa unavailable: {e}")
     yield runner
 
 
 @pytest.fixture(scope="session")
 def checkov_runner(checkov_bin):
     """Create a CheckovRunner instance."""
-    runner = CheckovRunner(checkov_bin=checkov_bin)
+    try:
+        runner = CheckovRunner(checkov_bin=checkov_bin)
+    except RuntimeError as e:
+        pytest.skip(f"checkov unavailable: {e}")
     yield runner
 
 

@@ -66,6 +66,7 @@ class TestCheckovPolicyFuzzing:
         if (
             resource_type in ["aws_security_group", "aws_security_group_rule"]
             and "ingress" in props
+            and isinstance(props["ingress"], list)
         ):
             for ingress in props["ingress"]:
                 if isinstance(ingress, dict):

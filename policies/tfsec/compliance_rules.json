@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "id": "DC_COMP_001",
+      "category": "compliance",
+      "title": "Resources must carry accountability labels",
+      "severity": "MEDIUM",
+      "summary": "Every resource must declare an owner and environment.",
+      "description": "Without an owner label, change control cannot route approvals and audit evidence cannot be attributed to an accountable party.",
+      "remediation": "Set tags.owner and tags.Environment on all resources.",
+      "resource_types": ["aws_instance", "aws_db_instance", "aws_s3_bucket"],
+      "checks": [
+        {
+          "condition": "tags.owner is set AND tags.Environment is set",
+          "verdict": "fail when absent"
+        }
+      ]
+    },
+    {
+      "id": "DC_COMP_002",
+      "category": "compliance",
+      "title": "Backup and retention must be configured",
+      "severity": "HIGH",
+      "summary": "Stateful resources must define a retention window of at least 7 days.",
+      "description": "Retention below a week leaves no recovery point for a slow-burning integrity incident, which typically surfaces after several days.",
+      "remediation": "Set backup retention to 7 days or more.",
+      "resource_types": ["aws_db_instance", "aws_elasticache_cluster"],
+      "checks": [
+        {
+          "condition": "backup.retention_days >= 7",
+          "verdict": "fail"
+        }
+      ]
+    }
+  ]
+}
