@@ -4,18 +4,12 @@
 
 import json
 import os
-import subprocess
-import time
 from datetime import datetime
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-import yaml
-
 from soc_integration import (
-    AlertStatus,
     Misconfiguration,
     OpaEvaluator,
     PolicyEvaluation,
@@ -29,10 +23,10 @@ from soc_integration import (
     Vulnerability,
 )
 
-
 # =============================================================================
 # FIXTURES
 # =============================================================================
+
 
 @pytest.fixture
 def sample_vulnerability():
@@ -45,7 +39,7 @@ def sample_vulnerability():
         title="Critical vulnerability in OpenSSL",
         description="A critical vulnerability was found in OpenSSL",
         cvss_score=9.8,
-        references=["https://nvd.nist.gov/vuln/detail/CVE-2026-12345"]
+        references=["https://nvd.nist.gov/vuln/detail/CVE-2026-12345"],
     )
 
 
@@ -57,7 +51,7 @@ def sample_scan_result(sample_vulnerability):
         vulnerabilities=[sample_vulnerability],
         misconfigurations=[],
         secrets=[],
-        scan_time=datetime.utcnow()
+        scan_time=datetime.utcnow(),
     )
 
 
@@ -69,7 +63,7 @@ def sample_misconfiguration():
         title="Container runs as root",
         description="Container should not run as root",
         message="Container runs as root user",
-        resolution="Set USER instruction in Dockerfile"
+        resolution="Set USER instruction in Dockerfile",
     )
 
 
@@ -80,7 +74,7 @@ def sample_secret():
         severity=Severity.CRITICAL,
         category="AWS",
         title="AWS Access Key",
-        match="AKIAIOSFODNN7EXAMPLE"
+        match="AKIAIOSFODNN7EXAMPLE",
     )
 
 
@@ -103,6 +97,7 @@ def soc_integration():
 # VULNERABILITY TESTS
 # =============================================================================
 
+
 class TestVulnerability:
     def test_vulnerability_creation(self, sample_vulnerability):
         assert sample_vulnerability.id == "CVE-2026-12345"
@@ -119,7 +114,7 @@ class TestVulnerability:
                 installed_version="1.0",
                 fixed_version="1.1",
                 title="Test",
-                description="Test"
+                description="Test",
             )
             assert vuln.severity == severity
 
@@ -127,6 +122,7 @@ class TestVulnerability:
 # =============================================================================
 # SCAN RESULT TESTS
 # =============================================================================
+
 
 class TestScanResult:
     def test_scan_result_creation(self, sample_scan_result):
@@ -148,7 +144,7 @@ class TestScanResult:
                     installed_version="1.0",
                     fixed_version="1.1",
                     title="Test",
-                    description="Test"
+                    description="Test",
                 ),
                 Vulnerability(
                     id="CVE-2026-00003",
@@ -157,9 +153,9 @@ class TestScanResult:
                     installed_version="1.0",
                     fixed_version="1.1",
                     title="Test",
-                    description="Test"
+                    description="Test",
                 ),
-            ]
+            ],
         )
 
         assert scan_result.critical_count == 1
@@ -173,15 +169,12 @@ class TestScanResult:
 # TRIVY SCANNER TESTS
 # =============================================================================
 
+
 class TestTrivyScanner:
     @patch("subprocess.run")
     def test_scan_image(self, mock_run, trivy_scanner):
         # Mock Trivy output
-        mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout="",
-            stderr=""
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
 
         # Create mock report file
         report_data = {
@@ -197,19 +190,19 @@ class TestTrivyScanner:
                             "InstalledVersion": "1.1.1",
                             "FixedVersion": "1.1.2",
                             "Title": "Test",
-                            "Description": "Test"
+                            "Description": "Test",
                         }
                     ]
                 }
-            ]
+            ],
         }
 
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", MagicMock()):
-                with patch("json.load", return_value=report_data):
-                    result = trivy_scanner.scan_image("test:latest")
-                    assert result.image == "test:latest"
-                    assert result.total_count == 1
+        with patch("pathlib.Path.exists", return_value=True), patch(
+            "builtins.open", MagicMock()
+        ), patch("json.load", return_value=report_data):
+            result = trivy_scanner.scan_image("test:latest")
+            assert result.image == "test:latest"
+            assert result.total_count == 1
 
     def test_parse_report(self, trivy_scanner, tmp_path):
         report_data = {
@@ -225,7 +218,7 @@ class TestTrivyScanner:
                             "InstalledVersion": "1.1.1",
                             "FixedVersion": "1.1.2",
                             "Title": "Test",
-                            "Description": "Test"
+                            "Description": "Test",
                         }
                     ],
                     "Misconfigurations": [
@@ -235,7 +228,7 @@ class TestTrivyScanner:
                             "Title": "Test",
                             "Description": "Test",
                             "Message": "Test",
-                            "Resolution": "Test"
+                            "Resolution": "Test",
                         }
                     ],
                     "Secrets": [
@@ -244,11 +237,11 @@ class TestTrivyScanner:
                             "Severity": "CRITICAL",
                             "Category": "AWS",
                             "Title": "Test",
-                            "Match": "AKIAIOSFODNN7EXAMPLE"
+                            "Match": "AKIAIOSFODNN7EXAMPLE",
                         }
-                    ]
+                    ],
                 }
-            ]
+            ],
         }
 
         report_file = tmp_path / "report.json"
@@ -268,17 +261,14 @@ class TestTrivyScanner:
 # OPA EVALUATOR TESTS
 # =============================================================================
 
+
 class TestOpaEvaluator:
     @patch("requests.post")
-    def test_evaluate_container_security_allowed(self, mock_post, opa_evaluator, sample_scan_result):
+    def test_evaluate_container_security_allowed(
+        self, mock_post, opa_evaluator, sample_scan_result
+    ):
         mock_post.return_value = MagicMock(
-            status_code=200,
-            json=lambda: {
-                "result": {
-                    "allow": True,
-                    "violations": []
-                }
-            }
+            status_code=200, json=lambda: {"result": {"allow": True, "violations": []}}
         )
 
         result = opa_evaluator.evaluate_container_security(sample_scan_result)
@@ -293,9 +283,9 @@ class TestOpaEvaluator:
             json=lambda: {
                 "result": {
                     "allow": False,
-                    "violations": ["CRITICAL: Image has 1 critical vulnerabilities"]
+                    "violations": ["CRITICAL: Image has 1 critical vulnerabilities"],
                 }
-            }
+            },
         )
 
         result = opa_evaluator.evaluate_container_security(sample_scan_result)
@@ -304,7 +294,9 @@ class TestOpaEvaluator:
         assert len(result.violations) == 1
 
     @patch("requests.post")
-    def test_evaluate_container_security_timeout(self, mock_post, opa_evaluator, sample_scan_result):
+    def test_evaluate_container_security_timeout(
+        self, mock_post, opa_evaluator, sample_scan_result
+    ):
         mock_post.side_effect = requests.exceptions.Timeout()
 
         result = opa_evaluator.evaluate_container_security(sample_scan_result)
@@ -317,13 +309,12 @@ class TestOpaEvaluator:
 # SOC INTEGRATION TESTS
 # =============================================================================
 
+
 class TestSocIntegration:
     def test_process_scan_result_allowed(self, soc_integration, sample_scan_result):
         with patch.object(OpaEvaluator, "evaluate_container_security") as mock_eval:
             mock_eval.return_value = PolicyEvaluation(
-                allowed=True,
-                violations=[],
-                policy="container-security"
+                allowed=True, violations=[], policy="container-security"
             )
 
             alert = soc_integration.process_scan_result(sample_scan_result)
@@ -335,7 +326,7 @@ class TestSocIntegration:
             mock_eval.return_value = PolicyEvaluation(
                 allowed=False,
                 violations=["CRITICAL: Image has 1 critical vulnerabilities"],
-                policy="container-security"
+                policy="container-security",
             )
 
             with patch.object(SocIntegration, "_route_alert"):
@@ -351,13 +342,14 @@ class TestSocIntegration:
             severity=Severity.HIGH,
             title="Test Alert",
             description="Test Description",
-            source="test"
+            source="test",
         )
 
-        with patch.dict(os.environ, {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/test"}):
-            with patch("requests.post") as mock_post:
-                soc_integration._send_slack_notification(alert)
-                mock_post.assert_called_once()
+        with patch.dict(os.environ, {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/test"}), patch(
+            "requests.post"
+        ) as mock_post:
+            soc_integration._send_slack_notification(alert)
+            mock_post.assert_called_once()
 
     def test_route_alert_pagerduty(self, soc_integration):
         alert = SecurityAlert(
@@ -365,13 +357,14 @@ class TestSocIntegration:
             severity=Severity.CRITICAL,
             title="Test Alert",
             description="Test Description",
-            source="test"
+            source="test",
         )
 
-        with patch.dict(os.environ, {"PAGERDUTY_KEY": "test-key"}):
-            with patch("requests.post") as mock_post:
-                soc_integration._send_pagerduty_notification(alert)
-                mock_post.assert_called_once()
+        with patch.dict(os.environ, {"PAGERDUTY_KEY": "test-key"}), patch(
+            "requests.post"
+        ) as mock_post:
+            soc_integration._send_pagerduty_notification(alert)
+            mock_post.assert_called_once()
 
     def test_auto_remediate_critical(self, soc_integration):
         alert = SecurityAlert(
@@ -380,7 +373,7 @@ class TestSocIntegration:
             title="Test Alert",
             description="Test Description",
             source="test",
-            metadata={"image": "test:latest"}
+            metadata={"image": "test:latest"},
         )
 
         with patch.object(SocIntegration, "_quarantine_pod", return_value=True):
@@ -396,7 +389,7 @@ class TestSocIntegration:
             title="Test Alert",
             description="Test Description",
             source="test",
-            metadata={"image": "test:latest"}
+            metadata={"image": "test:latest"},
         )
 
         with patch.object(SocIntegration, "_scale_down_deployment", return_value=True):
@@ -409,6 +402,7 @@ class TestSocIntegration:
 # =============================================================================
 # INTEGRATION TESTS
 # =============================================================================
+
 
 class TestIntegration:
     @patch("subprocess.run")
@@ -431,11 +425,11 @@ class TestIntegration:
                             "InstalledVersion": "1.1.1",
                             "FixedVersion": "1.1.2",
                             "Title": "Test",
-                            "Description": "Test"
+                            "Description": "Test",
                         }
                     ]
                 }
-            ]
+            ],
         }
 
         report_file = tmp_path / "report.json"
@@ -448,9 +442,9 @@ class TestIntegration:
             json=lambda: {
                 "result": {
                     "allow": False,
-                    "violations": ["CRITICAL: Image has 1 critical vulnerabilities"]
+                    "violations": ["CRITICAL: Image has 1 critical vulnerabilities"],
                 }
-            }
+            },
         )
 
         # Run workflow

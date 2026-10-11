@@ -181,7 +181,8 @@ class TestComplianceScanWithModules:
 
         # Create main config that uses the module
         with open(os.path.join(temp_workspace, "main.tf"), "w") as f:
-            f.write("""
+            f.write(
+                """
 module "vpc" {
   source = "./modules/vpc"
 }
@@ -195,13 +196,14 @@ resource "aws_instance" "server" {
     Owner       = "test-team"
   }
 }
-""")
+"""
+            )
 
         result = checkov_runner.scan_directory(temp_workspace)
         # Modules add overhead
-        assert result.elapsed_ms < 60_000, (
-            f"scan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
-        )
+        assert (
+            result.elapsed_ms < 60_000
+        ), f"scan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
 
 
 @pytest.mark.checkov

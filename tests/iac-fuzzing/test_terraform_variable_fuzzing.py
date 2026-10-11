@@ -97,7 +97,7 @@ class TestTerraformVariableFuzzing:
             "nullable": True,
         }
         assert isinstance(var["name"], str)
-        assert isinstance(var["default"], (str, list, dict))
+        assert isinstance(var["default"], str | list | dict)
 
     @given(var=terraform_variable())
     def test_variable_sensitive_flag(self, var):

@@ -12,7 +12,7 @@ Module-level attributes for test patch compatibility (unittest.mock):
 - min_samples: Minimum records for adaptive tuning (default 5)
 """
 
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any
 
 # Module-level attributes for test patch compatibility (unittest.mock).
 # These are set at import time; tests may patch them to control behavior.
@@ -20,9 +20,6 @@ base_threshold = 0.5  # type: ignore  # noqa: F811
 damping = 0.95  # type: ignore  # noqa: F811
 adaptation_rate = 0.99  # type: ignore  # noqa: F811
 min_samples = 5  # type: ignore  # noqa: F811
-
-import numpy as np
-from collections import defaultdict
 
 
 class AdaptiveThreatDetector:
@@ -55,16 +52,16 @@ class AdaptiveThreatDetector:
         # Evolutionary state
         self._iteration: int = 0
         self._current_threshold: float = base_threshold
-        self._score_history: List[float] = []
-        self._tp_counts: List[int] = []  # True positive counts per iteration
-        self._fp_counts: List[int] = []  # False positive counts per iteration
+        self._score_history: list[float] = []
+        self._tp_counts: list[int] = []  # True positive counts per iteration
+        self._fp_counts: list[int] = []  # False positive counts per iteration
 
     def evaluate_alert(
         self,
         record: dict,
         ioc_score: float,
         severity: str = "medium",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Evaluate single alert with adaptive threshold.
 
         Returns threat assessment with evolutionary parameters.
@@ -124,9 +121,7 @@ class AdaptiveThreatDetector:
         """
         # Apply damping to adjustment
         adjustment = performance_feedback * 0.1 * self.damping
-        self._current_threshold = max(
-            0.01, min(0.99, self._current_threshold + adjustment)
-        )
+        self._current_threshold = max(0.01, min(0.99, self._current_threshold + adjustment))
 
         # Decay adaptation rate slowly
         self.adaptation_rate *= self.adaptation_rate  # maintain, could decay slower
@@ -139,12 +134,8 @@ class AdaptiveThreatDetector:
             "iteration": self._iteration,
             "adaptation_rate": round(self.adaptation_rate, 4),
             "score_history_len": len(self._score_history),
-            "mean_score": round(
-                sum(self._score_history) / max(1, len(self._score_history)), 4
-            ),
-            "convergence_tracker": round(
-                self._current_threshold / self.base_threshold, 4
-            )
+            "mean_score": round(sum(self._score_history) / max(1, len(self._score_history)), 4),
+            "convergence_tracker": round(self._current_threshold / self.base_threshold, 4)
             if self.base_threshold > 0
             else 0.0,
         }
@@ -169,8 +160,9 @@ class AdaptiveThreatDetector:
 
 def adaptive_threat_benchmark() -> dict:
     """Run adaptive threat detection benchmark with evaluation parameters."""
-    import numpy as np
     import time
+
+    import numpy as np
 
     # Simulate alert records with varying IOC scores
     np.random.seed(42)
@@ -202,7 +194,7 @@ def adaptive_threat_benchmark() -> dict:
     start = time.time()
 
     assessments = []
-    for i, (score, true_label) in enumerate(zip(all_scores, true_labels)):
+    for i, (score, true_label) in enumerate(zip(all_scores, true_labels, strict=False)):
         record = {
             "record_id": i,
             "timestamp": f"2024-01-15T{(i % 1440):02d}:{(i % 60):02d}:00Z",
@@ -210,20 +202,24 @@ def adaptive_threat_benchmark() -> dict:
             "ground_truth": true_label,  # For adaptive tuning
         }
 
-        assessment = detector.evaluate_alert(record, score, severity=["low", "medium", "high"][i % 3])
+        assessment = detector.evaluate_alert(
+            record, score, severity=["low", "medium", "high"][i % 3]
+        )
         assessments.append(assessment)
 
-    elapsed = time.time() - start
-
     # Compute evaluation metrics
-    threshold = detector.get_evolutionary_parameters()["current_threshold"]
     predicted_threats = [a["is_threat"] for a in assessments]
 
     # Compute precision/recall/f1
-    true_positives = sum(1 for a, t in zip(predicted_threats, true_labels) if a and t == 1)
-    false_positives = sum(1 for a, t in zip(predicted_threats, true_labels) if a and t == 0)
-    false_negatives = sum(1 for a, t in zip(predicted_threats, true_labels) if not a and t == 1)
-    true_negatives = sum(1 for a, t in zip(predicted_threats, true_labels) if not a and t == 0)
+    true_positives = sum(
+        1 for a, t in zip(predicted_threats, true_labels, strict=False) if a and t == 1
+    )
+    false_positives = sum(
+        1 for a, t in zip(predicted_threats, true_labels, strict=False) if a and t == 0
+    )
+    false_negatives = sum(
+        1 for a, t in zip(predicted_threats, true_labels, strict=False) if not a and t == 1
+    )
 
     precision = true_positives / max(1, true_positives + false_positives)
     recall = true_positives / max(1, true_positives + false_negatives)

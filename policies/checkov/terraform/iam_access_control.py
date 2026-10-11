@@ -3,7 +3,7 @@ Checkov Custom Policies — IAM & Access Control for Data Center IaC
 Covers: IAM policies, MFA, password policies, role trust, least privilege
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -20,14 +20,20 @@ class IAMPolicyNotWildcard(BaseResourceCheck):
             "aws_iam_user_policy",
         ]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         policy = conf.get("policy", "")
         if isinstance(policy, list):
             policy = policy[0] if policy else ""
         if isinstance(policy, str):
-            if '"Action": "*"' in policy or '"Action":["*"]' in policy or '"Action": ["*"]' in policy:
+            if (
+                '"Action": "*"' in policy
+                or '"Action":["*"]' in policy
+                or '"Action": ["*"]' in policy
+            ):
                 return CheckResult.FAILED
         return CheckResult.PASSED
 
@@ -40,14 +46,19 @@ class IAMRoleTrustPolicyNotWildcard(BaseResourceCheck):
         id = "DC_IAM_002"
         supported_resources = ["aws_iam_role"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         assume_role_policy = conf.get("assume_role_policy", "")
         if isinstance(assume_role_policy, list):
             assume_role_policy = assume_role_policy[0] if assume_role_policy else ""
         if isinstance(assume_role_policy, str):
-            if '"Principal": "*"' in assume_role_policy or '"Principal":{"AWS":"*"}' in assume_role_policy:
+            if (
+                '"Principal": "*"' in assume_role_policy
+                or '"Principal":{"AWS":"*"}' in assume_role_policy
+            ):
                 return CheckResult.FAILED
         return CheckResult.PASSED
 
@@ -60,7 +71,9 @@ class IAMUserHasMFA(BaseResourceCheck):
         id = "DC_IAM_003"
         supported_resources = ["aws_iam_virtual_mfa_device"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If a virtual MFA device exists, MFA is being used
@@ -80,7 +93,9 @@ class IAMPasswordPolicyStrong(BaseResourceCheck):
         id = "DC_IAM_004"
         supported_resources = ["aws_iam_account_password_policy"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         minimum_password_length = conf.get("minimum_password_length", 6)
@@ -113,7 +128,9 @@ class IAMRoleHasDescription(BaseResourceCheck):
         id = "DC_IAM_005"
         supported_resources = ["aws_iam_role"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         description = conf.get("description", "")
@@ -132,7 +149,9 @@ class IAMGroupHasUsers(BaseResourceCheck):
         id = "DC_IAM_006"
         supported_resources = ["aws_iam_group_membership"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         users = conf.get("users", [])
@@ -149,7 +168,9 @@ class IAMPolicyAttachedToGroupOrRole(BaseResourceCheck):
         id = "DC_IAM_007"
         supported_resources = ["aws_iam_user_policy_attachment"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # This check flags direct user policy attachments
@@ -169,7 +190,9 @@ class IAMNoAdminAccessPolicy(BaseResourceCheck):
             "aws_iam_user_policy",
         ]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         policy = conf.get("policy", "")
@@ -189,7 +212,9 @@ class IAMRoleMaxSessionDuration(BaseResourceCheck):
         id = "DC_IAM_009"
         supported_resources = ["aws_iam_role"]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         max_session_duration = conf.get("max_session_duration", 3600)
@@ -222,7 +247,9 @@ class IAMPolicyNoFullAccess(BaseResourceCheck):
             "aws_iam_user_policy",
         ]
         categories = [CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         policy = conf.get("policy", "")

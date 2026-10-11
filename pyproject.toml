@@ -54,6 +54,17 @@ src = ["src", "tests"]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
 ignore = ["E501"]
 
+# Vendored scanner policy modules (checkov/tracing) ship their own guard style:
+# deeply nested isinstance/port checks where merging conditions would obscure
+# intent, and loop variables kept for readability. Lint project code, not these.
+[tool.ruff.lint.per-file-ignores]
+"policies/**" = ["SIM102", "SIM110", "SIM114", "B007", "N802"]
+"tracing/**" = ["SIM102", "SIM110", "SIM114", "B007", "N802"]
+"docker/**" = ["SIM102", "SIM110", "SIM114", "B007", "N802"]
+"security/**" = ["SIM102", "SIM110", "SIM114", "B007", "N802"]
+"logging/**" = ["SIM102", "SIM110", "SIM114", "B007", "N802"]
+"monitoring/**" = ["SIM102", "SIM110", "SIM114", "B007", "N802"]
+
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = true

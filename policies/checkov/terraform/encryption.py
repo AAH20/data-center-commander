@@ -3,7 +3,7 @@ Checkov Custom Policies — Encryption & Key Management for Data Center IaC
 Covers: KMS key rotation, encryption at rest, TLS enforcement, secrets management
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -15,7 +15,9 @@ class KMSKeyRotationEnabled(BaseResourceCheck):
         id = "DC_CRYPTO_001"
         supported_resources = ["aws_kms_key"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         enable_key_rotation = conf.get("enable_key_rotation", False)
@@ -34,7 +36,9 @@ class KMSKeyHasDescription(BaseResourceCheck):
         id = "DC_CRYPTO_002"
         supported_resources = ["aws_kms_key"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         description = conf.get("description", "")
@@ -53,7 +57,9 @@ class KMSKeyPolicyNotWildcard(BaseResourceCheck):
         id = "DC_CRYPTO_003"
         supported_resources = ["aws_kms_key"]
         categories = [CheckCategories.ENCRYPTION, CheckCategories.IAM]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         policy = conf.get("policy", "")
@@ -72,7 +78,9 @@ class ALBListenerHTTPS(BaseResourceCheck):
         id = "DC_CRYPTO_004"
         supported_resources = ["aws_lb_listener", "aws_alb_listener"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         protocol = conf.get("protocol", "")
@@ -96,7 +104,9 @@ class CloudFrontTLSVersion(BaseResourceCheck):
         id = "DC_CRYPTO_005"
         supported_resources = ["aws_cloudfront_distribution"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         viewer_certificate = conf.get("viewer_certificate", {})
@@ -105,7 +115,9 @@ class CloudFrontTLSVersion(BaseResourceCheck):
         if isinstance(viewer_certificate, dict):
             minimum_protocol_version = viewer_certificate.get("minimum_protocol_version", "TLSv1")
             if isinstance(minimum_protocol_version, list):
-                minimum_protocol_version = minimum_protocol_version[0] if minimum_protocol_version else "TLSv1"
+                minimum_protocol_version = (
+                    minimum_protocol_version[0] if minimum_protocol_version else "TLSv1"
+                )
             if minimum_protocol_version in ["TLSv1", "TLSv1.1", "SSLv3"]:
                 return CheckResult.FAILED
         return CheckResult.PASSED
@@ -119,7 +131,9 @@ class S3BucketSSLOnly(BaseResourceCheck):
         id = "DC_CRYPTO_006"
         supported_resources = ["aws_s3_bucket_policy"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         policy = conf.get("policy", "")
@@ -139,7 +153,9 @@ class SecretsManagerRotationEnabled(BaseResourceCheck):
         id = "DC_CRYPTO_007"
         supported_resources = ["aws_secretsmanager_secret"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         rotation_rules = conf.get("rotation_rules", [])
@@ -156,7 +172,9 @@ class ACMCertificateHasKey(BaseResourceCheck):
         id = "DC_CRYPTO_008"
         supported_resources = ["aws_acm_certificate"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # ACM certificates are managed by AWS, so we just check they exist
@@ -176,7 +194,9 @@ class DynamoDBEncryptionEnabled(BaseResourceCheck):
         id = "DC_CRYPTO_009"
         supported_resources = ["aws_dynamodb_table"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         server_side_encryption = conf.get("server_side_encryption", [])
@@ -193,7 +213,9 @@ class ElasticacheEncryptionEnabled(BaseResourceCheck):
         id = "DC_CRYPTO_010"
         supported_resources = ["aws_elasticache_replication_group"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         at_rest_encryption = conf.get("at_rest_encryption_enabled", False)

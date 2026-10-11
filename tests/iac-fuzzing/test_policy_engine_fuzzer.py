@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 # Add parent directories to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from generators import (
+from generators import (  # noqa: E402 — sys.path must be set before importing local helpers
     policy_input,
 )
 

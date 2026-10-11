@@ -6,21 +6,19 @@ a comprehensive evaluation report with evolution parameters.
 from __future__ import annotations
 
 import json
-import time
 import statistics
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from dcc.optimization_kernels import (
     Asset,
-    CapacityDimension,
     EnergyRequest,
     NetworkNode,
     Technician,
-    WorkOrder,
     Workload,
-    capacity_allocation,
+    WorkOrder,
     clarke_wright_savings,
     dsatur_zoning,
     first_fit_decreasing,
@@ -116,6 +114,7 @@ class OptimizationEvaluator:
         for seed in range(test_cases):
             # Generate random workloads and assets
             import random
+
             random.seed(seed)
 
             n_workloads = random.randint(5, 50)
@@ -181,6 +180,7 @@ class OptimizationEvaluator:
 
         for seed in range(test_cases):
             import random
+
             random.seed(seed)
 
             n_orders = random.randint(3, 20)
@@ -256,6 +256,7 @@ class OptimizationEvaluator:
 
         for seed in range(test_cases):
             import random
+
             random.seed(seed)
 
             n_nodes = random.randint(3, 30)
@@ -312,6 +313,7 @@ class OptimizationEvaluator:
 
         for seed in range(test_cases):
             import random
+
             random.seed(seed)
 
             n_requests = random.randint(2, 20)
@@ -335,8 +337,7 @@ class OptimizationEvaluator:
 
             # Check: min fair share respected
             min_share_ok = all(
-                result.get(r.workload_id, 0) >= r.min_fair_share * 0.99
-                for r in requests
+                result.get(r.workload_id, 0) >= r.min_fair_share * 0.99 for r in requests
             )
 
             quality = 1.0 - budget_error
@@ -391,11 +392,7 @@ class EvolutionTracker:
 
     def trend(self, metric: str) -> list[float]:
         """Get the trend of a metric across runs."""
-        return [
-            run.get("metrics", {}).get(metric, 0)
-            for run in self.history
-            if "metrics" in run
-        ]
+        return [run.get("metrics", {}).get(metric, 0) for run in self.history if "metrics" in run]
 
     def summary(self) -> dict[str, Any]:
         if not self.history:
@@ -421,13 +418,9 @@ def run_full_evaluation() -> dict[str, Any]:
 
     # Benchmark FFD with various sizes
     for n in [10, 50, 100, 500]:
-        workloads = [
-            Workload(f"w{i}", f"wl{i}", cpu_cores=2, ram_gb=4)
-            for i in range(n)
-        ]
+        workloads = [Workload(f"w{i}", f"wl{i}", cpu_cores=2, ram_gb=4) for i in range(n)]
         assets = [
-            Asset(f"a{i}", f"server{i}", total_cpu=64, total_ram=256)
-            for i in range(max(1, n // 5))
+            Asset(f"a{i}", f"server{i}", total_cpu=64, total_ram=256) for i in range(max(1, n // 5))
         ]
         runner.run_benchmark(
             f"FFD_placement_n={n}",
@@ -453,8 +446,7 @@ def run_full_evaluation() -> dict[str, Any]:
     # Benchmark energy allocation
     for n in [10, 50, 100]:
         requests = [
-            EnergyRequest(f"w{i}", energy_kwh=100, useful_work_per_kwh=10)
-            for i in range(n)
+            EnergyRequest(f"w{i}", energy_kwh=100, useful_work_per_kwh=10) for i in range(n)
         ]
         runner.run_benchmark(
             f"Energy_allocation_n={n}",
@@ -503,10 +495,14 @@ def run_full_evaluation() -> dict[str, Any]:
     print(f"Overall pass rate: {report['summary']['overall_pass_rate']}%")
 
     for b in report["performance"]["benchmarks"]:
-        print(f"  {b['name']}: mean={b['mean_ms']:.3f}ms, p99={b['p99_ms']:.3f}ms, throughput={b['throughput_per_sec']:.0f}/s")
+        print(
+            f"  {b['name']}: mean={b['mean_ms']:.3f}ms, p99={b['p99_ms']:.3f}ms, throughput={b['throughput_per_sec']:.0f}/s"
+        )
 
     for q in report["quality"]["optimization_quality"]:
-        print(f"  {q['problem']}: {q['passed']}/{q['test_cases']} passed ({q['pass_rate']}%), quality={q['avg_quality_score']:.3f}")
+        print(
+            f"  {q['problem']}: {q['passed']}/{q['test_cases']} passed ({q['pass_rate']}%), quality={q['avg_quality_score']:.3f}"
+        )
 
     return report
 

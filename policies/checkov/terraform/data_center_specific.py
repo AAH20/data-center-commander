@@ -3,7 +3,7 @@ Checkov Custom Policies — Data Center Specific for Data Center IaC
 Covers: Multi-AZ, disaster recovery, capacity planning, hardware redundancy
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -15,7 +15,9 @@ class RDSMultiAZEnabled(BaseResourceCheck):
         id = "DC_DC_001"
         supported_resources = ["aws_db_instance", "aws_rds_cluster"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         multi_az = conf.get("multi_az", False)
@@ -34,7 +36,9 @@ class AutoScalingGroupMultiAZ(BaseResourceCheck):
         id = "DC_DC_002"
         supported_resources = ["aws_autoscaling_group"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         availability_zones = conf.get("availability_zones", [])
@@ -54,7 +58,9 @@ class ELBCrossZoneLoadBalancing(BaseResourceCheck):
         id = "DC_DC_003"
         supported_resources = ["aws_lb", "aws_alb", "aws_elb"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         cross_zone = conf.get("cross_zone_load_balancing", False)
@@ -73,7 +79,9 @@ class S3BucketCrossRegionReplication(BaseResourceCheck):
         id = "DC_DC_004"
         supported_resources = ["aws_s3_bucket_replication_configuration"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If replication configuration exists, cross-region replication is set up
@@ -91,7 +99,9 @@ class DynamoDBGlobalTables(BaseResourceCheck):
         id = "DC_DC_005"
         supported_resources = ["aws_dynamodb_global_table"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If a global table exists, it's enabled
@@ -111,7 +121,9 @@ class Route53HealthCheckEnabled(BaseResourceCheck):
         id = "DC_DC_006"
         supported_resources = ["aws_route53_record"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         health_check_id = conf.get("health_check_id", "")
@@ -130,7 +142,9 @@ class CloudFrontWAFEnabled(BaseResourceCheck):
         id = "DC_DC_007"
         supported_resources = ["aws_cloudfront_distribution"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         web_acl_id = conf.get("web_acl_id", "")
@@ -149,7 +163,9 @@ class ShieldAdvancedEnabled(BaseResourceCheck):
         id = "DC_DC_008"
         supported_resources = ["aws_shield_protection"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If a Shield protection exists, it's enabled
@@ -169,7 +185,9 @@ class DirectConnectHasBackup(BaseResourceCheck):
         id = "DC_DC_009"
         supported_resources = ["aws_dx_connection"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # This is a best-effort check — if a DX connection exists, assume backup is configured
@@ -189,7 +207,9 @@ class VPNConnectionHasRedundancy(BaseResourceCheck):
         id = "DC_DC_010"
         supported_resources = ["aws_vpn_connection"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # AWS VPN connections always have 2 tunnels by default

@@ -8,7 +8,7 @@ import sys
 
 # Add the opa directory to the path for helpers
 sys.path.insert(0, os.path.dirname(__file__))
-from helpers import make_resource, run_opa
+from helpers import make_resource, run_opa  # noqa: E402,I001 — sys.path must be set before importing local helpers
 
 
 class TestResourceTaggingCompliance:

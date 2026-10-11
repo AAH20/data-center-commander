@@ -8,9 +8,8 @@ import json
 import logging
 import os
 import signal
-import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -49,7 +48,7 @@ class LogProcessor:
     def __init__(self):
         self.es = Elasticsearch([ES_URL])
         self.loki_url = LOKI_URL
-        self.last_check = datetime.now(timezone.utc).isoformat()
+        self.last_check = datetime.now(UTC).isoformat()
 
     def check_connections(self) -> bool:
         """Verify both backends are reachable."""
@@ -99,7 +98,7 @@ class LogProcessor:
         source = log.get("_source", {})
 
         # Add processing metadata
-        source["processed_at"] = datetime.now(timezone.utc).isoformat()
+        source["processed_at"] = datetime.now(UTC).isoformat()
         source["processor"] = "log-processor"
 
         # Normalize log level
@@ -132,7 +131,7 @@ class LogProcessor:
                 "service": log.get("service", "unknown"),
                 "source": "log-processor",
             }
-            timestamp = log.get("@timestamp", datetime.now(timezone.utc).isoformat())
+            timestamp = log.get("@timestamp", datetime.now(UTC).isoformat())
             # Loki expects nanosecond timestamps
             try:
                 dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
@@ -217,7 +216,7 @@ class LogProcessor:
                 if logs:
                     enriched = [self.enrich_log(log) for log in logs]
                     self.push_to_loki(enriched)
-                    self.last_check = datetime.now(timezone.utc).isoformat()
+                    self.last_check = datetime.now(UTC).isoformat()
                     logger.info(f"Processed {len(logs)} logs")
                 else:
                     logger.debug("No new logs to process")

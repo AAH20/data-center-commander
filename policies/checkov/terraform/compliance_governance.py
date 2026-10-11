@@ -3,7 +3,7 @@ Checkov Custom Policies — Compliance & Governance for Data Center IaC
 Covers: Resource tagging, backup policies, environment separation, cost controls
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -26,7 +26,9 @@ class ResourceHasTags(BaseResourceCheck):
             "aws_rds_cluster",
         ]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         tags = conf.get("tags", {})
@@ -49,7 +51,9 @@ class BackupVaultExists(BaseResourceCheck):
         id = "DC_GOV_002"
         supported_resources = ["aws_backup_vault"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         name = conf.get("name", "")
@@ -68,7 +72,9 @@ class BackupPlanExists(BaseResourceCheck):
         id = "DC_GOV_003"
         supported_resources = ["aws_backup_plan"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         rule = conf.get("rule", [])
@@ -80,7 +86,16 @@ class BackupPlanExists(BaseResourceCheck):
 class EnvironmentTagSeparation(BaseResourceCheck):
     """Ensure resources are tagged with environment for separation."""
 
-    VALID_ENVIRONMENTS = ["dev", "development", "staging", "stage", "prod", "production", "test", "qa"]
+    VALID_ENVIRONMENTS = [
+        "dev",
+        "development",
+        "staging",
+        "stage",
+        "prod",
+        "production",
+        "test",
+        "qa",
+    ]
 
     def __init__(self):
         name = "Ensure resources are tagged with valid environment"
@@ -95,7 +110,9 @@ class EnvironmentTagSeparation(BaseResourceCheck):
             "aws_db_instance",
         ]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         tags = conf.get("tags", {})
@@ -126,7 +143,9 @@ class CostAllocationTags(BaseResourceCheck):
             "aws_rds_cluster",
         ]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         tags = conf.get("tags", {})
@@ -147,7 +166,9 @@ class S3BucketLifecyclePolicy(BaseResourceCheck):
         id = "DC_GOV_006"
         supported_resources = ["aws_s3_bucket"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         lifecycle_rule = conf.get("lifecycle_rule", [])
@@ -164,7 +185,9 @@ class RDSSnapshotRetention(BaseResourceCheck):
         id = "DC_GOV_007"
         supported_resources = ["aws_db_instance"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         backup_retention_period = conf.get("backup_retention_period", 0)
@@ -183,7 +206,9 @@ class VPCHasDHCPOptions(BaseResourceCheck):
         id = "DC_GOV_008"
         supported_resources = ["aws_vpc"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # DHCP options are usually associated at the account level
@@ -210,7 +235,9 @@ class ResourceHasName(BaseResourceCheck):
             "aws_iam_policy",
         ]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         tags = conf.get("tags", {})
@@ -233,7 +260,9 @@ class S3BucketReplicationEnabled(BaseResourceCheck):
         id = "DC_GOV_010"
         supported_resources = ["aws_s3_bucket_replication_configuration"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If replication configuration exists, it's enabled

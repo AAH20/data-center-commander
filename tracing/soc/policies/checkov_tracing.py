@@ -1,7 +1,7 @@
 # Checkov custom policies for SOC tracing infrastructure
 # Place in policies/checkov/terraform/ or use with --external-checks-dir
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -13,7 +13,9 @@ class OTelCollectorEnabledCheck(BaseResourceCheck):
         id = "DC_TRACE_001"
         supported_resources = ["kubernetes_deployment", "kubernetes_daemon_set"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # Check for OTel sidecar or init container
@@ -36,7 +38,9 @@ class JaegerStorageCheck(BaseResourceCheck):
         id = "DC_TRACE_002"
         supported_resources = ["kubernetes_deployment"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         containers = conf.get("spec", {}).get("template", {}).get("spec", {}).get("container", [])
@@ -62,12 +66,14 @@ class TempoRetentionCheck(BaseResourceCheck):
         id = "DC_TRACE_003"
         supported_resources = ["kubernetes_config_map"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         data = conf.get("data", {})
         if isinstance(data, dict):
-            for key, value in data.items():
+            for _key, value in data.items():
                 if isinstance(value, str) and "block_retention" in value:
                     return CheckResult.PASSED
         return CheckResult.FAILED
@@ -81,7 +87,9 @@ class SOCProcessorCheck(BaseResourceCheck):
         id = "DC_TRACE_004"
         supported_resources = ["kubernetes_deployment"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         name = conf.get("metadata", {}).get("name", "")
@@ -98,7 +106,9 @@ class ContainerTracingDaemonSetCheck(BaseResourceCheck):
         id = "DC_TRACE_005"
         supported_resources = ["kubernetes_daemon_set"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         name = conf.get("metadata", {}).get("name", "")
@@ -115,12 +125,14 @@ class TraceSamplingCheck(BaseResourceCheck):
         id = "DC_TRACE_006"
         supported_resources = ["kubernetes_config_map"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         data = conf.get("data", {})
         if isinstance(data, dict):
-            for key, value in data.items():
+            for _key, value in data.items():
                 if isinstance(value, str) and "tail_sampling" in value:
                     return CheckResult.PASSED
         return CheckResult.FAILED
@@ -134,7 +146,9 @@ class HPACheck(BaseResourceCheck):
         id = "DC_TRACE_007"
         supported_resources = ["kubernetes_horizontal_pod_autoscaler_v2"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         metrics = conf.get("spec", {}).get("metrics", [])

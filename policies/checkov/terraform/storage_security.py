@@ -3,7 +3,7 @@ Checkov Custom Policies — Storage Security for Data Center IaC
 Covers: EBS encryption, S3 bucket security, RDS storage, snapshot encryption
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -15,7 +15,9 @@ class EBSEncryptionEnabled(BaseResourceCheck):
         id = "DC_STORAGE_001"
         supported_resources = ["aws_ebs_volume", "aws_ebs_snapshot"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         encrypted = conf.get("encrypted", False)
@@ -34,7 +36,9 @@ class EBSSnapshotEncrypted(BaseResourceCheck):
         id = "DC_STORAGE_002"
         supported_resources = ["aws_ebs_snapshot", "aws_ebs_snapshot_copy"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         encrypted = conf.get("encrypted", False)
@@ -53,7 +57,9 @@ class S3BucketEncryptionEnabled(BaseResourceCheck):
         id = "DC_STORAGE_003"
         supported_resources = ["aws_s3_bucket"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # Check for server_side_encryption_configuration
@@ -75,7 +81,9 @@ class S3BucketPublicAccessBlock(BaseResourceCheck):
         id = "DC_STORAGE_004"
         supported_resources = ["aws_s3_bucket_public_access_block"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         block_public_acls = conf.get("block_public_acls", False)
@@ -89,8 +97,12 @@ class S3BucketPublicAccessBlock(BaseResourceCheck):
         if isinstance(ignore_public_acls, list):
             ignore_public_acls = ignore_public_acls[0] if ignore_public_acls else False
         if isinstance(restrict_public_buckets, list):
-            restrict_public_buckets = restrict_public_buckets[0] if restrict_public_buckets else False
-        if not all([block_public_acls, block_public_policy, ignore_public_acls, restrict_public_buckets]):
+            restrict_public_buckets = (
+                restrict_public_buckets[0] if restrict_public_buckets else False
+            )
+        if not all(
+            [block_public_acls, block_public_policy, ignore_public_acls, restrict_public_buckets]
+        ):
             return CheckResult.FAILED
         return CheckResult.PASSED
 
@@ -103,7 +115,9 @@ class S3BucketVersioningEnabled(BaseResourceCheck):
         id = "DC_STORAGE_005"
         supported_resources = ["aws_s3_bucket"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         versioning = conf.get("versioning", {})
@@ -128,7 +142,9 @@ class S3BucketLoggingEnabled(BaseResourceCheck):
         id = "DC_STORAGE_006"
         supported_resources = ["aws_s3_bucket"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         logging_config = conf.get("logging", {})
@@ -147,7 +163,9 @@ class RDSEncryptionEnabled(BaseResourceCheck):
         id = "DC_STORAGE_007"
         supported_resources = ["aws_db_instance", "aws_rds_cluster"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         storage_encrypted = conf.get("storage_encrypted", False)
@@ -166,7 +184,9 @@ class RDSBackupRetentionEnabled(BaseResourceCheck):
         id = "DC_STORAGE_008"
         supported_resources = ["aws_db_instance", "aws_rds_cluster"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         backup_retention_period = conf.get("backup_retention_period", 0)
@@ -185,7 +205,9 @@ class RDSPubliclyAccessible(BaseResourceCheck):
         id = "DC_STORAGE_009"
         supported_resources = ["aws_db_instance", "aws_rds_cluster"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         publicly_accessible = conf.get("publicly_accessible", False)
@@ -204,7 +226,9 @@ class S3BucketObjectLockEnabled(BaseResourceCheck):
         id = "DC_STORAGE_010"
         supported_resources = ["aws_s3_bucket"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         object_lock = conf.get("object_lock_enabled", False)

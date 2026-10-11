@@ -41,7 +41,7 @@ def _deep_clean(value: Any) -> Any:
     """
     if isinstance(value, list):
         cleaned = [_deep_clean(v) for v in value]
-        if len(cleaned) == 1 and isinstance(cleaned[0], (str, int, float, bool)):
+        if len(cleaned) == 1 and isinstance(cleaned[0], str | int | float | bool):
             return cleaned[0]
         return cleaned
     if isinstance(value, dict):
@@ -1178,9 +1178,9 @@ class TestCrossModuleIntegration:
                         for resource_name, resource_config in resources.items():
                             if isinstance(resource_config, dict) and "tags" in resource_config:
                                 tags = get_tags(resource_config)
-                                assert "Name" in tags, (
-                                    f"{module_name}.{resource_type}.{resource_name} missing Name tag"
-                                )
+                                assert (
+                                    "Name" in tags
+                                ), f"{module_name}.{resource_type}.{resource_name} missing Name tag"
 
     def test_security_groups_reference_vpc(self, all_parsed):
         """Security groups should reference a VPC."""

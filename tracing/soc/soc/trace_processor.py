@@ -5,16 +5,14 @@ security context, and forwards to SIEM (Elasticsearch) + alerting pipeline.
 
 Listens on :8080/v1/traces for incoming trace batches from OTel Collector.
 """
+import hashlib
 import json
 import logging
 import os
-import time
-import hashlib
-from datetime import datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any
-
 import urllib.request
+from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("soc-processor")
@@ -26,15 +24,31 @@ TRACE_RETENTION_DAYS = int(os.environ.get("TRACE_RETENTION_DAYS", "30"))
 
 # Security-relevant span attributes to watch
 SENSITIVE_ATTRIBUTES = {
-    "http.url", "http.target", "http.host", "http.user_agent",
-    "db.statement", "db.query", "rpc.method", "rpc.service",
-    "messaging.destination", "messaging.url",
-    "net.peer.ip", "net.peer.name", "net.host.ip",
-    "user.id", "user.name", "user.email",
-    "auth.token", "auth.method",
-    "file.path", "file.name",
-    "container.id", "container.name", "k8s.pod.name",
-    "k8s.namespace.name", "k8s.deployment.name",
+    "http.url",
+    "http.target",
+    "http.host",
+    "http.user_agent",
+    "db.statement",
+    "db.query",
+    "rpc.method",
+    "rpc.service",
+    "messaging.destination",
+    "messaging.url",
+    "net.peer.ip",
+    "net.peer.name",
+    "net.host.ip",
+    "user.id",
+    "user.name",
+    "user.email",
+    "auth.token",
+    "auth.method",
+    "file.path",
+    "file.name",
+    "container.id",
+    "container.name",
+    "k8s.pod.name",
+    "k8s.namespace.name",
+    "k8s.deployment.name",
 }
 
 # Known attack patterns in span attributes
@@ -60,12 +74,12 @@ def compute_threat_score(span: dict[str, Any]) -> tuple[float, list[str]]:
 
     # Check for sensitive attributes
     attrs = span.get("attributes", {})
-    for attr_key in attrs:
-        if attr_key in SENSITIVE_ATTRIBUTES:
+    for _attr_key in attrs:
+        if _attr_key in SENSITIVE_ATTRIBUTES:
             score += 5.0
 
     # Check for attack patterns in attribute values
-    for attr_key, attr_val in attrs.items():
+    for _attr_key, attr_val in attrs.items():
         val_str = str(attr_val).lower()
         for threat_name, patterns in ATTACK_PATTERNS:
             for pattern in patterns:
@@ -93,7 +107,7 @@ def enrich_span(span: dict[str, Any]) -> dict[str, Any]:
     span["soc"] = {
         "threat_score": score,
         "threats": threats,
-        "enriched_at": datetime.now(timezone.utc).isoformat(),
+        "enriched_at": datetime.now(UTC).isoformat(),
         "processor_version": "1.0.0",
         "retention_days": TRACE_RETENTION_DAYS,
     }
@@ -138,7 +152,7 @@ def send_alert(span: dict[str, Any]) -> None:
         "trace_id": span.get("trace_id"),
         "span_id": span.get("span_id"),
         "service": span.get("service_name"),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     req = urllib.request.Request(
         ALERT_WEBHOOK,
@@ -154,7 +168,7 @@ def send_alert(span: dict[str, Any]) -> None:
 
 
 class TraceHandler(BaseHTTPRequestHandler):
-    def do_POST(self) -> None:
+    def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler dispatches on this exact name
         if self.path != "/v1/traces":
             self.send_error(404)
             return
@@ -186,7 +200,12 @@ class TraceHandler(BaseHTTPRequestHandler):
                     for attr in span.get("attributes", []):
                         key = attr.get("key", "")
                         val = attr.get("value", {})
-                        attrs[key] = val.get("stringValue") or val.get("intValue") or val.get("boolValue") or val.get("doubleValue")
+                        attrs[key] = (
+                            val.get("stringValue")
+                            or val.get("intValue")
+                            or val.get("boolValue")
+                            or val.get("doubleValue")
+                        )
                     span["attributes"] = attrs
                     # Convert timestamps
                     if "startTimeUnixNano" in span:

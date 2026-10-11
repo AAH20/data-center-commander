@@ -3,7 +3,7 @@ Checkov Custom Policies — Network Security for Data Center IaC
 Covers: VPC isolation, security groups, NACLs, public exposure, segmentation
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -20,7 +20,9 @@ class RDPPortNotPubliclyAccessible(BaseResourceCheck):
             "google_compute_firewall",
         ]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # AWS Security Group
@@ -33,14 +35,23 @@ class RDPPortNotPubliclyAccessible(BaseResourceCheck):
                     if isinstance(cidr_blocks, list):
                         for cidr in cidr_blocks:
                             if isinstance(cidr, str) and cidr == "0.0.0.0/0":
-                                if from_port == 3389 or (isinstance(from_port, int) and isinstance(to_port, int) and from_port <= 3389 <= to_port):
+                                if from_port == 3389 or (
+                                    isinstance(from_port, int)
+                                    and isinstance(to_port, int)
+                                    and from_port <= 3389 <= to_port
+                                ):
                                     return CheckResult.FAILED
         # Azure NSG
         if "security_rule" in conf:
             for rule in conf["security_rule"]:
                 if isinstance(rule, dict):
-                    if rule.get("destination_port_range") == "3389" or "3389" in str(rule.get("destination_port_ranges", [])):
-                        if "0.0.0.0/0" in str(rule.get("source_address_prefix", "")) or rule.get("source_address_prefix") == "*":
+                    if rule.get("destination_port_range") == "3389" or "3389" in str(
+                        rule.get("destination_port_ranges", [])
+                    ):
+                        if (
+                            "0.0.0.0/0" in str(rule.get("source_address_prefix", ""))
+                            or rule.get("source_address_prefix") == "*"
+                        ):
                             return CheckResult.FAILED
         # GCP Firewall
         if "source_ranges" in conf:
@@ -66,7 +77,9 @@ class SSHPortNotPubliclyAccessible(BaseResourceCheck):
             "google_compute_firewall",
         ]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         if "ingress" in conf:
@@ -78,13 +91,22 @@ class SSHPortNotPubliclyAccessible(BaseResourceCheck):
                     if isinstance(cidr_blocks, list):
                         for cidr in cidr_blocks:
                             if isinstance(cidr, str) and cidr == "0.0.0.0/0":
-                                if from_port == 22 or (isinstance(from_port, int) and isinstance(to_port, int) and from_port <= 22 <= to_port):
+                                if from_port == 22 or (
+                                    isinstance(from_port, int)
+                                    and isinstance(to_port, int)
+                                    and from_port <= 22 <= to_port
+                                ):
                                     return CheckResult.FAILED
         if "security_rule" in conf:
             for rule in conf["security_rule"]:
                 if isinstance(rule, dict):
-                    if rule.get("destination_port_range") == "22" or "22" in str(rule.get("destination_port_ranges", [])):
-                        if "0.0.0.0/0" in str(rule.get("source_address_prefix", "")) or rule.get("source_address_prefix") == "*":
+                    if rule.get("destination_port_range") == "22" or "22" in str(
+                        rule.get("destination_port_ranges", [])
+                    ):
+                        if (
+                            "0.0.0.0/0" in str(rule.get("source_address_prefix", ""))
+                            or rule.get("source_address_prefix") == "*"
+                        ):
                             return CheckResult.FAILED
         if "source_ranges" in conf:
             if "0.0.0.0/0" in conf.get("source_ranges", []):
@@ -111,7 +133,9 @@ class DatabasePortNotPubliclyAccessible(BaseResourceCheck):
             "google_compute_firewall",
         ]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         if "ingress" in conf:
@@ -124,7 +148,11 @@ class DatabasePortNotPubliclyAccessible(BaseResourceCheck):
                         for cidr in cidr_blocks:
                             if isinstance(cidr, str) and cidr == "0.0.0.0/0":
                                 for db_port in self.DB_PORTS:
-                                    if from_port == db_port or (isinstance(from_port, int) and isinstance(to_port, int) and from_port <= db_port <= to_port):
+                                    if from_port == db_port or (
+                                        isinstance(from_port, int)
+                                        and isinstance(to_port, int)
+                                        and from_port <= db_port <= to_port
+                                    ):
                                         return CheckResult.FAILED
         if "security_rule" in conf:
             for rule in conf["security_rule"]:
@@ -133,7 +161,10 @@ class DatabasePortNotPubliclyAccessible(BaseResourceCheck):
                     port_ranges = rule.get("destination_port_ranges", [])
                     for db_port in self.DB_PORTS:
                         if str(db_port) in port_range or str(db_port) in str(port_ranges):
-                            if "0.0.0.0/0" in str(rule.get("source_address_prefix", "")) or rule.get("source_address_prefix") == "*":
+                            if (
+                                "0.0.0.0/0" in str(rule.get("source_address_prefix", ""))
+                                or rule.get("source_address_prefix") == "*"
+                            ):
                                 return CheckResult.FAILED
         if "source_ranges" in conf:
             if "0.0.0.0/0" in conf.get("source_ranges", []):
@@ -154,7 +185,9 @@ class VPCFlowLogsEnabled(BaseResourceCheck):
         id = "DC_NET_004"
         supported_resources = ["aws_vpc", "aws_vpc_flow_log"]
         categories = [CheckCategories.NETWORKING, CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If this is a flow log resource, it exists — pass
@@ -177,7 +210,9 @@ class NetworkACLRestricted(BaseResourceCheck):
         id = "DC_NET_005"
         supported_resources = ["aws_network_acl_rule"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         cidr_block = conf.get("cidr_block", "")
@@ -198,7 +233,9 @@ class SubnetHasPrivateIP(BaseResourceCheck):
         id = "DC_NET_006"
         supported_resources = ["aws_subnet"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         map_public_ip = conf.get("map_public_ip_on_launch", False)
@@ -217,7 +254,9 @@ class VPCEndpointEnabled(BaseResourceCheck):
         id = "DC_NET_007"
         supported_resources = ["aws_vpc_endpoint"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If a VPC endpoint exists, this is good
@@ -238,7 +277,9 @@ class SecurityGroupHasDescription(BaseResourceCheck):
             "aws_security_group_rule",
         ]
         categories = [CheckCategories.NETWORKING, CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         description = conf.get("description", "")
@@ -262,7 +303,9 @@ class NoWildcardCIDR(BaseResourceCheck):
             "aws_security_group_rule",
         ]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         if "ingress" in conf:
@@ -276,7 +319,11 @@ class NoWildcardCIDR(BaseResourceCheck):
                             if isinstance(cidr, str) and cidr == "0.0.0.0/0":
                                 is_web = False
                                 for web_port in self.WEB_PORTS:
-                                    if from_port == web_port or (isinstance(from_port, int) and isinstance(to_port, int) and from_port <= web_port <= to_port):
+                                    if from_port == web_port or (
+                                        isinstance(from_port, int)
+                                        and isinstance(to_port, int)
+                                        and from_port <= web_port <= to_port
+                                    ):
                                         is_web = True
                                         break
                                 if not is_web:
@@ -292,7 +339,9 @@ class TransitGatewayHasAutoAcceptDisabled(BaseResourceCheck):
         id = "DC_NET_010"
         supported_resources = ["aws_ec2_transit_gateway"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         auto_accept = conf.get("auto_accept_shared_attachments", "disable")

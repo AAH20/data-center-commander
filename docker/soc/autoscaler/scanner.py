@@ -5,14 +5,12 @@ Performs vulnerability scanning, compliance checks, and security audits
 on containers and IaC configurations.
 """
 
-import os
 import json
 import logging
+import os
 import subprocess
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
-import yaml
 from prometheus_client import Gauge, start_http_server
 
 # Configure logging
@@ -52,16 +50,20 @@ class SOCScanner:
 
         logger.info(f"SOC Scanner initialized: reports={self.reports_dir}")
 
-    def scan_image(self, image: str) -> Dict:
+    def scan_image(self, image: str) -> dict:
         """Scan a container image with Trivy."""
         logger.info(f"Scanning image: {image}")
         try:
             result = subprocess.run(
                 [
-                    "trivy", "image",
-                    "--format", "json",
-                    "--cache-dir", self.trivy_cache,
-                    "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
+                    "trivy",
+                    "image",
+                    "--format",
+                    "json",
+                    "--cache-dir",
+                    self.trivy_cache,
+                    "--severity",
+                    "CRITICAL,HIGH,MEDIUM,LOW",
                     image,
                 ],
                 capture_output=True,
@@ -81,17 +83,21 @@ class SOCScanner:
             logger.error(f"Failed to parse Trivy output: {e}")
             return {}
 
-    def scan_iac(self) -> Dict:
+    def scan_iac(self) -> dict:
         """Scan IaC configurations with Checkov."""
         logger.info(f"Scanning IaC directory: {self.iac_dir}")
         try:
             result = subprocess.run(
                 [
                     "checkov",
-                    "-d", self.iac_dir,
-                    "--external-checks-dir", f"{self.policies_dir}/checkov/terraform/",
-                    "--check", "DC_",
-                    "--output", "json",
+                    "-d",
+                    self.iac_dir,
+                    "--external-checks-dir",
+                    f"{self.policies_dir}/checkov/terraform/",
+                    "--check",
+                    "DC_",
+                    "--output",
+                    "json",
                     "--soft-fail",
                     "--compact",
                 ],
@@ -112,7 +118,7 @@ class SOCScanner:
             logger.error(f"Failed to parse Checkov output: {e}")
             return {}
 
-    def update_metrics(self, trivy_results: Dict, checkov_results: Dict):
+    def update_metrics(self, trivy_results: dict, checkov_results: dict):
         """Update Prometheus metrics with scan results."""
         # Update vulnerability metrics
         severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
@@ -132,10 +138,10 @@ class SOCScanner:
         # Update scan status
         scan_status.set(1)
 
-    def generate_report(self, trivy_results: Dict, checkov_results: Dict) -> str:
+    def generate_report(self, trivy_results: dict, checkov_results: dict) -> str:
         """Generate a consolidated security report."""
         report = {
-            "scan_time": datetime.now(timezone.utc).isoformat(),
+            "scan_time": datetime.now(UTC).isoformat(),
             "tool": "Data Center Commander SOC Scanner",
             "version": "1.0.0",
             "trivy": trivy_results,
@@ -177,7 +183,7 @@ class SOCScanner:
 
     def run(self):
         """Run the full SOC scan."""
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         logger.info("Starting SOC scan...")
 
         # Scan IaC
@@ -200,7 +206,7 @@ class SOCScanner:
         report_path = self.generate_report(trivy_results, checkov_results)
 
         # Record duration
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         scan_duration.set(duration)
 
         logger.info(f"SOC scan completed in {duration:.1f}s")

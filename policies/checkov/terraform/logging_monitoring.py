@@ -3,7 +3,7 @@ Checkov Custom Policies — Logging & Monitoring for Data Center IaC
 Covers: CloudTrail, CloudWatch, GuardDuty, Config, VPC Flow Logs, alarm configuration
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -15,7 +15,9 @@ class CloudTrailEnabled(BaseResourceCheck):
         id = "DC_MONITOR_001"
         supported_resources = ["aws_cloudtrail"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         is_multi_region = conf.get("is_multi_region_trail", False)
@@ -34,12 +36,16 @@ class CloudTrailLogFileValidation(BaseResourceCheck):
         id = "DC_MONITOR_002"
         supported_resources = ["aws_cloudtrail"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         enable_log_file_validation = conf.get("enable_log_file_validation", False)
         if isinstance(enable_log_file_validation, list):
-            enable_log_file_validation = enable_log_file_validation[0] if enable_log_file_validation else False
+            enable_log_file_validation = (
+                enable_log_file_validation[0] if enable_log_file_validation else False
+            )
         if enable_log_file_validation is not True:
             return CheckResult.FAILED
         return CheckResult.PASSED
@@ -53,7 +59,9 @@ class CloudTrailS3BucketLogging(BaseResourceCheck):
         id = "DC_MONITOR_003"
         supported_resources = ["aws_cloudtrail"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         s3_bucket_name = conf.get("s3_bucket_name", "")
@@ -72,7 +80,9 @@ class CloudWatchLogGroupRetention(BaseResourceCheck):
         id = "DC_MONITOR_004"
         supported_resources = ["aws_cloudwatch_log_group"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         retention_in_days = conf.get("retention_in_days", 0)
@@ -91,7 +101,9 @@ class CloudWatchAlarmActions(BaseResourceCheck):
         id = "DC_MONITOR_005"
         supported_resources = ["aws_cloudwatch_metric_alarm"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         alarm_actions = conf.get("alarm_actions", [])
@@ -114,7 +126,9 @@ class GuardDutyEnabled(BaseResourceCheck):
         id = "DC_MONITOR_006"
         supported_resources = ["aws_guardduty_detector"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         enable = conf.get("enable", False)
@@ -133,7 +147,9 @@ class SecurityHubEnabled(BaseResourceCheck):
         id = "DC_MONITOR_007"
         supported_resources = ["aws_securityhub_account"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # If the resource exists, Security Hub is enabled
@@ -148,7 +164,9 @@ class ConfigRecorderEnabled(BaseResourceCheck):
         id = "DC_MONITOR_008"
         supported_resources = ["aws_config_configuration_recorder"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         recording_group = conf.get("recording_group", {})
@@ -171,7 +189,9 @@ class VPCFlowLogTrafficType(BaseResourceCheck):
         id = "DC_MONITOR_009"
         supported_resources = ["aws_flow_log"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         traffic_type = conf.get("traffic_type", "ALL")
@@ -190,7 +210,9 @@ class S3BucketCloudTrailValidation(BaseResourceCheck):
         id = "DC_MONITOR_010"
         supported_resources = ["aws_s3_bucket"]
         categories = [CheckCategories.LOGGING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         # This is a best-effort check — if the bucket has a name, assume it's configured

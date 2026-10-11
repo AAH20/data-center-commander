@@ -3,7 +3,7 @@ Checkov Custom Policies — Compute Security for Data Center IaC
 Covers: EC2 hardening, instance metadata, key management, auto-scaling
 """
 
-from checkov.common.models.enums import CheckResult, CheckCategories
+from checkov.common.models.enums import CheckCategories, CheckResult
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 
 
@@ -15,7 +15,9 @@ class EC2InstanceMetadataOptions(BaseResourceCheck):
         id = "DC_COMPUTE_001"
         supported_resources = ["aws_instance", "aws_launch_template", "aws_launch_configuration"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         metadata_options = conf.get("metadata_options", {})
@@ -40,7 +42,9 @@ class EC2InstanceDetailedMonitoring(BaseResourceCheck):
         id = "DC_COMPUTE_002"
         supported_resources = ["aws_instance"]
         categories = [CheckCategories.LOGGING, CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         monitoring = conf.get("monitoring", False)
@@ -59,7 +63,9 @@ class EC2InstanceNoPublicIP(BaseResourceCheck):
         id = "DC_COMPUTE_003"
         supported_resources = ["aws_instance"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         associate_public_ip = conf.get("associate_public_ip_address", False)
@@ -78,7 +84,9 @@ class EC2InstanceEncryptedRootVolume(BaseResourceCheck):
         id = "DC_COMPUTE_004"
         supported_resources = ["aws_instance", "aws_launch_template", "aws_launch_configuration"]
         categories = [CheckCategories.ENCRYPTION]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         root_block_device = conf.get("root_block_device", {})
@@ -105,7 +113,9 @@ class EC2InstanceNoHardcodedCredentials(BaseResourceCheck):
         id = "DC_COMPUTE_005"
         supported_resources = ["aws_instance", "aws_launch_template", "aws_launch_configuration"]
         categories = [CheckCategories.SECRETS]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         user_data = conf.get("user_data", "")
@@ -127,7 +137,9 @@ class AutoScalingGroupHealthCheck(BaseResourceCheck):
         id = "DC_COMPUTE_006"
         supported_resources = ["aws_autoscaling_group"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         health_check_type = conf.get("health_check_type", "")
@@ -146,7 +158,9 @@ class AutoScalingGroupTags(BaseResourceCheck):
         id = "DC_COMPUTE_007"
         supported_resources = ["aws_autoscaling_group"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         tags = conf.get("tag", [])
@@ -171,7 +185,9 @@ class LaunchTemplateHasSecurityGroups(BaseResourceCheck):
         id = "DC_COMPUTE_008"
         supported_resources = ["aws_launch_template"]
         categories = [CheckCategories.NETWORKING]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         vpc_security_group_ids = conf.get("vpc_security_group_ids", [])
@@ -191,7 +207,9 @@ class EC2InstanceTenancy(BaseResourceCheck):
         id = "DC_COMPUTE_009"
         supported_resources = ["aws_instance", "aws_launch_template"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         tenancy = conf.get("tenancy", "default")
@@ -205,14 +223,25 @@ class EC2InstanceTenancy(BaseResourceCheck):
 class EC2InstanceNoInstanceTypeT2Micro(BaseResourceCheck):
     """Ensure production workloads do not use t2.micro instances."""
 
-    BURSTABLE_TYPES = ["t2.nano", "t2.micro", "t2.small", "t2.medium", "t3.nano", "t3.micro", "t3.small", "t3.medium"]
+    BURSTABLE_TYPES = [
+        "t2.nano",
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "t3.nano",
+        "t3.micro",
+        "t3.small",
+        "t3.medium",
+    ]
 
     def __init__(self):
         name = "Ensure production workloads do not use burstable instances"
         id = "DC_COMPUTE_010"
         supported_resources = ["aws_instance", "aws_launch_template", "aws_launch_configuration"]
         categories = [CheckCategories.GENERAL_SECURITY]
-        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)
+        super().__init__(
+            name=name, id=id, categories=categories, supported_resources=supported_resources
+        )
 
     def scan_resource_conf(self, conf):
         instance_type = conf.get("instance_type", "")

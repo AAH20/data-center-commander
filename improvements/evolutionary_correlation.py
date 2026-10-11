@@ -5,11 +5,12 @@ correlation analysis with adaptive parameters and convergence tracking.
 All functions maintain zero-API compliance (40 RPM budget preserved).
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Any
+
 import numpy as np
 
 
-def generate_evolutionary_correlation_report(alerts: Optional[List[Dict]] = None) -> str:
+def generate_evolutionary_correlation_report(alerts: list[dict] | None = None) -> str:
     """Generate evolutionary correlation report for SOC alerts.
 
     Args:
@@ -48,8 +49,7 @@ def generate_evolutionary_correlation_report(alerts: Optional[List[Dict]] = None
 
     # Correlation with severity
     high_severity_threats = sum(
-        1 for a in alerts
-        if a["ground_truth"] and a["severity"] in ["high", "critical"]
+        1 for a in alerts if a["ground_truth"] and a["severity"] in ["high", "critical"]
     )
 
     # Evolutionary parameters
@@ -71,7 +71,7 @@ def generate_evolutionary_correlation_report(alerts: Optional[List[Dict]] = None
         "",
         "Summary Statistics:",
         f"  n_records:      {n_records}",
-        f"  n_stages:       3",  # Fixed: evolutionary stages (initial, adaptive, converged)
+        "  n_stages:       3",  # Fixed: evolutionary stages (initial, adaptive, converged)
         f"  True Threats:       {true_threats}",
         f"  False Benign:       {false_benign}",
         f"  Convergence:        {convergence}",
@@ -99,7 +99,7 @@ def generate_evolutionary_correlation_report(alerts: Optional[List[Dict]] = None
     return "\n".join(lines)
 
 
-def compute_correlation_metrics(alerts: List[Dict]) -> Dict[str, Any]:
+def compute_correlation_metrics(alerts: list[dict]) -> dict[str, Any]:
     """Compute detailed correlation metrics from alert data.
 
     Args:
@@ -124,10 +124,17 @@ def compute_correlation_metrics(alerts: List[Dict]) -> Dict[str, Any]:
     false_positives = sum(1 for a in alerts if not a.get("ground_truth", True))
     false_negatives = sum(1 for a in alerts if a.get("ground_truth", True) and not True)  # noqa: E712
 
-    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0.0
-    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0.0
-    f1 = (2 * precision * recall / (precision + recall)
-          if (precision + recall) > 0 else 0.0)
+    precision = (
+        true_positives / (true_positives + false_positives)
+        if (true_positives + false_positives) > 0
+        else 0.0
+    )
+    recall = (
+        true_positives / (true_positives + false_negatives)
+        if (true_positives + false_negatives) > 0
+        else 0.0
+    )
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
     # Average IOC score by label
     threat_scores = [a.get("ioc_score", 0) for a in alerts if a.get("ground_truth", False)]

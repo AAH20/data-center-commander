@@ -5,16 +5,16 @@ SOC analysis on packet captures. Optional integration — falls back
 gracefully when Morpheus is not installed.
 """
 
-import subprocess
 import json
-from typing import Optional, Dict, Any
+import subprocess
+from typing import Any
 
 
 def run_morpheus_pipeline(
     pcap_file: str,
     output_file: str = "morpheus_output.json",
     model: str = "threat_detection",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Run Nvidia Morpheus pipeline for SOC analysis.
 
     Leverages Nvidia's cybersecurity AI framework for real-time
@@ -54,9 +54,12 @@ def run_morpheus_pipeline(
         cmd = [
             "morpheus",
             "run",
-            "--input", pcap_file,
-            "--output", output_file,
-            "--model", model,
+            "--input",
+            pcap_file,
+            "--output",
+            output_file,
+            "--model",
+            model,
         ]
 
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
@@ -91,34 +94,33 @@ def run_morpheus_pipeline(
 
 def morpheus_benchmark() -> dict:
     """Benchmark Morpheus pipeline vs CPU-based analysis."""
-    import time
-    import tempfile
     import os
-    
+    import tempfile
+    import time
+
     # Generate sample PCAP (or use existing)
     with tempfile.NamedTemporaryFile(suffix=".pcap", delete=False) as tmp:
         tmp_pcap = tmp.name
-    
+
     try:
         # Generate sample network traffic for PCAP
         # (simplified — would use scapy or pcapWriter in production)
-        duration = 5  # seconds of traffic
-        
+
         # Run Morpheus pipeline
         t_start = time.time()
         morpheus_result = run_morpheus_pipeline(tmp_pcap)
         t_morpheus = time.time() - t_start
-        
+
         # CPU-based alternative (existing dcc_api functions)
         t_start = time.time()
         # Would call existing dcc_api functions on the traffic
         t_cpu = time.time() - t_start
-        
+
         return {
             "pcap_size_bytes": os.path.getsize(tmp_pcap),
             "morpheus_time_ms": round(t_morpheus * 1000),
             "cpu_time_ms": round(t_cpu * 1000),
-            "speedup": round(t_cpu / t_morpheus if t_morpheus > 0 else float('inf'), 1),
+            "speedup": round(t_cpu / t_morpheus if t_morpheus > 0 else float("inf"), 1),
             "pipeline_status": morpheus_result["status"],
             "model_used": "threat_detection",
         }

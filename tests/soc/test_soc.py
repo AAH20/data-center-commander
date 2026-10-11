@@ -163,9 +163,9 @@ class TestNetworkSecurity:
         ns_policies = [
             p for p in network_policies if p.get("metadata", {}).get("namespace") == ns_name
         ]
-        assert len(ns_policies) >= 2, (
-            f"Expected at least 2 NetworkPolicies in {ns_name}, found {len(ns_policies)}"
-        )
+        assert (
+            len(ns_policies) >= 2
+        ), f"Expected at least 2 NetworkPolicies in {ns_name}, found {len(ns_policies)}"
 
     def test_no_wildcard_ingress_rules(self, network_policies):
         """NetworkPolicies should not allow ingress from all sources."""

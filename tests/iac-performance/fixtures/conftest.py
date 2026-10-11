@@ -13,9 +13,9 @@ import pytest
 # Add utils to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.checkov_utils import CheckovRunner
-from utils.rego_utils import OpaRunner, create_opa_input
-from utils.terraform_utils import TerraformRunner
+from utils.checkov_utils import CheckovRunner  # noqa: E402
+from utils.rego_utils import OpaRunner, create_opa_input  # noqa: E402
+from utils.terraform_utils import TerraformRunner  # noqa: E402
 
 # Path to the project's policy directories
 PROJECT_ROOT = Path(__file__).parent.parent.parent

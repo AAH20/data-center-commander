@@ -22,18 +22,17 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import requests
 import yaml
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("dcc-soc")
 
@@ -42,8 +41,10 @@ logger = logging.getLogger("dcc-soc")
 # ENUMS
 # =============================================================================
 
+
 class Severity(Enum):
     """Security alert severity levels."""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -52,6 +53,7 @@ class Severity(Enum):
 
 class AlertStatus(Enum):
     """Alert status."""
+
     NEW = "new"
     ACKNOWLEDGED = "acknowledged"
     IN_PROGRESS = "in_progress"
@@ -61,6 +63,7 @@ class AlertStatus(Enum):
 
 class RemediationAction(Enum):
     """Auto-remediation actions."""
+
     ROLLBACK = "rollback"
     RESCHEDULE = "reschedule"
     PATCH = "patch"
@@ -73,23 +76,26 @@ class RemediationAction(Enum):
 # DATA CLASSES
 # =============================================================================
 
+
 @dataclass
 class Vulnerability:
     """Represents a security vulnerability."""
+
     id: str
     severity: Severity
     package: str
     installed_version: str
-    fixed_version: Optional[str]
+    fixed_version: str | None
     title: str
     description: str
-    cvss_score: Optional[float] = None
-    references: List[str] = field(default_factory=list)
+    cvss_score: float | None = None
+    references: list[str] = field(default_factory=list)
 
 
 @dataclass
 class Misconfiguration:
     """Represents a security misconfiguration."""
+
     id: str
     severity: Severity
     title: str
@@ -101,6 +107,7 @@ class Misconfiguration:
 @dataclass
 class Secret:
     """Represents a detected secret."""
+
     id: str
     severity: Severity
     category: str
@@ -111,11 +118,12 @@ class Secret:
 @dataclass
 class ScanResult:
     """Represents a Trivy scan result."""
+
     image: str
     artifact_type: str
-    vulnerabilities: List[Vulnerability] = field(default_factory=list)
-    misconfigurations: List[Misconfiguration] = field(default_factory=list)
-    secrets: List[Secret] = field(default_factory=list)
+    vulnerabilities: list[Vulnerability] = field(default_factory=list)
+    misconfigurations: list[Misconfiguration] = field(default_factory=list)
+    secrets: list[Secret] = field(default_factory=list)
     scan_time: datetime = field(default_factory=datetime.utcnow)
 
     @property
@@ -142,8 +150,9 @@ class ScanResult:
 @dataclass
 class PolicyEvaluation:
     """Represents an OPA policy evaluation result."""
+
     allowed: bool
-    violations: List[str] = field(default_factory=list)
+    violations: list[str] = field(default_factory=list)
     policy: str = ""
     evaluation_time: datetime = field(default_factory=datetime.utcnow)
 
@@ -151,6 +160,7 @@ class PolicyEvaluation:
 @dataclass
 class SecurityAlert:
     """Represents a security alert."""
+
     id: str
     severity: Severity
     title: str
@@ -159,14 +169,15 @@ class SecurityAlert:
     status: AlertStatus = AlertStatus.NEW
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
-    assigned_to: Optional[str] = None
-    remediation_action: Optional[RemediationAction] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    assigned_to: str | None = None
+    remediation_action: RemediationAction | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # =============================================================================
 # TRIVY SCANNER
 # =============================================================================
+
 
 class TrivyScanner:
     """Trivy container security scanner integration."""
@@ -177,10 +188,10 @@ class TrivyScanner:
         self.report_dir = Path("/var/log/trivy")
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load Trivy configuration."""
         try:
-            with open(self.config_path, "r") as f:
+            with open(self.config_path) as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"Config file not found: {self.config_path}")
@@ -193,23 +204,25 @@ class TrivyScanner:
         report_file = self.report_dir / f"trivy-report-{int(time.time())}.json"
 
         cmd = [
-            "trivy", "image",
-            "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
-            "--scanners", "vuln,secret,config,license",
-            "--format", "json",
-            "--output", str(report_file),
-            "--timeout", "10m",
-            "--cache-dir", "/tmp/trivy-cache",
-            image
+            "trivy",
+            "image",
+            "--severity",
+            "CRITICAL,HIGH,MEDIUM,LOW",
+            "--scanners",
+            "vuln,secret,config,license",
+            "--format",
+            "json",
+            "--output",
+            str(report_file),
+            "--timeout",
+            "10m",
+            "--cache-dir",
+            "/tmp/trivy-cache",
+            image,
         ]
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
             if result.returncode != 0:
                 logger.error(f"Trivy scan failed: {result.stderr}")
@@ -224,32 +237,36 @@ class TrivyScanner:
             logger.error("Trivy not found. Please install Trivy.")
             raise
 
-    def scan_kubernetes(self, namespace: str = "data-center-commander") -> List[ScanResult]:
+    def scan_kubernetes(self, namespace: str = "data-center-commander") -> list[ScanResult]:
         """Scan Kubernetes cluster with Trivy."""
         logger.info(f"Starting Trivy Kubernetes scan for namespace: {namespace}")
 
         report_file = self.report_dir / f"trivy-k8s-report-{int(time.time())}.json"
 
         cmd = [
-            "trivy", "k8s",
-            "--severity", "CRITICAL,HIGH,MEDIUM,LOW",
-            "--scanners", "vuln,secret,config",
-            "--format", "json",
-            "--output", str(report_file),
-            "--timeout", "10m",
-            "--cache-dir", "/tmp/trivy-cache",
-            "--namespace", namespace,
-            "--report", "summary",
-            "cluster"
+            "trivy",
+            "k8s",
+            "--severity",
+            "CRITICAL,HIGH,MEDIUM,LOW",
+            "--scanners",
+            "vuln,secret,config",
+            "--format",
+            "json",
+            "--output",
+            str(report_file),
+            "--timeout",
+            "10m",
+            "--cache-dir",
+            "/tmp/trivy-cache",
+            "--namespace",
+            namespace,
+            "--report",
+            "summary",
+            "cluster",
         ]
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
 
             if result.returncode != 0:
                 logger.error(f"Trivy K8s scan failed: {result.stderr}")
@@ -263,82 +280,90 @@ class TrivyScanner:
 
     def _parse_report(self, report_file: Path, image: str) -> ScanResult:
         """Parse Trivy JSON report."""
-        with open(report_file, "r") as f:
+        with open(report_file) as f:
             data = json.load(f)
 
         scan_result = ScanResult(
-            image=image,
-            artifact_type=data.get("ArtifactType", "container_image")
+            image=image, artifact_type=data.get("ArtifactType", "container_image")
         )
 
         for result in data.get("Results", []):
             # Parse vulnerabilities
             for vuln in result.get("Vulnerabilities", []):
                 severity = Severity(vuln.get("Severity", "LOW").lower())
-                scan_result.vulnerabilities.append(Vulnerability(
-                    id=vuln.get("VulnerabilityID", ""),
-                    severity=severity,
-                    package=vuln.get("PkgName", ""),
-                    installed_version=vuln.get("InstalledVersion", ""),
-                    fixed_version=vuln.get("FixedVersion"),
-                    title=vuln.get("Title", ""),
-                    description=vuln.get("Description", ""),
-                    cvss_score=vuln.get("CVSS", {}).get("nvd", {}).get("V3Score"),
-                    references=vuln.get("References", [])
-                ))
+                scan_result.vulnerabilities.append(
+                    Vulnerability(
+                        id=vuln.get("VulnerabilityID", ""),
+                        severity=severity,
+                        package=vuln.get("PkgName", ""),
+                        installed_version=vuln.get("InstalledVersion", ""),
+                        fixed_version=vuln.get("FixedVersion"),
+                        title=vuln.get("Title", ""),
+                        description=vuln.get("Description", ""),
+                        cvss_score=vuln.get("CVSS", {}).get("nvd", {}).get("V3Score"),
+                        references=vuln.get("References", []),
+                    )
+                )
 
             # Parse misconfigurations
             for misconfig in result.get("Misconfigurations", []):
                 severity = Severity(misconfig.get("Severity", "LOW").lower())
-                scan_result.misconfigurations.append(Misconfiguration(
-                    id=misconfig.get("ID", ""),
-                    severity=severity,
-                    title=misconfig.get("Title", ""),
-                    description=misconfig.get("Description", ""),
-                    message=misconfig.get("Message", ""),
-                    resolution=misconfig.get("Resolution", "")
-                ))
+                scan_result.misconfigurations.append(
+                    Misconfiguration(
+                        id=misconfig.get("ID", ""),
+                        severity=severity,
+                        title=misconfig.get("Title", ""),
+                        description=misconfig.get("Description", ""),
+                        message=misconfig.get("Message", ""),
+                        resolution=misconfig.get("Resolution", ""),
+                    )
+                )
 
             # Parse secrets
             for secret in result.get("Secrets", []):
                 severity = Severity(secret.get("Severity", "LOW").lower())
-                scan_result.secrets.append(Secret(
-                    id=secret.get("RuleID", ""),
-                    severity=severity,
-                    category=secret.get("Category", ""),
-                    title=secret.get("Title", ""),
-                    match=secret.get("Match", "")
-                ))
+                scan_result.secrets.append(
+                    Secret(
+                        id=secret.get("RuleID", ""),
+                        severity=severity,
+                        category=secret.get("Category", ""),
+                        title=secret.get("Title", ""),
+                        match=secret.get("Match", ""),
+                    )
+                )
 
-        logger.info(f"Parsed scan result: {scan_result.total_count} vulnerabilities, "
-                    f"{len(scan_result.misconfigurations)} misconfigurations, "
-                    f"{len(scan_result.secrets)} secrets")
+        logger.info(
+            f"Parsed scan result: {scan_result.total_count} vulnerabilities, "
+            f"{len(scan_result.misconfigurations)} misconfigurations, "
+            f"{len(scan_result.secrets)} secrets"
+        )
 
         return scan_result
 
-    def _parse_k8s_report(self, report_file: Path) -> List[ScanResult]:
+    def _parse_k8s_report(self, report_file: Path) -> list[ScanResult]:
         """Parse Trivy Kubernetes JSON report."""
-        with open(report_file, "r") as f:
+        with open(report_file) as f:
             data = json.load(f)
 
         results = []
         for result in data.get("Results", []):
             scan_result = ScanResult(
-                image=result.get("Target", "unknown"),
-                artifact_type="kubernetes"
+                image=result.get("Target", "unknown"), artifact_type="kubernetes"
             )
 
             for vuln in result.get("Vulnerabilities", []):
                 severity = Severity(vuln.get("Severity", "LOW").lower())
-                scan_result.vulnerabilities.append(Vulnerability(
-                    id=vuln.get("VulnerabilityID", ""),
-                    severity=severity,
-                    package=vuln.get("PkgName", ""),
-                    installed_version=vuln.get("InstalledVersion", ""),
-                    fixed_version=vuln.get("FixedVersion"),
-                    title=vuln.get("Title", ""),
-                    description=vuln.get("Description", "")
-                ))
+                scan_result.vulnerabilities.append(
+                    Vulnerability(
+                        id=vuln.get("VulnerabilityID", ""),
+                        severity=severity,
+                        package=vuln.get("PkgName", ""),
+                        installed_version=vuln.get("InstalledVersion", ""),
+                        fixed_version=vuln.get("FixedVersion"),
+                        title=vuln.get("Title", ""),
+                        description=vuln.get("Description", ""),
+                    )
+                )
 
             results.append(scan_result)
 
@@ -348,6 +373,7 @@ class TrivyScanner:
 # =============================================================================
 # OPA POLICY EVALUATOR
 # =============================================================================
+
 
 class OpaEvaluator:
     """OPA policy evaluation integration."""
@@ -366,37 +392,33 @@ class OpaEvaluator:
                 "critical": scan_result.critical_count,
                 "high": scan_result.high_count,
                 "medium": scan_result.medium_count,
-                "low": scan_result.low_count
+                "low": scan_result.low_count,
             },
             "misconfigurations": len(scan_result.misconfigurations),
             "secrets": len(scan_result.secrets),
-            "timestamp": scan_result.scan_time.isoformat()
+            "timestamp": scan_result.scan_time.isoformat(),
         }
 
         return self._evaluate("container-security", input_data)
 
-    def evaluate_autoscaling(self, autoscaling_config: Dict[str, Any]) -> PolicyEvaluation:
+    def evaluate_autoscaling(self, autoscaling_config: dict[str, Any]) -> PolicyEvaluation:
         """Evaluate autoscaling policy."""
         logger.info("Evaluating autoscaling policy...")
 
         return self._evaluate("autoscaling", autoscaling_config)
 
-    def evaluate_soc(self, alert_data: Dict[str, Any]) -> PolicyEvaluation:
+    def evaluate_soc(self, alert_data: dict[str, Any]) -> PolicyEvaluation:
         """Evaluate SOC policy."""
         logger.info("Evaluating SOC policy...")
 
         return self._evaluate("soc", alert_data)
 
-    def _evaluate(self, policy: str, input_data: Dict[str, Any]) -> PolicyEvaluation:
+    def _evaluate(self, policy: str, input_data: dict[str, Any]) -> PolicyEvaluation:
         """Evaluate policy with OPA."""
         url = f"{self.opa_url}/v1/data/{policy}"
 
         try:
-            response = requests.post(
-                url,
-                json={"input": input_data},
-                timeout=self.timeout
-            )
+            response = requests.post(url, json={"input": input_data}, timeout=self.timeout)
             response.raise_for_status()
 
             result = response.json()
@@ -405,24 +427,19 @@ class OpaEvaluator:
 
             logger.info(f"OPA evaluation result: allowed={allowed}, violations={len(violations)}")
 
-            return PolicyEvaluation(
-                allowed=allowed,
-                violations=violations,
-                policy=policy
-            )
+            return PolicyEvaluation(allowed=allowed, violations=violations, policy=policy)
 
         except requests.exceptions.RequestException as e:
             logger.error(f"OPA evaluation failed: {e}")
             return PolicyEvaluation(
-                allowed=False,
-                violations=[f"OPA evaluation failed: {str(e)}"],
-                policy=policy
+                allowed=False, violations=[f"OPA evaluation failed: {str(e)}"], policy=policy
             )
 
 
 # =============================================================================
 # SOC INTEGRATION
 # =============================================================================
+
 
 class SocIntegration:
     """Security Operations Center integration."""
@@ -433,10 +450,10 @@ class SocIntegration:
         self.opa_evaluator = OpaEvaluator()
         self.trivy_scanner = TrivyScanner()
 
-    def _load_config(self) -> Dict[str, Any]:
+    def _load_config(self) -> dict[str, Any]:
         """Load SOC configuration."""
         try:
-            with open(self.config_path, "r") as f:
+            with open(self.config_path) as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
             logger.warning(f"Config file not found: {self.config_path}")
@@ -468,9 +485,9 @@ class SocIntegration:
             severity=severity,
             title=f"Security issues detected in {scan_result.image}",
             description=f"Found {scan_result.critical_count} critical, "
-                        f"{scan_result.high_count} high, "
-                        f"{scan_result.medium_count} medium, "
-                        f"{scan_result.low_count} low vulnerabilities",
+            f"{scan_result.high_count} high, "
+            f"{scan_result.medium_count} medium, "
+            f"{scan_result.low_count} low vulnerabilities",
             source="trivy",
             metadata={
                 "image": scan_result.image,
@@ -478,12 +495,12 @@ class SocIntegration:
                     "critical": scan_result.critical_count,
                     "high": scan_result.high_count,
                     "medium": scan_result.medium_count,
-                    "low": scan_result.low_count
+                    "low": scan_result.low_count,
                 },
                 "misconfigurations": len(scan_result.misconfigurations),
                 "secrets": len(scan_result.secrets),
-                "violations": evaluation.violations
-            }
+                "violations": evaluation.violations,
+            },
         )
 
         # Route alert
@@ -515,20 +532,22 @@ class SocIntegration:
             Severity.CRITICAL: "danger",
             Severity.HIGH: "warning",
             Severity.MEDIUM: "#439FE0",
-            Severity.LOW: "good"
+            Severity.LOW: "good",
         }.get(alert.severity, "good")
 
         message = {
             "text": "DCC SOC Alert",
-            "attachments": [{
-                "color": color,
-                "fields": [
-                    {"title": "Severity", "value": alert.severity.value.upper(), "short": True},
-                    {"title": "Title", "value": alert.title, "short": False},
-                    {"title": "Description", "value": alert.description, "short": False},
-                    {"title": "Source", "value": alert.source, "short": True}
-                ]
-            }]
+            "attachments": [
+                {
+                    "color": color,
+                    "fields": [
+                        {"title": "Severity", "value": alert.severity.value.upper(), "short": True},
+                        {"title": "Title", "value": alert.title, "short": False},
+                        {"title": "Description", "value": alert.description, "short": False},
+                        {"title": "Source", "value": alert.source, "short": True},
+                    ],
+                }
+            ],
         }
 
         try:
@@ -547,7 +566,7 @@ class SocIntegration:
             Severity.CRITICAL: "critical",
             Severity.HIGH: "error",
             Severity.MEDIUM: "warning",
-            Severity.LOW: "info"
+            Severity.LOW: "info",
         }
 
         message = {
@@ -560,16 +579,12 @@ class SocIntegration:
                 "source": "DCC SOC",
                 "component": alert.source,
                 "group": "Security",
-                "class": "Security Alert"
-            }
+                "class": "Security Alert",
+            },
         }
 
         try:
-            requests.post(
-                "https://events.pagerduty.com/v2/enqueue",
-                json=message,
-                timeout=10
-            )
+            requests.post("https://events.pagerduty.com/v2/enqueue", json=message, timeout=10)
             logger.info("PagerDuty notification sent")
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to send PagerDuty notification: {e}")
@@ -610,6 +625,7 @@ class SocIntegration:
 # =============================================================================
 # MAIN
 # =============================================================================
+
 
 def main():
     """Main entry point."""

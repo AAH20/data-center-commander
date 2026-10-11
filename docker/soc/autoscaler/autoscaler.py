@@ -5,15 +5,13 @@ Monitors container metrics via Docker API and scales services based on
 CPU/memory thresholds. Exposes Prometheus metrics on port 9102.
 """
 
-import os
-import time
 import logging
+import os
 import threading
-from typing import Dict, List, Optional
+import time
 
 import docker
-import psutil
-from prometheus_client import Gauge, Counter, start_http_server
+from prometheus_client import Counter, Gauge, start_http_server
 
 # Configure logging
 logging.basicConfig(
@@ -76,7 +74,7 @@ class Autoscaler:
             f"cpu_threshold={self.cpu_threshold}%, memory_threshold={self.memory_threshold}%"
         )
 
-    def get_service_containers(self, service_name: str) -> List[docker.models.containers.Container]:
+    def get_service_containers(self, service_name: str) -> list[docker.models.containers.Container]:
         """Get all running containers for a service."""
         try:
             containers = self.client.containers.list(
@@ -87,7 +85,7 @@ class Autoscaler:
             logger.error(f"Failed to list containers for {service_name}: {e}")
             return []
 
-    def get_container_stats(self, container) -> Dict[str, float]:
+    def get_container_stats(self, container) -> dict[str, float]:
         """Get CPU and memory usage for a container."""
         try:
             stats = container.stats(stream=False)
@@ -98,8 +96,7 @@ class Autoscaler:
                 - stats["precpu_stats"]["cpu_usage"]["total_usage"]
             )
             system_delta = (
-                stats["cpu_stats"]["system_cpu_usage"]
-                - stats["precpu_stats"]["system_cpu_usage"]
+                stats["cpu_stats"]["system_cpu_usage"] - stats["precpu_stats"]["system_cpu_usage"]
             )
             cpu_percent = 0.0
             if system_delta > 0 and cpu_delta > 0:
@@ -115,7 +112,7 @@ class Autoscaler:
             logger.warning(f"Failed to get stats for {container.name}: {e}")
             return {"cpu": 0.0, "memory": 0.0}
 
-    def get_service_stats(self, service_name: str) -> Dict[str, float]:
+    def get_service_stats(self, service_name: str) -> dict[str, float]:
         """Get aggregated stats for all containers of a service."""
         containers = self.get_service_containers(service_name)
         if not containers:
@@ -159,7 +156,7 @@ class Autoscaler:
             logger.error(f"Failed to scale {service_name}: {e}")
             return False
 
-    def evaluate_scaling(self, service_name: str) -> Optional[int]:
+    def evaluate_scaling(self, service_name: str) -> int | None:
         """Evaluate if a service needs scaling and return target replicas."""
         stats = self.get_service_stats(service_name)
         current = int(stats["count"])

@@ -5,16 +5,16 @@ for GPU-accelerated IOC extraction and correlation. Optional API
 integration with fallback to zero-API cognee-based detection.
 """
 
-import json
+from typing import Any
+
 import requests
-from typing import Any, Dict, List, Optional
 
 
 def clara_threat_enrichment(
-    record: Dict[str, Any],
+    record: dict[str, Any],
     clara_endpoint: str = "https://api.nvidia.com/clara/soc/threat",
-    api_key: Optional[str] = None,
-) -> Dict[str, Any]:
+    api_key: str | None = None,
+) -> dict[str, Any]:
     """Enrich SOC record with Nvidia Clara threat intelligence.
 
     Args:

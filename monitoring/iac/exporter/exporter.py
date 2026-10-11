@@ -6,18 +6,15 @@ Scans Checkov JSON output and Terraform plan files to expose
 security and compliance metrics on /metrics.
 """
 
+import glob
 import json
+import logging
 import os
 import time
-import glob
-import logging
-from pathlib import Path
-from prometheus_client import start_http_server, Gauge, Counter, Info
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+from prometheus_client import Gauge, Info, start_http_server
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("iac-exporter")
 
 # Prometheus metrics
@@ -29,9 +26,7 @@ CHECKOV_FAILED_MEDIUM = Gauge("iac_checkov_failed_medium", "Medium severity fail
 CHECKOV_FAILED_LOW = Gauge("iac_checkov_failed_low", "Low severity failures")
 COMPLIANCE_SCORE = Gauge("iac_compliance_score", "Overall compliance score (0-100)")
 POLICY_CATEGORY_FAILURES = Gauge(
-    "iac_policy_category_failures",
-    "Failures by policy category",
-    ["category"]
+    "iac_policy_category_failures", "Failures by policy category", ["category"]
 )
 TERRAFORM_DRIFT = Gauge("iac_terraform_drift_detected", "Terraform drift detected count")
 UNENCRYPTED_RESOURCES = Gauge("iac_unencrypted_resources", "Unencrypted resources count")
@@ -59,7 +54,7 @@ def parse_checkov_results(checkov_dir: str) -> dict:
 
     for json_file in glob.glob(os.path.join(checkov_dir, "**", "*.json"), recursive=True):
         try:
-            with open(json_file, "r") as f:
+            with open(json_file) as f:
                 data = json.load(f)
 
             if isinstance(data, list):
@@ -116,7 +111,7 @@ def parse_terraform_plan(plan_dir: str) -> dict:
 
     for json_file in glob.glob(os.path.join(plan_dir, "**", "*.json"), recursive=True):
         try:
-            with open(json_file, "r") as f:
+            with open(json_file) as f:
                 data = json.load(f)
 
             if isinstance(data, dict) and "resource_changes" in data:
@@ -155,8 +150,7 @@ def update_metrics():
     # Parse Checkov results
     checkov_results = parse_checkov_results(CHECKOV_OUTPUT_DIR)
     logger.info(
-        f"Checkov: {checkov_results['passed']} passed, "
-        f"{checkov_results['failed']} failed"
+        f"Checkov: {checkov_results['passed']} passed, " f"{checkov_results['failed']} failed"
     )
 
     # Parse Terraform plans
@@ -189,12 +183,14 @@ def update_metrics():
 
 def main():
     """Main entry point."""
-    EXPORTER_INFO.info({
-        "version": "1.0.0",
-        "checkov_dir": CHECKOV_OUTPUT_DIR,
-        "terraform_dir": TERRAFORM_PLAN_DIR,
-        "scrape_interval": str(SCRAPE_INTERVAL),
-    })
+    EXPORTER_INFO.info(
+        {
+            "version": "1.0.0",
+            "checkov_dir": CHECKOV_OUTPUT_DIR,
+            "terraform_dir": TERRAFORM_PLAN_DIR,
+            "scrape_interval": str(SCRAPE_INTERVAL),
+        }
+    )
 
     logger.info(f"Starting IaC exporter on port {PORT}")
     logger.info(f"Checkov output dir: {CHECKOV_OUTPUT_DIR}")
