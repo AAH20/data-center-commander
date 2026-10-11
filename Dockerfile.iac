@@ -33,6 +33,11 @@ ARG OPA_VERSION=v0.68.0
 # binary for the target arch instead of assuming amd64 (an x86 binary cannot
 # execute under arm64 emulation). GitHub releases are used because
 # openpolicyagent.org redirects and some runner networks fail on it.
+#
+# TARGETARCH is a buildx-injected automatic ARG; it is not guaranteed to be set
+# for every stage. Default it so `set -u` cannot abort the step on an unbound
+# variable before any diagnostic output is emitted.
+ARG TARGETARCH=amd64
 RUN set -eu; \
     case "${TARGETARCH}" in \
       amd64) OPA_ARCH="amd64" ;; \
@@ -41,7 +46,7 @@ RUN set -eu; \
     esac; \
     OPA_URL="https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_${OPA_ARCH}_static"; \
     echo "fetching ${OPA_URL}"; \
-    wget --progress=dot:giga "${OPA_URL}" -O /usr/local/bin/opa; \
+    wget "${OPA_URL}" -O /usr/local/bin/opa; \
     chmod +x /usr/local/bin/opa; \
     test -s /usr/local/bin/opa || { echo "opa binary is empty"; exit 1; }; \
     /usr/local/bin/opa version
