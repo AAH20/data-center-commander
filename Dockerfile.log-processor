@@ -12,7 +12,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir \
     requests \
-    elasticsearch>=8,<9
+    "elasticsearch>=8,<9"
 
 COPY logging/iac/scripts/log_processor.py /app/log_processor.py
 
