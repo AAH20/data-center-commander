@@ -201,9 +201,9 @@ resource "aws_instance" "server" {
 
         result = checkov_runner.scan_directory(temp_workspace)
         # Modules add overhead
-        assert (
-            result.elapsed_ms < 60_000
-        ), f"scan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        assert result.elapsed_ms < 60_000, (
+            f"scan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        )
 
 
 @pytest.mark.checkov

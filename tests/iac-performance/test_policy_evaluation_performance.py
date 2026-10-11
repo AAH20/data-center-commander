@@ -260,9 +260,9 @@ class TestPolicyEvaluationBenchmark:
         result = opa_runner.bench(policy_path, input_data=sample_opa_input, iterations=100)
         assert result.success, f"OPA bench failed: {result.stderr}"
         # Benchmark should complete within 60 seconds
-        assert (
-            result.elapsed_ms < 60_000
-        ), f"benchmark took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        assert result.elapsed_ms < 60_000, (
+            f"benchmark took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        )
 
     @pytest.mark.benchmark
     def test_bench_encryption_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
@@ -273,6 +273,6 @@ class TestPolicyEvaluationBenchmark:
 
         result = opa_runner.bench(policy_path, input_data=sample_opa_input, iterations=100)
         assert result.success, f"OPA bench failed: {result.stderr}"
-        assert (
-            result.elapsed_ms < 60_000
-        ), f"benchmark took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        assert result.elapsed_ms < 60_000, (
+            f"benchmark took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        )

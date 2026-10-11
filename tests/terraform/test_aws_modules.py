@@ -1178,9 +1178,9 @@ class TestCrossModuleIntegration:
                         for resource_name, resource_config in resources.items():
                             if isinstance(resource_config, dict) and "tags" in resource_config:
                                 tags = get_tags(resource_config)
-                                assert (
-                                    "Name" in tags
-                                ), f"{module_name}.{resource_type}.{resource_name} missing Name tag"
+                                assert "Name" in tags, (
+                                    f"{module_name}.{resource_type}.{resource_name} missing Name tag"
+                                )
 
     def test_security_groups_reference_vpc(self, all_parsed):
         """Security groups should reference a VPC."""

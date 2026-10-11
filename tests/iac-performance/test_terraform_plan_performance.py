@@ -41,9 +41,9 @@ class TestTerraformPlanPerformance:
             runner = TerraformRunner(workspace)
             result = runner.init(backend=False)
             assert result.success, f"terraform init failed: {result.stderr}"
-            assert (
-                result.elapsed_ms < THRESHOLDS["init_small"]
-            ), f"init took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['init_small']}ms"
+            assert result.elapsed_ms < THRESHOLDS["init_small"], (
+                f"init took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['init_small']}ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -54,9 +54,9 @@ class TestTerraformPlanPerformance:
             runner = TerraformRunner(workspace)
             result = runner.init(backend=False)
             assert result.success, f"terraform init failed: {result.stderr}"
-            assert (
-                result.elapsed_ms < THRESHOLDS["init_medium"]
-            ), f"init took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['init_medium']}ms"
+            assert result.elapsed_ms < THRESHOLDS["init_medium"], (
+                f"init took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['init_medium']}ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -67,9 +67,9 @@ class TestTerraformPlanPerformance:
             runner = TerraformRunner(workspace)
             result = runner.init(backend=False)
             assert result.success, f"terraform init failed: {result.stderr}"
-            assert (
-                result.elapsed_ms < THRESHOLDS["init_large"]
-            ), f"init took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['init_large']}ms"
+            assert result.elapsed_ms < THRESHOLDS["init_large"], (
+                f"init took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['init_large']}ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -83,9 +83,9 @@ class TestTerraformPlanPerformance:
 
             result = runner.plan()
             assert result.success, f"terraform plan failed: {result.stderr}"
-            assert (
-                result.elapsed_ms < THRESHOLDS["plan_small"]
-            ), f"plan took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['plan_small']}ms"
+            assert result.elapsed_ms < THRESHOLDS["plan_small"], (
+                f"plan took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['plan_small']}ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -99,9 +99,9 @@ class TestTerraformPlanPerformance:
 
             result = runner.plan()
             assert result.success, f"terraform plan failed: {result.stderr}"
-            assert (
-                result.elapsed_ms < THRESHOLDS["plan_medium"]
-            ), f"plan took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['plan_medium']}ms"
+            assert result.elapsed_ms < THRESHOLDS["plan_medium"], (
+                f"plan took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['plan_medium']}ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -115,9 +115,9 @@ class TestTerraformPlanPerformance:
 
             result = runner.plan()
             assert result.success, f"terraform plan failed: {result.stderr}"
-            assert (
-                result.elapsed_ms < THRESHOLDS["plan_large"]
-            ), f"plan took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['plan_large']}ms"
+            assert result.elapsed_ms < THRESHOLDS["plan_large"], (
+                f"plan took {result.elapsed_ms:.1f}ms, threshold: {THRESHOLDS['plan_large']}ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -136,9 +136,9 @@ class TestTerraformPlanPerformance:
             result = runner.plan()
             assert result.success, f"terraform plan failed: {result.stderr}"
             # Modules add overhead, so threshold is higher
-            assert (
-                result.elapsed_ms < 60_000
-            ), f"plan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            assert result.elapsed_ms < 60_000, (
+                f"plan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -244,9 +244,9 @@ class TestTerraformApplyPerformance:
             result = runner.apply()
             assert result.success, f"terraform apply failed: {result.stderr}"
             # Apply threshold: 5 minutes for small config
-            assert (
-                result.elapsed_ms < 300_000
-            ), f"apply took {result.elapsed_ms:.1f}ms, threshold: 300000ms"
+            assert result.elapsed_ms < 300_000, (
+                f"apply took {result.elapsed_ms:.1f}ms, threshold: 300000ms"
+            )
         finally:
             # Always cleanup
             with suppress(Exception):

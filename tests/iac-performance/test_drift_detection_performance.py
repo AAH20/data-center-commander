@@ -254,9 +254,9 @@ class TestDriftDetectionWithModules:
             result = runner.refresh()
             assert result.success
             # Modules add overhead
-            assert (
-                result.elapsed_ms < 60_000
-            ), f"refresh with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            assert result.elapsed_ms < 60_000, (
+                f"refresh with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            )
         finally:
             cleanup_workspace(workspace)
 
@@ -274,8 +274,8 @@ class TestDriftDetectionWithModules:
 
             result = runner.plan(detailed_exitcode=True)
             assert result.success
-            assert (
-                result.elapsed_ms < 60_000
-            ), f"drift plan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            assert result.elapsed_ms < 60_000, (
+                f"drift plan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            )
         finally:
             cleanup_workspace(workspace)
