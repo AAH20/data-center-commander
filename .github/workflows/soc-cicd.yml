@@ -436,6 +436,18 @@ jobs:
             --scanners vuln,secret,config \
             . || true
 
+      # upload-sarif rejects Trivy's own --format json ("not valid SARIF"), so
+      # emit a real SARIF report for the Security tab alongside the JSON.
+      - name: Trivy filesystem scan (SARIF)
+        run: |
+          trivy filesystem \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output trivy-fs-report.sarif \
+            --scanners vuln,secret,config \
+            . || true
+          ls -la trivy-fs-report.sarif 2>/dev/null || echo "no Trivy SARIF produced"
+
       - name: Grype scan IaC scanner image
         run: |
           grype \
@@ -445,9 +457,9 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-fs-report.json') != ''
+        if: always() && hashFiles('trivy-fs-report.sarif') != ''
         with:
-          sarif_file: trivy-fs-report.json
+          sarif_file: trivy-fs-report.sarif
           category: trivy-filesystem
 
       - name: Upload container scan reports
@@ -458,6 +470,7 @@ jobs:
           path: |
             trivy-iac-report.json
             trivy-fs-report.json
+            trivy-fs-report.sarif
             grype-iac-report.json
           retention-days: 90
 
@@ -955,13 +968,36 @@ jobs:
   # ===========================================================================
   # STAGE 6: Deploy to Kubernetes
   # ===========================================================================
-  deploy:
-    name: Deploy to Kubernetes
+  # The deploy jobs need a KUBE_CONFIG secret. Without it `base64 -d` yields an
+  # empty kubeconfig and kubectl cluster-info fails, so gate the whole chain on
+  # the secret being configured. Keeps CI green for forks/OSS users who have no
+  # cluster, and deploys normally once the secret exists.
+  deploy-preflight:
+    name: Deploy Preflight
     runs-on: ubuntu-latest
-    needs: [integration-tests, soc-compliance, validate-autoscaling]
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && !inputs.skip_deploy)
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          if [ -n "${KUBE_CONFIG}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "KUBE_CONFIG is configured; cluster deploy will run."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::KUBE_CONFIG secret is not set; skipping cluster deploy and post-deploy audit."
+          fi
+
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: [integration-tests, soc-compliance, validate-autoscaling, deploy-preflight]
+    if: needs.deploy-preflight.outputs.enabled == 'true'
     environment:
       name: ${{ inputs.environment || 'dev' }}
       url: https://kibana.local
@@ -1071,9 +1107,9 @@ jobs:
     name: SOC Post-Deploy Monitoring
     runs-on: ubuntu-latest
     needs: deploy
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && !inputs.skip_deploy)
+    # Only audit a cluster we actually deployed to; deploy is skipped when
+    # KUBE_CONFIG is absent, and a skipped dependency already yields skipped.
+    if: needs.deploy.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -1137,7 +1173,7 @@ jobs:
   pipeline-report:
     name: Pipeline Summary Report
     runs-on: ubuntu-latest
-    needs: [code-quality, unit-tests, build-iac-scanner, build-logging-stack, scan-iac-policies, scan-container-images, soc-compliance, validate-autoscaling, integration-tests, deploy, soc-post-deploy]
+    needs: [code-quality, unit-tests, build-iac-scanner, build-logging-stack, scan-iac-policies, scan-container-images, soc-compliance, validate-autoscaling, integration-tests, deploy-preflight, deploy, soc-post-deploy]
     if: always()
     steps:
       - name: Download all artifacts
