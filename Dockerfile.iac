@@ -29,19 +29,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 FROM base AS opa-installer
 
 ARG OPA_VERSION=v0.68.0
-# The workflow builds linux/amd64 and linux/arm64 in one pass, so download the
-# binary for the target arch rather than assuming amd64 (an x86 binary fails
-# "opa version" under arm64 emulation).
-RUN set -eux; \
+# The workflow builds linux/amd64 and linux/arm64 in one pass, so pick the
+# binary for the target arch instead of assuming amd64 (an x86 binary cannot
+# execute under arm64 emulation). GitHub releases are used because
+# openpolicyagent.org redirects and some runner networks fail on it.
+RUN set -eu; \
     case "${TARGETARCH}" in \
       amd64) OPA_ARCH="amd64" ;; \
       arm64) OPA_ARCH="arm64" ;; \
       *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    wget -q "https://openpolicyagent.org/downloads/${OPA_VERSION}/opa_linux_${OPA_ARCH}_static" \
+    wget -q "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_${OPA_ARCH}_static" \
       -O /usr/local/bin/opa; \
     chmod +x /usr/local/bin/opa; \
-    opa version
+    /usr/local/bin/opa version
 
 # ---- Stage 3: Install Checkov & Python deps ---------------------------------
 FROM base AS python-deps
