@@ -49,7 +49,14 @@ processors:
   - add_docker_metadata: ~
   - add_kubernetes_metadata: ~
   - drop_fields:
-      fields: ["agent.ephemeral_id", "agent.id", "agent.name", "agent.type", "agent.version", "ecs.version", "input.type"]
+      fields:
+        - "agent.ephemeral_id"
+        - "agent.id"
+        - "agent.name"
+        - "agent.type"
+        - "agent.version"
+        - "ecs.version"
+        - "input.type"
       ignore_missing: true
 
 output.logstash:

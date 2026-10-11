@@ -1,0 +1,14 @@
+# Extends the `relaxed` preset with a realistic line-length ceiling.
+#
+# The default relaxed max of 80 flags k8s ConfigMaps whose `data:` values are
+# single YAML scalars holding an entire embedded config file (promtail
+# config.yml, loki config, etc.). Re-wrapping those lines to satisfy a column
+# limit would corrupt the embedded document, so raise the ceiling rather than
+# mangle the content. Every other relaxed check still applies.
+extends: relaxed
+
+rules:
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true

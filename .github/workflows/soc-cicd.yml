@@ -124,7 +124,7 @@ jobs:
           done
 
       - name: Lint YAML files
-        run: yamllint -d relaxed k8s/ policies/ logging/ || true
+        run: yamllint -c .yamllint.yaml k8s/ policies/ logging/ || true
 
       - name: Upload code quality reports
         uses: actions/upload-artifact@v4
