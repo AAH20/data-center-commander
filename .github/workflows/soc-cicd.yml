@@ -71,12 +71,17 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
+      # safety and opa-python-client are deliberately unpinned. Both dragged in
+      # old transitive pins (safety 2.3.5, opa-python-client 1.3.0) that conflict
+      # with checkov's docker/typing requirements on modern Python, so pip
+      # resolution fails before any step runs. Every consumer of these two below
+      # is advisory (|| true), so a fresh resolver is safe here.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install \
             checkov==${{ env.CHECKOV_VERSION }} \
-            opa-python-client==1.3.0 \
+            opa-python-client \
             PyYAML==6.0.2 \
             jsonschema==4.23.0 \
             pytest==8.0.0 \
@@ -84,7 +89,7 @@ jobs:
             pytest-xdist==3.5.0 \
             ruff==0.1.9 \
             bandit==1.7.7 \
-            safety==2.3.5 \
+            safety \
             yamllint==1.35.1
 
       - name: Run Ruff linter
