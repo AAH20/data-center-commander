@@ -39,9 +39,11 @@ RUN set -eu; \
       arm64) OPA_ARCH="arm64" ;; \
       *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
-    wget -q "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_${OPA_ARCH}_static" \
-      -O /usr/local/bin/opa; \
+    OPA_URL="https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_${OPA_ARCH}_static"; \
+    echo "fetching ${OPA_URL}"; \
+    wget --progress=dot:giga "${OPA_URL}" -O /usr/local/bin/opa; \
     chmod +x /usr/local/bin/opa; \
+    test -s /usr/local/bin/opa || { echo "opa binary is empty"; exit 1; }; \
     /usr/local/bin/opa version
 
 # ---- Stage 3: Install Checkov & Python deps ---------------------------------
