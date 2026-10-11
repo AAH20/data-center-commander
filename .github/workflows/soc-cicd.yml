@@ -40,10 +40,13 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # GHCR requires a fully lowercase repository path; github.repository keeps the
-  # owner's original casing ("AAH20/..."), which fails the tag validation.
-  IMAGE_NAME: ${{ github.repository_owner }}/data-center-commander
-  IAC_IMAGE_NAME: ${{ github.repository_owner }}/data-center-commander/iac-scanner
+  # GHCR requires a fully lowercase repository path. github.repository and
+  # github.repository_owner both preserve the owner's original casing
+  # ("AAH20/data-center-commander"), which fails tag validation. Each
+  # docker/login-action step re-exports IMAGE_NAME lowercased via a shell
+  # expansion; the env value here is only a fallback.
+  IMAGE_NAME: aah20/data-center-commander
+  IAC_IMAGE_NAME: aah20/data-center-commander/iac-scanner
   PYTHON_VERSION: '3.12'
   KUBECTL_VERSION: 'v1.28.0'
   KUSTOMIZE_VERSION: 'v5.2.1'
@@ -617,6 +620,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
+      # The validation steps below are inline `python3 - <<PYEOF` scripts that
+      # import yaml to parse the HPA/PDB manifests; PyYAML is not in the runner
+      # image, so install it explicitly.
+      - name: Install PyYAML
+        run: pip install PyYAML==6.0.2
 
       - name: Install kubectl
         run: |
