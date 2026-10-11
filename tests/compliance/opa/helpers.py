@@ -48,7 +48,10 @@ def run_opa(input_data: dict, package: str = "datacenter.resource_tagging") -> d
             text=True,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"OPA eval failed: {result.stderr}")
+            # OPA reports parse/eval errors as JSON on stdout, so stderr alone
+            # reads as empty and hides the real cause.
+            detail = (result.stderr or "").strip() or (result.stdout or "").strip()
+            raise RuntimeError(f"OPA eval failed (rc={result.returncode}): {detail}")
         return json.loads(result.stdout)
     finally:
         os.unlink(input_file)

@@ -62,9 +62,13 @@ jobs:
       # tests/compliance/opa/* shell out to the `opa` CLI; it is not on the
       # runner image, which produced FileNotFoundError: 'opa' for the whole
       # resource_tagging module.
+      #
+      # v1.x is required: the policies/rego files use Rego v1 rule syntax, and
+      # OPA 0.x rejects them with "rego_parse_error: var cannot be used for rule
+      # name" (reproduced with v0.68.0 against policies/rego/access_control.rego).
       - name: Install OPA
         run: |
-          OPA_VERSION=v0.68.0
+          OPA_VERSION=v1.21.1
           curl -sSL "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static" \
             -o /usr/local/bin/opa
           chmod +x /usr/local/bin/opa
