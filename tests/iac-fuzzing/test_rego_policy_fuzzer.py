@@ -6,14 +6,13 @@ handles malformed, edge-case, and adversarial inputs.
 """
 
 import json
-import pytest
-from hypothesis import given, settings, HealthCheck
-from hypothesis import strategies as st
 
+import pytest
 from generators import (
     policy_input,
-    random_policy_input_dict,
 )
+from hypothesis import given
+from hypothesis import strategies as st
 
 
 class TestRegoPolicyFuzzing:
@@ -84,7 +83,7 @@ class TestRegoPolicyFuzzing:
             pass
 
         # deny contains msg if { not common.least_privilege }
-        if not access["privilege"] == "least":
+        if access["privilege"] != "least":
             # Rule should fire
             pass
 
@@ -118,7 +117,23 @@ class TestRegoPolicyEdgeCases:
     """Test edge cases for Rego policies."""
 
     @given(
-        environment=st.sampled_from(["production", "staging", "dev", "test", "prod", "development", "stage", "", "unknown", "PRODUCTION", "Production", "PROD", "Prod"]),
+        environment=st.sampled_from(
+            [
+                "production",
+                "staging",
+                "dev",
+                "test",
+                "prod",
+                "development",
+                "stage",
+                "",
+                "unknown",
+                "PRODUCTION",
+                "Production",
+                "PROD",
+                "Prod",
+            ]
+        ),
     )
     def test_rego_environment_values(self, environment):
         """Test various environment values."""
@@ -131,7 +146,21 @@ class TestRegoPolicyEdgeCases:
         assert isinstance(is_dev, bool)
 
     @given(
-        segment=st.sampled_from(["isolated", "restricted", "public", "ISOLATED", "RESTRICTED", "PUBLIC", "", "unknown", "Isolated", "Restricted", "Public"]),
+        segment=st.sampled_from(
+            [
+                "isolated",
+                "restricted",
+                "public",
+                "ISOLATED",
+                "RESTRICTED",
+                "PUBLIC",
+                "",
+                "unknown",
+                "Isolated",
+                "Restricted",
+                "Public",
+            ]
+        ),
     )
     def test_rego_segment_values(self, segment):
         """Test various segment values."""
@@ -144,7 +173,25 @@ class TestRegoPolicyEdgeCases:
         assert isinstance(is_public, bool)
 
     @given(
-        tls_version=st.sampled_from(["TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3", "SSLv3", "tlsv1.0", "tlsv1.1", "tlsv1.2", "tlsv1.3", "sslv3", "", "unknown", "TLSv1", "TLSv2", "TLSv3"]),
+        tls_version=st.sampled_from(
+            [
+                "TLSv1.0",
+                "TLSv1.1",
+                "TLSv1.2",
+                "TLSv1.3",
+                "SSLv3",
+                "tlsv1.0",
+                "tlsv1.1",
+                "tlsv1.2",
+                "tlsv1.3",
+                "sslv3",
+                "",
+                "unknown",
+                "TLSv1",
+                "TLSv2",
+                "TLSv3",
+            ]
+        ),
     )
     def test_rego_tls_version_values(self, tls_version):
         """Test various TLS version values."""
@@ -168,7 +215,6 @@ class TestRegoPolicySecurity:
     def test_rego_production_encryption(self, input_doc):
         """Production resources should have encryption."""
         if input_doc["environment"] == "production":
-            enc = input_doc["encryption"]
             # These are policy checks, not crash checks
             pass
 

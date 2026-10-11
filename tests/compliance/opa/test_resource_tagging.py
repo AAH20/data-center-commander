@@ -3,15 +3,12 @@ OPA/Rego Policy Tests — Resource Tagging
 Tests for datacenter.resource_tagging package.
 """
 
-import json
-import subprocess
-import pytest
 import os
 import sys
 
 # Add the opa directory to the path for helpers
 sys.path.insert(0, os.path.dirname(__file__))
-from helpers import run_opa, make_resource
+from helpers import make_resource, run_opa
 
 
 class TestResourceTaggingCompliance:

@@ -3,14 +3,11 @@ OPA/Rego Policy Tests — Access Control
 Tests for datacenter.access_control package.
 """
 
-import json
-import subprocess
-import pytest
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from helpers import run_opa, make_resource
+from helpers import make_resource, run_opa
 
 
 class TestAccessControlCompliance:

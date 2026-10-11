@@ -1,5 +1,3 @@
----
-# Filebeat ServiceAccount
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -7,41 +5,44 @@ metadata:
   namespace: data-center-commander
   labels:
     app: filebeat
+    team: platform-engineering
 ---
-# Filebeat ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: filebeat
   labels:
     app: filebeat
+    team: platform-engineering
 rules:
-  - apiGroups: [""]
-    resources:
-      - namespaces
-      - pods
-      - nodes
-    verbs:
-      - get
-      - watch
-      - list
-  - apiGroups: [""]
-    resources:
-      - nodes/stats
-    verbs:
-      - get
+- apiGroups:
+  - ''
+  resources:
+  - namespaces
+  - pods
+  - nodes
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - ''
+  resources:
+  - nodes/stats
+  verbs:
+  - get
 ---
-# Filebeat ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: filebeat
   labels:
     app: filebeat
+    team: platform-engineering
 subjects:
-  - kind: ServiceAccount
-    name: filebeat
-    namespace: data-center-commander
+- kind: ServiceAccount
+  name: filebeat
+  namespace: data-center-commander
 roleRef:
   kind: ClusterRole
   name: filebeat

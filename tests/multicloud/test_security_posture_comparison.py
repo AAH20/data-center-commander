@@ -3,6 +3,7 @@
 Tests that validate security posture and compliance across
 AWS, Azure, and GCP using the project's Checkov and Rego policies.
 """
+
 import pytest
 
 
@@ -149,8 +150,11 @@ class TestSecurityPostureComparison:
         # WAF should have managed rules
         assert len(waf.get("rules", [])) > 0
         # WAF should use AWS managed rules
-        assert any("AWSManagedRules" in r.get("statement", {}).get("managed_rule_group_statement", {}).get("name", "")
-                   for r in waf.get("rules", []))
+        assert any(
+            "AWSManagedRules"
+            in r.get("statement", {}).get("managed_rule_group_statement", {}).get("name", "")
+            for r in waf.get("rules", [])
+        )
 
     def test_azure_waf_posture(self, azure_waf_config):
         """Verify Azure WAF security posture."""

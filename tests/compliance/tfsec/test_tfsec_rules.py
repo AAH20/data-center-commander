@@ -6,7 +6,6 @@ These tests validate that tfsec rules correctly enforce data center governance r
 
 import json
 import os
-import pytest
 import subprocess
 import tempfile
 
@@ -29,7 +28,7 @@ def run_tfsec(rule_file: str, tf_file: str) -> dict:
 
 def run_tfsec_with_json(rule_file: str, tf_content: str) -> dict:
     """Run tfsec with JSON output against Terraform content."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.tf', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".tf", delete=False) as f:
         f.write(tf_content)
         tf_file = f.name
 
@@ -58,12 +57,12 @@ class TestTfsecRules:
 
     def test_tfsec_rule_files_present(self):
         """Verify tfsec rule files are present."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         assert len(rule_files) > 0
 
     def test_tfsec_rule_format_valid(self):
         """Verify tfsec rule files have valid JSON format."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
             with open(rule_path) as f:
@@ -72,7 +71,7 @@ class TestTfsecRules:
 
     def test_tfsec_rule_has_required_fields(self):
         """Verify tfsec rules have required fields."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
             with open(rule_path) as f:
@@ -85,7 +84,7 @@ class TestTfsecRules:
 
     def test_tfsec_rule_ids_follow_convention(self):
         """Verify tfsec rule IDs follow DC_ prefix convention."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
             with open(rule_path) as f:
@@ -97,7 +96,7 @@ class TestTfsecRules:
     def test_tfsec_rule_severity_levels(self):
         """Verify tfsec rules have valid severity levels."""
         valid_severities = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "WARNING", "ERROR", "INFO"]
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
             with open(rule_path) as f:
@@ -110,10 +109,17 @@ class TestTfsecRules:
     def test_tfsec_rule_categories(self):
         """Verify tfsec rules have valid categories."""
         valid_categories = [
-            "networking", "compute", "storage", "encryption",
-            "logging", "monitoring", "iam", "compliance", "general"
+            "networking",
+            "compute",
+            "storage",
+            "encryption",
+            "logging",
+            "monitoring",
+            "iam",
+            "compliance",
+            "general",
         ]
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
             with open(rule_path) as f:
@@ -133,7 +139,7 @@ class TestTfsecNetworkRules:
 
     def test_network_rules_present(self):
         """Verify network security rules are present."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         network_rules = []
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
@@ -141,7 +147,10 @@ class TestTfsecNetworkRules:
                 rule_data = json.load(f)
             rules = rule_data.get("rules", [rule_data])
             for rule in rules:
-                if "network" in rule.get("category", "").lower() or                    "network" in str(rule.get("categories", [])).lower():
+                if (
+                    "network" in rule.get("category", "").lower()
+                    or "network" in str(rule.get("categories", [])).lower()
+                ):
                     network_rules.append(rule)
         assert len(network_rules) > 0
 
@@ -151,7 +160,7 @@ class TestTfsecEncryptionRules:
 
     def test_encryption_rules_present(self):
         """Verify encryption rules are present."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         encryption_rules = []
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
@@ -159,7 +168,10 @@ class TestTfsecEncryptionRules:
                 rule_data = json.load(f)
             rules = rule_data.get("rules", [rule_data])
             for rule in rules:
-                if "encryption" in rule.get("category", "").lower() or                    "encryption" in str(rule.get("categories", [])).lower():
+                if (
+                    "encryption" in rule.get("category", "").lower()
+                    or "encryption" in str(rule.get("categories", [])).lower()
+                ):
                     encryption_rules.append(rule)
         assert len(encryption_rules) > 0
 
@@ -169,7 +181,7 @@ class TestTfsecIAMRules:
 
     def test_iam_rules_present(self):
         """Verify IAM rules are present."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         iam_rules = []
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
@@ -177,7 +189,10 @@ class TestTfsecIAMRules:
                 rule_data = json.load(f)
             rules = rule_data.get("rules", [rule_data])
             for rule in rules:
-                if "iam" in rule.get("category", "").lower() or                    "iam" in str(rule.get("categories", [])).lower():
+                if (
+                    "iam" in rule.get("category", "").lower()
+                    or "iam" in str(rule.get("categories", [])).lower()
+                ):
                     iam_rules.append(rule)
         assert len(iam_rules) > 0
 
@@ -187,7 +202,7 @@ class TestTfsecComplianceRules:
 
     def test_compliance_rules_present(self):
         """Verify compliance rules are present."""
-        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith('.json')]
+        rule_files = [f for f in os.listdir(TFSEC_RULES_DIR) if f.endswith(".json")]
         compliance_rules = []
         for rule_file in rule_files:
             rule_path = os.path.join(TFSEC_RULES_DIR, rule_file)
@@ -195,6 +210,9 @@ class TestTfsecComplianceRules:
                 rule_data = json.load(f)
             rules = rule_data.get("rules", [rule_data])
             for rule in rules:
-                if "compliance" in rule.get("category", "").lower() or                    "compliance" in str(rule.get("categories", [])).lower():
+                if (
+                    "compliance" in rule.get("category", "").lower()
+                    or "compliance" in str(rule.get("categories", [])).lower()
+                ):
                     compliance_rules.append(rule)
         assert len(compliance_rules) > 0

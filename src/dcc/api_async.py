@@ -13,7 +13,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -160,7 +160,7 @@ class Page:
     limit: int
     offset: int
     has_more: bool
-    next_cursor: Optional[str] = None
+    next_cursor: str | None = None
 
 
 def encode_cursor(offset: int) -> str:
@@ -188,7 +188,7 @@ class Cache:
     def __init__(self) -> None:
         self._data: dict[str, tuple[float, Any]] = {}
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         if key in self._data:
             expiry, value = self._data[key]
             if time.time() < expiry:
@@ -196,7 +196,7 @@ class Cache:
             del self._data[key]
         return None
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         ttl = ttl or settings.cache_ttl_seconds
         self._data[key] = (time.time() + ttl, value)
 
@@ -216,7 +216,7 @@ cache = Cache()
 class RateLimiter:
     def __init__(self, rps: int) -> None:
         self.rps = rps
-        self._tokens: dict[str, Tuple[float, float]] = {}
+        self._tokens: dict[str, tuple[float, float]] = {}
 
     def is_allowed(self, key: str) -> bool:
         now = time.time()
@@ -359,7 +359,7 @@ async def readyz():
 @app.get("/v2/overview")
 async def overview(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
-    demo: Optional[str] = None,
+    demo: str | None = None,
 ):
     cache_key = f"overview:{tenant_id}:{demo}"
     cached = cache.get(cache_key)
@@ -412,7 +412,7 @@ async def overview(
 async def list_assets(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
@@ -452,7 +452,7 @@ async def list_assets(
 async def list_facilities(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
-    cursor: Optional[str] = None,
+    cursor: str | None = None,
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()
@@ -487,8 +487,8 @@ async def list_facilities(
 async def list_workflows(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
-    cursor: Optional[str] = None,
-    status: Optional[str] = None,
+    cursor: str | None = None,
+    status: str | None = None,
 ):
     offset = decode_cursor(cursor) if cursor else 0
     pool = await get_pool()

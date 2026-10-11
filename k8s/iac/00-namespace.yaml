@@ -6,3 +6,4 @@ metadata:
     app.kubernetes.io/name: data-center-commander
     app.kubernetes.io/component: logging
     app.kubernetes.io/managed-by: kubectl
+    team: platform-engineering

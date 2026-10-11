@@ -14,8 +14,7 @@ Wazuh rules in ossec.conf XML format covering:
 - Windows security events
 """
 
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Wazuh XML Rules (ossec.conf format)
@@ -492,7 +491,7 @@ WAZUH_RULES_XML = """
 # Structured Rule Definitions (for programmatic access)
 # ---------------------------------------------------------------------------
 
-WAZUH_RULES: List[Dict[str, Any]] = [
+WAZUH_RULES: list[dict[str, Any]] = [
     {
         "id": "WAZUH-001",
         "name": "SSH Brute Force",
@@ -968,12 +967,12 @@ def get_rules_xml() -> str:
     return WAZUH_RULES_XML.strip()
 
 
-def get_rules() -> List[Dict[str, Any]]:
+def get_rules() -> list[dict[str, Any]]:
     """Return structured rule definitions."""
     return WAZUH_RULES
 
 
-def get_rule_by_id(rule_id: str) -> Optional[Dict[str, Any]]:
+def get_rule_by_id(rule_id: str) -> dict[str, Any] | None:
     """Get a single rule by its ID."""
     for rule in WAZUH_RULES:
         if rule["id"] == rule_id:
@@ -981,16 +980,16 @@ def get_rule_by_id(rule_id: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def get_rules_by_category(category: str) -> List[Dict[str, Any]]:
+def get_rules_by_category(category: str) -> list[dict[str, Any]]:
     """Get all rules in a given category."""
     return [r for r in WAZUH_RULES if r["category"] == category]
 
 
-def get_rules_by_severity(severity: str) -> List[Dict[str, Any]]:
+def get_rules_by_severity(severity: str) -> list[dict[str, Any]]:
     """Get all rules with a given severity."""
     return [r for r in WAZUH_RULES if r["severity"] == severity]
 
 
-def get_rules_by_mitre(technique: str) -> List[Dict[str, Any]]:
+def get_rules_by_mitre(technique: str) -> list[dict[str, Any]]:
     """Get all rules for a given MITRE ATT&CK technique."""
     return [r for r in WAZUH_RULES if r["mitre_technique"] == technique]

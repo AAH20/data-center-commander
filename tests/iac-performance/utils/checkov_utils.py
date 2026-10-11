@@ -3,26 +3,23 @@ Checkov policy evaluation utilities for performance testing.
 Wraps checkov CLI commands with timing and result capture.
 """
 
-import os
-import subprocess
-import tempfile
 import json
+import subprocess
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
 class CheckovResult:
     """Result of a checkov command execution."""
+
     command: str
     returncode: int
     stdout: str
     stderr: str
     elapsed_ms: float
     success: bool
-    parsed_output: Optional[Dict] = None
+    parsed_output: dict | None = None
     passed_checks: int = 0
     failed_checks: int = 0
     skipped_checks: int = 0
@@ -46,13 +43,13 @@ class CheckovRunner:
             )
             if result.returncode != 0:
                 raise RuntimeError(f"Checkov not available: {result.stderr}")
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise RuntimeError(
                 f"Checkov binary not found: {self.checkov_bin}. "
                 "Install checkov or set CHECKOV_BIN env var."
-            )
+            ) from e
 
-    def _run(self, args: List[str], timeout: int = 300) -> CheckovResult:
+    def _run(self, args: list[str], timeout: int = 300) -> CheckovResult:
         """Execute a checkov command with timing."""
         cmd = [self.checkov_bin] + args
         cmd_str = " ".join(cmd)
@@ -77,7 +74,7 @@ class CheckovRunner:
                     failed = summary.get("failed", 0)
                     skipped = summary.get("skipped", 0)
             except json.JSONDecodeError:
-                pass
+                parsed = None
 
             return CheckovResult(
                 command=cmd_str,
@@ -106,16 +103,19 @@ class CheckovRunner:
         self,
         directory: str,
         framework: str = "terraform",
-        check: Optional[List[str]] = None,
-        skip_check: Optional[List[str]] = None,
+        check: list[str] | None = None,
+        skip_check: list[str] | None = None,
         output_format: str = "json",
         timeout: int = 300,
     ) -> CheckovResult:
         """Run checkov scan on a directory."""
         args = [
-            "-d", directory,
-            "--framework", framework,
-            "--output", output_format,
+            "-d",
+            directory,
+            "--framework",
+            framework,
+            "--output",
+            output_format,
             "--no-guide",
         ]
         if check:
@@ -130,16 +130,19 @@ class CheckovRunner:
         self,
         file_path: str,
         framework: str = "terraform",
-        check: Optional[List[str]] = None,
-        skip_check: Optional[List[str]] = None,
+        check: list[str] | None = None,
+        skip_check: list[str] | None = None,
         output_format: str = "json",
         timeout: int = 120,
     ) -> CheckovResult:
         """Run checkov scan on a single file."""
         args = [
-            "-f", file_path,
-            "--framework", framework,
-            "--output", output_format,
+            "-f",
+            file_path,
+            "--framework",
+            framework,
+            "--output",
+            output_format,
             "--no-guide",
         ]
         if check:
@@ -160,11 +163,15 @@ class CheckovRunner:
     ) -> CheckovResult:
         """Run checkov scan with custom policies."""
         args = [
-            "-d", directory,
-            "--framework", framework,
-            "--output", output_format,
+            "-d",
+            directory,
+            "--framework",
+            framework,
+            "--output",
+            output_format,
             "--no-guide",
-            "--external-checks-dir", policy_dir,
+            "--external-checks-dir",
+            policy_dir,
         ]
         return self._run(args, timeout=timeout)
 
@@ -187,36 +194,36 @@ def generate_terraform_file(
                     'resource "aws_instance" "server_' + str(i) + '" {\n'
                     '  ami           = "ami-12345678"\n'
                     '  instance_type = "t3.micro"\n'
-                    '\n'
-                    '  root_block_device {\n'
-                    '    encrypted = true\n'
-                    '  }\n'
-                    '\n'
-                    '  metadata_options {\n'
+                    "\n"
+                    "  root_block_device {\n"
+                    "    encrypted = true\n"
+                    "  }\n"
+                    "\n"
+                    "  metadata_options {\n"
                     '    http_tokens = "required"\n'
-                    '  }\n'
-                    '\n'
-                    '  monitoring = true\n'
-                    '\n'
-                    '  tags = {\n'
+                    "  }\n"
+                    "\n"
+                    "  monitoring = true\n"
+                    "\n"
+                    "  tags = {\n"
                     '    Name        = "server-' + str(i) + '"\n'
                     '    Environment = "production"\n'
                     '    Owner       = "test-team"\n'
                     '    Project     = "perf-test"\n'
                     '    CostCenter  = "cc-1234"\n'
-                    '  }\n'
-                    '}'
+                    "  }\n"
+                    "}"
                 )
             else:
                 resources.append(
                     'resource "aws_instance" "server_' + str(i) + '" {\n'
                     '  ami           = "ami-12345678"\n'
                     '  instance_type = "t2.micro"\n'
-                    '  monitoring    = false\n'
-                    '  tags = {\n'
+                    "  monitoring    = false\n"
+                    "  tags = {\n"
                     '    Name = "server-' + str(i) + '"\n'
-                    '  }\n'
-                    '}'
+                    "  }\n"
+                    "}"
                 )
         elif provider == "azurerm":
             if compliant:
@@ -224,19 +231,19 @@ def generate_terraform_file(
                     'resource "azurerm_resource_group" "rg_' + str(i) + '" {\n'
                     '  name     = "rg-' + str(i) + '"\n'
                     '  location = "East US"\n'
-                    '  tags = {\n'
+                    "  tags = {\n"
                     '    Environment = "production"\n'
                     '    Owner       = "test-team"\n'
                     '    Project     = "perf-test"\n'
-                    '  }\n'
-                    '}'
+                    "  }\n"
+                    "}"
                 )
             else:
                 resources.append(
                     'resource "azurerm_resource_group" "rg_' + str(i) + '" {\n'
                     '  name     = "rg-' + str(i) + '"\n'
                     '  location = "East US"\n'
-                    '}'
+                    "}"
                 )
 
     return "\n".join(resources)
@@ -252,23 +259,23 @@ def generate_terraform_module(
     for i in range(resource_count):
         resources.append(
             'resource "aws_subnet" "subnet_' + str(i) + '" {\n'
-            '  vpc_id     = aws_vpc.main.id\n'
+            "  vpc_id     = aws_vpc.main.id\n"
             '  cidr_block = "10.0.' + str(i) + '.0/24"\n'
-            '  tags = {\n'
+            "  tags = {\n"
             '    Name        = "subnet-' + str(i) + '"\n'
             '    Environment = "production"\n'
             '    Owner       = "test-team"\n'
-            '  }\n'
-            '}'
+            "  }\n"
+            "}"
         )
 
     return (
         'resource "aws_vpc" "main" {\n'
         '  cidr_block = "10.0.0.0/16"\n'
-        '  tags = {\n'
+        "  tags = {\n"
         '    Name        = "' + module_name + '"\n'
         '    Environment = "production"\n'
         '    Owner       = "test-team"\n'
-        '  }\n'
-        '}\n\n' + '\n'.join(resources) + '\n'
+        "  }\n"
+        "}\n\n" + "\n".join(resources) + "\n"
     )

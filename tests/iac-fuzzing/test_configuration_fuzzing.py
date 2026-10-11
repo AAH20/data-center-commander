@@ -7,21 +7,14 @@ without crashing.
 """
 
 import json
-import pytest
-from hypothesis import given, settings, HealthCheck
-from hypothesis import strategies as st
 
+import pytest
 from generators import (
-    terraform_resource,
     terraform_configuration,
-    terraform_resource as tf_resource_strategy,
-    random_terraform_resource_dict,
-    TERRAFORM_RESOURCE_TYPES,
-    TERRAFORM_PROPERTY_NAMES,
-    TERRAFORM_STRING_VALUES,
-    TERRAFORM_LIST_VALUES,
-    TERRAFORM_MAP_VALUES,
+    terraform_resource,
 )
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 
 class TestTerraformResourceFuzzing:
@@ -67,7 +60,8 @@ class TestTerraformResourceFuzzing:
     def test_resource_name_valid_chars(self, resource):
         """Resource name should only contain valid characters."""
         import re
-        assert re.match(r'^[a-zA-Z_-][a-zA-Z0-9_-]*$', resource["name"])
+
+        assert re.match(r"^[a-zA-Z_-][a-zA-Z0-9_-]*$", resource["name"])
 
     @given(resource=terraform_resource())
     def test_known_resource_type(self, resource):
@@ -75,16 +69,37 @@ class TestTerraformResourceFuzzing:
         # Note: Generated data may include unknown types
         # This test documents the expectation
         known_types = [
-            "aws_instance", "aws_ebs_volume", "aws_security_group", "aws_vpc",
-            "aws_db_instance", "aws_s3_bucket", "aws_iam_role", "aws_kms_key",
-            "aws_cloudtrail", "aws_guardduty_detector", "aws_backup_vault",
-            "aws_route53_record", "aws_cloudfront_distribution", "aws_shield_protection",
-            "aws_dx_connection", "aws_vpn_connection", "aws_ec2_transit_gateway",
-            "aws_network_acl_rule", "aws_flow_log", "aws_cloudwatch_log_group",
-            "aws_cloudwatch_metric_alarm", "aws_secretsmanager_secret",
-            "aws_acm_certificate", "aws_dynamodb_table", "aws_elasticache_replication_group",
-            "aws_autoscaling_group", "aws_lb_listener", "aws_launch_template",
-            "aws_vpc_endpoint", "azurerm_network_security_group", "google_compute_firewall",
+            "aws_instance",
+            "aws_ebs_volume",
+            "aws_security_group",
+            "aws_vpc",
+            "aws_db_instance",
+            "aws_s3_bucket",
+            "aws_iam_role",
+            "aws_kms_key",
+            "aws_cloudtrail",
+            "aws_guardduty_detector",
+            "aws_backup_vault",
+            "aws_route53_record",
+            "aws_cloudfront_distribution",
+            "aws_shield_protection",
+            "aws_dx_connection",
+            "aws_vpn_connection",
+            "aws_ec2_transit_gateway",
+            "aws_network_acl_rule",
+            "aws_flow_log",
+            "aws_cloudwatch_log_group",
+            "aws_cloudwatch_metric_alarm",
+            "aws_secretsmanager_secret",
+            "aws_acm_certificate",
+            "aws_dynamodb_table",
+            "aws_elasticache_replication_group",
+            "aws_autoscaling_group",
+            "aws_lb_listener",
+            "aws_launch_template",
+            "aws_vpc_endpoint",
+            "azurerm_network_security_group",
+            "google_compute_firewall",
         ]
         if resource["type"] not in known_types:
             pytest.skip(f"Unknown resource type: {resource['type']}")
@@ -156,10 +171,16 @@ class TestTerraformConfigurationEdgeCases:
         assert len(config["resources"]) == 20
 
     @given(
-        resource_type=st.sampled_from([
-            "aws_instance", "aws_db_instance", "aws_s3_bucket",
-            "aws_security_group", "aws_vpc", "aws_iam_role",
-        ]),
+        resource_type=st.sampled_from(
+            [
+                "aws_instance",
+                "aws_db_instance",
+                "aws_s3_bucket",
+                "aws_security_group",
+                "aws_vpc",
+                "aws_iam_role",
+            ]
+        ),
         num_props=st.integers(min_value=0, max_value=100),
     )
     def test_resource_with_many_properties(self, resource_type, num_props):
@@ -183,8 +204,15 @@ class TestTerraformConfigurationSecurity:
     def test_no_hardcoded_credentials(self, resource):
         """Resources should not contain hardcoded credentials."""
         props = resource["properties"]
-        sensitive_patterns = ["password", "secret", "api_key", "apikey", "access_key", "private_key"]
-        for key, value in props.items():
+        sensitive_patterns = [
+            "password",
+            "secret",
+            "api_key",
+            "apikey",
+            "access_key",
+            "private_key",
+        ]
+        for _key, value in props.items():
             if isinstance(value, str):
                 value_lower = value.lower()
                 for pattern in sensitive_patterns:
@@ -244,7 +272,35 @@ class TestTerraformConfigurationValidation:
             if isinstance(instance_type, str):
                 # Note: Generated data may include invalid types
                 # This test documents the expectation
-                valid_prefixes = ["t2.", "t3.", "t3a.", "t4g.", "m5.", "m6.", "m6g.", "c5.", "c6.", "c6g.", "r5.", "r6.", "r6g.", "x1.", "x1e.", "z1d.", "i3.", "i3en.", "d2.", "h1.", "f1.", "g3.", "g4.", "p2.", "p3.", "inf1.", "trn1."]
+                valid_prefixes = [
+                    "t2.",
+                    "t3.",
+                    "t3a.",
+                    "t4g.",
+                    "m5.",
+                    "m6.",
+                    "m6g.",
+                    "c5.",
+                    "c6.",
+                    "c6g.",
+                    "r5.",
+                    "r6.",
+                    "r6g.",
+                    "x1.",
+                    "x1e.",
+                    "z1d.",
+                    "i3.",
+                    "i3en.",
+                    "d2.",
+                    "h1.",
+                    "f1.",
+                    "g3.",
+                    "g4.",
+                    "p2.",
+                    "p3.",
+                    "inf1.",
+                    "trn1.",
+                ]
                 if not any(instance_type.startswith(p) for p in valid_prefixes):
                     pytest.skip(f"Invalid instance type: {instance_type}")
 
@@ -275,7 +331,8 @@ class TestTerraformConfigurationValidation:
                         # Note: Generated data may include invalid CIDRs
                         # This test documents the expectation
                         import re
-                        if not re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$', cidr):
+
+                        if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}$", cidr):
                             pytest.skip(f"Invalid CIDR: {cidr}")
 
     @given(resource=terraform_resource())
@@ -290,5 +347,6 @@ class TestTerraformConfigurationValidation:
                         # Note: Generated data may include invalid AZs
                         # This test documents the expectation
                         import re
-                        if not re.match(r'^[a-z]{2}-[a-z]+-\d[a-z]$', az):
+
+                        if not re.match(r"^[a-z]{2}-[a-z]+-\d[a-z]$", az):
                             pytest.skip(f"Invalid AZ: {az}")

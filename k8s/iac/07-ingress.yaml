@@ -1,5 +1,3 @@
----
-# Kibana Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -7,27 +5,27 @@ metadata:
   namespace: data-center-commander
   labels:
     app: kibana
+    team: platform-engineering
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+    nginx.ingress.kubernetes.io/proxy-body-size: '0'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '600'
 spec:
   ingressClassName: nginx
   rules:
-    - host: kibana.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: kibana
-                port:
-                  number: 5601
+  - host: kibana.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: kibana
+            port:
+              number: 5601
 ---
-# Grafana Ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -35,24 +33,25 @@ metadata:
   namespace: data-center-commander
   labels:
     app: grafana
+    team: platform-engineering
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+    nginx.ingress.kubernetes.io/proxy-body-size: '0'
 spec:
   ingressClassName: nginx
   rules:
-    - host: grafana.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: grafana
-                port:
-                  number: 3000
+  - host: grafana.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
 ---
-# Elasticsearch Ingress (for external access)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -60,20 +59,21 @@ metadata:
   namespace: data-center-commander
   labels:
     app: elasticsearch
+    team: platform-engineering
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+    nginx.ingress.kubernetes.io/proxy-body-size: '0'
 spec:
   ingressClassName: nginx
   rules:
-    - host: elasticsearch.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: elasticsearch
-                port:
-                  number: 9200
+  - host: elasticsearch.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: elasticsearch
+            port:
+              number: 9200

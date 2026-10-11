@@ -5,11 +5,10 @@ Fuzzes the policy engine directly by importing and invoking
 the actual policy check functions with fuzzed inputs.
 """
 
-import sys
 import os
-import json
-import pytest
-from hypothesis import given, settings, HealthCheck
+import sys
+
+from hypothesis import given
 from hypothesis import strategies as st
 
 # Add parent directories to path for imports
@@ -17,10 +16,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from generators import (
     policy_input,
-    random_policy_input_dict,
-    POLICY_ENCRYPTION,
-    POLICY_NETWORK,
-    POLICY_ACCESS,
 )
 
 
@@ -33,7 +28,6 @@ class TestPolicyEngineFuzzing:
         enc = input_doc["encryption"]
         # Simulate encryption policy checks
         is_production = input_doc["environment"] == "production"
-        is_staging = input_doc["environment"] == "staging"
 
         # Check encryption at rest
         if is_production and not enc["at_rest"]:
@@ -98,7 +92,7 @@ class TestPolicyEngineFuzzing:
             pass
 
         # Check least privilege
-        if not access["privilege"] == "least":
+        if access["privilege"] != "least":
             # Policy violation - should be flagged
             pass
 
@@ -114,11 +108,18 @@ class TestPolicyEngineFuzzing:
 
         # Check required management fields
         management_fields = [
-            "security_assessment", "risk_assessment", "compliance_assessment",
-            "audit_trail", "configuration_management", "asset_inventory",
-            "vulnerability_management", "patch_management",
-            "capacity_management", "performance_management",
-            "availability_management", "service_level_agreement",
+            "security_assessment",
+            "risk_assessment",
+            "compliance_assessment",
+            "audit_trail",
+            "configuration_management",
+            "asset_inventory",
+            "vulnerability_management",
+            "patch_management",
+            "capacity_management",
+            "performance_management",
+            "availability_management",
+            "service_level_agreement",
         ]
 
         for field in management_fields:
@@ -180,7 +181,21 @@ class TestPolicyEngineEdgeCases:
     """Test edge cases for policy engine."""
 
     @given(
-        environment=st.sampled_from(["production", "staging", "dev", "test", "prod", "development", "stage", "", "unknown", "PRODUCTION", "Production"]),
+        environment=st.sampled_from(
+            [
+                "production",
+                "staging",
+                "dev",
+                "test",
+                "prod",
+                "development",
+                "stage",
+                "",
+                "unknown",
+                "PRODUCTION",
+                "Production",
+            ]
+        ),
     )
     def test_environment_case_sensitivity(self, environment):
         """Environment should be case-insensitive."""
@@ -191,7 +206,9 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_staging, bool)
 
     @given(
-        segment=st.sampled_from(["isolated", "restricted", "public", "ISOLATED", "RESTRICTED", "PUBLIC", "", "unknown"]),
+        segment=st.sampled_from(
+            ["isolated", "restricted", "public", "ISOLATED", "RESTRICTED", "PUBLIC", "", "unknown"]
+        ),
     )
     def test_segment_case_sensitivity(self, segment):
         """Segment should be case-insensitive."""
@@ -204,7 +221,22 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_public, bool)
 
     @given(
-        tls_version=st.sampled_from(["TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3", "SSLv3", "tlsv1.0", "tlsv1.1", "tlsv1.2", "tlsv1.3", "sslv3", "", "unknown"]),
+        tls_version=st.sampled_from(
+            [
+                "TLSv1.0",
+                "TLSv1.1",
+                "TLSv1.2",
+                "TLSv1.3",
+                "SSLv3",
+                "tlsv1.0",
+                "tlsv1.1",
+                "tlsv1.2",
+                "tlsv1.3",
+                "sslv3",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_tls_version_case_sensitivity(self, tls_version):
         """TLS version should be case-insensitive."""
@@ -221,7 +253,22 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_ssl_3, bool)
 
     @given(
-        algorithm=st.sampled_from(["AES-256", "AES-128", "DES", "3DES", "RC4", "aes-256", "aes-128", "des", "3des", "rc4", "", "unknown"]),
+        algorithm=st.sampled_from(
+            [
+                "AES-256",
+                "AES-128",
+                "DES",
+                "3DES",
+                "RC4",
+                "aes-256",
+                "aes-128",
+                "des",
+                "3des",
+                "rc4",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_algorithm_case_sensitivity(self, algorithm):
         """Algorithm should be case-insensitive."""
@@ -238,7 +285,22 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_rc4, bool)
 
     @given(
-        hash_algorithm=st.sampled_from(["MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512", "md5", "sha-1", "sha-256", "sha-384", "sha-512", "", "unknown"]),
+        hash_algorithm=st.sampled_from(
+            [
+                "MD5",
+                "SHA-1",
+                "SHA-256",
+                "SHA-384",
+                "SHA-512",
+                "md5",
+                "sha-1",
+                "sha-256",
+                "sha-384",
+                "sha-512",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_hash_algorithm_case_sensitivity(self, hash_algorithm):
         """Hash algorithm should be case-insensitive."""
@@ -255,7 +317,9 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_sha_512, bool)
 
     @given(
-        mode=st.sampled_from(["ECB", "CBC", "GCM", "CTR", "ecb", "cbc", "gcm", "ctr", "", "unknown"]),
+        mode=st.sampled_from(
+            ["ECB", "CBC", "GCM", "CTR", "ecb", "cbc", "gcm", "ctr", "", "unknown"]
+        ),
     )
     def test_mode_case_sensitivity(self, mode):
         """Mode should be case-insensitive."""
@@ -270,7 +334,24 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_ctr, bool)
 
     @given(
-        certificate_type=st.sampled_from(["self-signed", "wildcard", "SAN", "EV", "OV", "DV", "SELF-SIGNED", "WILDCARD", "san", "ev", "ov", "dv", "", "unknown"]),
+        certificate_type=st.sampled_from(
+            [
+                "self-signed",
+                "wildcard",
+                "SAN",
+                "EV",
+                "OV",
+                "DV",
+                "SELF-SIGNED",
+                "WILDCARD",
+                "san",
+                "ev",
+                "ov",
+                "dv",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_certificate_type_case_sensitivity(self, certificate_type):
         """Certificate type should be case-insensitive."""
@@ -289,7 +370,22 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_dv, bool)
 
     @given(
-        certificate_key_algorithm=st.sampled_from(["RSA", "ECC", "DSA", "DH", "Ed25519", "rsa", "ecc", "dsa", "dh", "ed25519", "", "unknown"]),
+        certificate_key_algorithm=st.sampled_from(
+            [
+                "RSA",
+                "ECC",
+                "DSA",
+                "DH",
+                "Ed25519",
+                "rsa",
+                "ecc",
+                "dsa",
+                "dh",
+                "ed25519",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_certificate_key_algorithm_case_sensitivity(self, certificate_key_algorithm):
         """Certificate key algorithm should be case-insensitive."""
@@ -319,7 +415,9 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_v3, bool)
 
     @given(
-        ssl_strength=st.sampled_from(["weak", "medium", "strong", "WEAK", "MEDIUM", "STRONG", "", "unknown"]),
+        ssl_strength=st.sampled_from(
+            ["weak", "medium", "strong", "WEAK", "MEDIUM", "STRONG", "", "unknown"]
+        ),
     )
     def test_ssl_strength_case_sensitivity(self, ssl_strength):
         """SSL strength should be case-insensitive."""
@@ -332,7 +430,22 @@ class TestPolicyEngineEdgeCases:
         assert isinstance(is_strong, bool)
 
     @given(
-        privilege=st.sampled_from(["least", "admin", "read", "write", "read-write", "LEAST", "ADMIN", "READ", "WRITE", "READ-WRITE", "", "unknown"]),
+        privilege=st.sampled_from(
+            [
+                "least",
+                "admin",
+                "read",
+                "write",
+                "read-write",
+                "LEAST",
+                "ADMIN",
+                "READ",
+                "WRITE",
+                "READ-WRITE",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_privilege_case_sensitivity(self, privilege):
         """Privilege should be case-insensitive."""

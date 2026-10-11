@@ -13,14 +13,13 @@ Dashboard configurations for Wazuh covering:
 - Anomaly detection
 """
 
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Wazuh Dashboard Definitions
 # ---------------------------------------------------------------------------
 
-WAZUH_DASHBOARDS: List[Dict[str, Any]] = [
+WAZUH_DASHBOARDS: list[dict[str, Any]] = [
     {
         "id": "wazuh-overview",
         "name": "Wazuh Security Overview",
@@ -467,12 +466,12 @@ WAZUH_DASHBOARDS: List[Dict[str, Any]] = [
 ]
 
 
-def get_dashboards() -> List[Dict[str, Any]]:
+def get_dashboards() -> list[dict[str, Any]]:
     """Return all Wazuh dashboard definitions."""
     return WAZUH_DASHBOARDS
 
 
-def get_dashboard_by_id(dashboard_id: str) -> Optional[Dict[str, Any]]:
+def get_dashboard_by_id(dashboard_id: str) -> dict[str, Any] | None:
     """Get a single dashboard by its ID."""
     for dashboard in WAZUH_DASHBOARDS:
         if dashboard["id"] == dashboard_id:

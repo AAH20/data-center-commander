@@ -8,8 +8,8 @@ import json
 import logging
 import socket
 import struct
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from kafka import KafkaProducer
@@ -50,7 +50,7 @@ def _ip_to_str(raw: bytes) -> str:
     return socket.inet_ntoa(raw)
 
 
-def parse_netflow_v5_packet(data: bytes) -> List[Dict[str, Any]]:
+def parse_netflow_v5_packet(data: bytes) -> list[dict[str, Any]]:
     """Parse a NetFlow v5 packet into flow records."""
     if len(data) < NFV5_HEADER_SIZE:
         return []
@@ -66,11 +66,11 @@ def parse_netflow_v5_packet(data: bytes) -> List[Dict[str, Any]]:
     records = []
     offset = NFV5_HEADER_SIZE
 
-    for i in range(count):
+    for _ in range(count):
         if offset + NFV5_RECORD_SIZE > len(data):
             break
 
-        rec_data = data[offset:offset + NFV5_RECORD_SIZE]
+        rec_data = data[offset : offset + NFV5_RECORD_SIZE]
         record = {
             "version": 5,
             "sys_uptime": sys_uptime,
@@ -85,7 +85,7 @@ def parse_netflow_v5_packet(data: bytes) -> List[Dict[str, Any]]:
         # Parse fields
         for field_name, (word_offset, size) in NFV5_FIELDS.items():
             byte_offset = word_offset * 4
-            field_bytes = rec_data[byte_offset:byte_offset + size]
+            field_bytes = rec_data[byte_offset : byte_offset + size]
 
             if field_name in ("srcaddr", "dstaddr", "nexthop"):
                 record[field_name] = _ip_to_str(field_bytes)
@@ -95,20 +95,19 @@ def parse_netflow_v5_packet(data: bytes) -> List[Dict[str, Any]]:
                 record[field_name] = struct.unpack("!I", field_bytes)[0]
             elif field_name in ("srcport", "dstport"):
                 record[field_name] = struct.unpack("!H", field_bytes)[0]
-            elif field_name == "tcp_flags":
-                record[field_name] = field_bytes[0]
-            elif field_name == "prot":
-                record[field_name] = field_bytes[0]
-            elif field_name == "tos":
-                record[field_name] = field_bytes[0]
-            elif field_name in ("src_mask", "dst_mask"):
+            elif (
+                field_name == "tcp_flags"
+                or field_name == "prot"
+                or field_name == "tos"
+                or field_name in ("src_mask", "dst_mask")
+            ):
                 record[field_name] = field_bytes[0]
 
         # Derived fields
         record["timestamp"] = datetime.fromtimestamp(
-            unix_secs + unix_nsecs / 1e9, tz=timezone.utc
+            unix_secs + unix_nsecs / 1e9, tz=UTC
         ).isoformat()
-        record["flow_duration_ms"] = (record["last"] - record["first"])
+        record["flow_duration_ms"] = record["last"] - record["first"]
         record["bytes_per_packet"] = (
             record["dOctets"] / record["dPkts"] if record["dPkts"] > 0 else 0
         )
@@ -136,7 +135,7 @@ class NetFlowToMetronConnector:
         self.kafka_topic = kafka_topic
         self.listen_host = listen_host
         self.listen_port = listen_port
-        self._producer: Optional[Any] = None
+        self._producer: Any | None = None
         self._running = False
 
     def _get_producer(self) -> Any:
@@ -153,12 +152,12 @@ class NetFlowToMetronConnector:
             )
         return self._producer
 
-    def process_packet(self, data: bytes, source_ip: str = "") -> List[Dict[str, Any]]:
+    def process_packet(self, data: bytes, source_ip: str = "") -> list[dict[str, Any]]:
         """Parse a NetFlow packet and enrich records."""
         records = parse_netflow_v5_packet(data)
         for record in records:
             record["source_ip"] = source_ip
-            record["ingest_timestamp"] = datetime.now(timezone.utc).isoformat()
+            record["ingest_timestamp"] = datetime.now(UTC).isoformat()
             record["connector"] = "netflow_connector"
             record["connector_version"] = "1.0.0"
             record["metron_enrichment"] = {
@@ -168,7 +167,7 @@ class NetFlowToMetronConnector:
             }
         return records
 
-    def send_to_kafka(self, records: List[Dict[str, Any]]) -> None:
+    def send_to_kafka(self, records: list[dict[str, Any]]) -> None:
         """Send parsed flow records to Metron's Kafka topic."""
         producer = self._get_producer()
         for record in records:
@@ -181,7 +180,9 @@ class NetFlowToMetronConnector:
         self._running = True
         logger.info(
             "Starting NetFlow connector on %s:%d -> Kafka topic '%s'",
-            self.listen_host, self.listen_port, self.kafka_topic,
+            self.listen_host,
+            self.listen_port,
+            self.kafka_topic,
         )
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -195,7 +196,7 @@ class NetFlowToMetronConnector:
                 records = self.process_packet(data, source_ip=addr[0])
                 if records:
                     self.send_to_kafka(records)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception as e:
                 logger.error("Error processing NetFlow packet: %s", e)

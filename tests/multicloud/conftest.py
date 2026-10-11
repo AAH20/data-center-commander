@@ -1,4 +1,5 @@
 """Shared fixtures for multi-cloud integration tests."""
+
 import json
 import sys
 from pathlib import Path
@@ -31,7 +32,9 @@ def aws_security_group_config():
     return {
         "name": "prod-web-sg",
         "description": "Production web security group",
-        "ingress": [{"from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"]}],
+        "ingress": [
+            {"from_port": 443, "to_port": 443, "protocol": "tcp", "cidr_blocks": ["0.0.0.0/0"]}
+        ],
         "tags": {"Name": "prod-web-sg", "Environment": "production"},
     }
 
@@ -41,7 +44,13 @@ def azure_nsg_config():
     return {
         "name": "prod-web-nsg",
         "location": "eastus",
-        "security_rule": [{"name": "AllowHTTPS", "destination_port_range": "443", "source_address_prefix": "Internet"}],
+        "security_rule": [
+            {
+                "name": "AllowHTTPS",
+                "destination_port_range": "443",
+                "source_address_prefix": "Internet",
+            }
+        ],
     }
 
 
@@ -58,9 +67,14 @@ def gcp_firewall_config():
 @pytest.fixture
 def aws_rds_config():
     return {
-        "identifier": "prod-db", "engine": "postgres", "instance_class": "db.r6g.xlarge",
-        "storage_encrypted": True, "multi_az": True, "backup_retention_period": 30,
-        "publicly_accessible": False, "tags": {"Name": "prod-db"},
+        "identifier": "prod-db",
+        "engine": "postgres",
+        "instance_class": "db.r6g.xlarge",
+        "storage_encrypted": True,
+        "multi_az": True,
+        "backup_retention_period": 30,
+        "publicly_accessible": False,
+        "tags": {"Name": "prod-db"},
     }
 
 
@@ -72,16 +86,23 @@ def azure_sql_config():
 @pytest.fixture
 def gcp_sql_config():
     return {
-        "name": "prod-db", "database_version": "POSTGRES_15", "region": "us-central1",
-        "tier": "db-custom-4-16384", "availability_type": "REGIONAL", "disk_encryption": True,
+        "name": "prod-db",
+        "database_version": "POSTGRES_15",
+        "region": "us-central1",
+        "tier": "db-custom-4-16384",
+        "availability_type": "REGIONAL",
+        "disk_encryption": True,
     }
 
 
 @pytest.fixture
 def aws_s3_config():
     return {
-        "bucket": "prod-data-bucket", "versioning": {"enabled": True},
-        "server_side_encryption_configuration": {"rule": {"apply_server_side_encryption_by_default": {"sse_algorithm": "aws:kms"}}},
+        "bucket": "prod-data-bucket",
+        "versioning": {"enabled": True},
+        "server_side_encryption_configuration": {
+            "rule": {"apply_server_side_encryption_by_default": {"sse_algorithm": "aws:kms"}}
+        },
     }
 
 
@@ -92,13 +113,19 @@ def azure_storage_config():
 
 @pytest.fixture
 def gcp_storage_config():
-    return {"name": "prod-data-bucket", "location": "US-CENTRAL1", "storage_class": "STANDARD", "versioning": {"enabled": True}}
+    return {
+        "name": "prod-data-bucket",
+        "location": "US-CENTRAL1",
+        "storage_class": "STANDARD",
+        "versioning": {"enabled": True},
+    }
 
 
 @pytest.fixture
 def aws_instance_config():
     return {
-        "instance_type": "m6i.xlarge", "monitoring": True,
+        "instance_type": "m6i.xlarge",
+        "monitoring": True,
         "metadata_options": {"http_tokens": "required"},
         "root_block_device": {"encrypted": True},
         "associate_public_ip_address": False,
@@ -108,14 +135,25 @@ def aws_instance_config():
 
 @pytest.fixture
 def azure_vm_config():
-    return {"name": "prod-app-1", "location": "eastus", "size": "Standard_D4s_v5", "tags": {"Name": "prod-app-1", "Environment": "production"}}
+    return {
+        "name": "prod-app-1",
+        "location": "eastus",
+        "size": "Standard_D4s_v5",
+        "tags": {"Name": "prod-app-1", "Environment": "production"},
+    }
 
 
 @pytest.fixture
 def gcp_instance_config():
     return {
-        "name": "prod-app-1", "machine_type": "n2-standard-4", "zone": "us-central1-a",
-        "shielded_instance_config": {"enable_secure_boot": True, "enable_vtpm": True, "enable_integrity_monitoring": True},
+        "name": "prod-app-1",
+        "machine_type": "n2-standard-4",
+        "zone": "us-central1-a",
+        "shielded_instance_config": {
+            "enable_secure_boot": True,
+            "enable_vtpm": True,
+            "enable_integrity_monitoring": True,
+        },
     }
 
 
@@ -137,24 +175,40 @@ def gcp_kms_config():
 @pytest.fixture
 def aws_autoscaling_config():
     return {
-        "min_size": 2, "max_size": 10, "desired_capacity": 4,
-        "health_check_type": "ELB", "availability_zones": ["us-east-1a", "us-east-1b", "us-east-1c"],
+        "min_size": 2,
+        "max_size": 10,
+        "desired_capacity": 4,
+        "health_check_type": "ELB",
+        "availability_zones": ["us-east-1a", "us-east-1b", "us-east-1c"],
     }
 
 
 @pytest.fixture
 def azure_vmss_config():
-    return {"name": "prod-vmss", "location": "eastus", "sku": {"name": "Standard_D4s_v5", "capacity": 4}}
+    return {
+        "name": "prod-vmss",
+        "location": "eastus",
+        "sku": {"name": "Standard_D4s_v5", "capacity": 4},
+    }
 
 
 @pytest.fixture
 def gcp_mig_config():
-    return {"name": "prod-mig", "zone": "us-central1-a", "target_size": 4, "auto_healing_policies": [{"initial_delay_sec": 300}]}
+    return {
+        "name": "prod-mig",
+        "zone": "us-central1-a",
+        "target_size": 4,
+        "auto_healing_policies": [{"initial_delay_sec": 300}],
+    }
 
 
 @pytest.fixture
 def aws_lb_config():
-    return {"name": "prod-alb", "load_balancer_type": "application", "cross_zone_load_balancing": True}
+    return {
+        "name": "prod-alb",
+        "load_balancer_type": "application",
+        "cross_zone_load_balancing": True,
+    }
 
 
 @pytest.fixture
@@ -169,7 +223,12 @@ def gcp_lb_config():
 
 @pytest.fixture
 def aws_route53_config():
-    return {"zone_id": "Z1234567890", "name": "app.example.com", "type": "A", "health_check_id": "abc123"}
+    return {
+        "zone_id": "Z1234567890",
+        "name": "app.example.com",
+        "type": "A",
+        "health_check_id": "abc123",
+    }
 
 
 @pytest.fixture
@@ -203,7 +262,11 @@ def gcp_cdn_config():
 
 @pytest.fixture
 def aws_backup_config():
-    return {"backup_vault_name": "prod-backup-vault", "plan_name": "prod-backup-plan", "rule": [{"rule_name": "daily-backup"}]}
+    return {
+        "backup_vault_name": "prod-backup-vault",
+        "plan_name": "prod-backup-plan",
+        "rule": [{"rule_name": "daily-backup"}],
+    }
 
 
 @pytest.fixture
@@ -233,7 +296,12 @@ def gcp_scc_config():
 
 @pytest.fixture
 def aws_cloudtrail_config():
-    return {"name": "prod-trail", "is_multi_region_trail": True, "enable_log_file_validation": True, "s3_bucket_name": "prod-cloudtrail-logs"}
+    return {
+        "name": "prod-trail",
+        "is_multi_region_trail": True,
+        "enable_log_file_validation": True,
+        "s3_bucket_name": "prod-cloudtrail-logs",
+    }
 
 
 @pytest.fixture
@@ -265,24 +333,47 @@ def gcp_org_policy_config():
 def aws_iam_role_config():
     return {
         "name": "prod-app-role",
-        "assume_role_policy": json.dumps({"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "ec2.amazonaws.com"}, "Action": "sts:AssumeRole"}]}),
-        "max_session_duration": 3600, "description": "Production application role",
+        "assume_role_policy": json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "ec2.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        ),
+        "max_session_duration": 3600,
+        "description": "Production application role",
     }
 
 
 @pytest.fixture
 def azure_role_config():
-    return {"name": "prod-app-role", "role_definition": "Contributor", "scope": "/subscriptions/123456789/resourceGroups/prod"}
+    return {
+        "name": "prod-app-role",
+        "role_definition": "Contributor",
+        "scope": "/subscriptions/123456789/resourceGroups/prod",
+    }
 
 
 @pytest.fixture
 def gcp_iam_config():
-    return {"role": "roles/compute.instanceAdmin", "members": ["serviceAccount:prod-app@project.iam.gserviceaccount.com"]}
+    return {
+        "role": "roles/compute.instanceAdmin",
+        "members": ["serviceAccount:prod-app@project.iam.gserviceaccount.com"],
+    }
 
 
 @pytest.fixture
 def aws_secretsmanager_config():
-    return {"name": "prod/db/password", "description": "Production database password", "rotation_rules": {"automatically_after_days": 30}}
+    return {
+        "name": "prod/db/password",
+        "description": "Production database password",
+        "rotation_rules": {"automatically_after_days": 30},
+    }
 
 
 @pytest.fixture
@@ -298,14 +389,29 @@ def gcp_secretmanager_config():
 @pytest.fixture
 def aws_waf_config():
     return {
-        "name": "prod-waf", "scope": "REGIONAL",
-        "rules": [{"name": "AWSManagedRulesCommonRuleSet", "statement": {"managed_rule_group_statement": {"name": "AWSManagedRulesCommonRuleSet", "vendor_name": "AWS"}}}],
+        "name": "prod-waf",
+        "scope": "REGIONAL",
+        "rules": [
+            {
+                "name": "AWSManagedRulesCommonRuleSet",
+                "statement": {
+                    "managed_rule_group_statement": {
+                        "name": "AWSManagedRulesCommonRuleSet",
+                        "vendor_name": "AWS",
+                    }
+                },
+            }
+        ],
     }
 
 
 @pytest.fixture
 def azure_waf_config():
-    return {"name": "prod-waf", "mode": "Prevention", "managed_rules": [{"managed_rule_set": [{"type": "OWASP", "version": "3.2"}]}]}
+    return {
+        "name": "prod-waf",
+        "mode": "Prevention",
+        "managed_rules": [{"managed_rule_set": [{"type": "OWASP", "version": "3.2"}]}],
+    }
 
 
 @pytest.fixture
@@ -360,7 +466,10 @@ def gcp_interconnect_config():
 
 @pytest.fixture
 def aws_transit_gateway_config():
-    return {"description": "Production transit gateway", "auto_accept_shared_attachments": "disable"}
+    return {
+        "description": "Production transit gateway",
+        "auto_accept_shared_attachments": "disable",
+    }
 
 
 @pytest.fixture
@@ -390,22 +499,44 @@ def gcp_traffic_director_config():
 
 @pytest.fixture
 def aws_route53_health_check_config():
-    return {"fqdn": "app.example.com", "port": 443, "type": "HTTPS", "resource_path": "/health", "request_interval": 30, "failure_threshold": 3}
+    return {
+        "fqdn": "app.example.com",
+        "port": 443,
+        "type": "HTTPS",
+        "resource_path": "/health",
+        "request_interval": 30,
+        "failure_threshold": 3,
+    }
 
 
 @pytest.fixture
 def azure_health_probe_config():
-    return {"name": "prod-health-probe", "protocol": "Https", "port": 443, "path": "/health", "interval_in_seconds": 30}
+    return {
+        "name": "prod-health-probe",
+        "protocol": "Https",
+        "port": 443,
+        "path": "/health",
+        "interval_in_seconds": 30,
+    }
 
 
 @pytest.fixture
 def gcp_health_check_config():
-    return {"name": "prod-health-check", "check_interval_sec": 30, "healthy_threshold": 2, "unhealthy_threshold": 3, "https_health_check": {"port": 443, "request_path": "/health"}}
+    return {
+        "name": "prod-health-check",
+        "check_interval_sec": 30,
+        "healthy_threshold": 2,
+        "unhealthy_threshold": 3,
+        "https_health_check": {"port": 443, "request_path": "/health"},
+    }
 
 
 @pytest.fixture
 def aws_s3_replication_config():
-    return {"role": "arn:aws:iam::123456789:role/prod-replication", "rules": [{"id": "prod-replication", "status": "Enabled"}]}
+    return {
+        "role": "arn:aws:iam::123456789:role/prod-replication",
+        "rules": [{"id": "prod-replication", "status": "Enabled"}],
+    }
 
 
 @pytest.fixture
@@ -415,12 +546,18 @@ def azure_storage_replication_config():
 
 @pytest.fixture
 def gcp_storage_replication_config():
-    return {"location": "US", "custom_placement_config": {"data_locations": ["US-CENTRAL1", "US-EAST1"]}}
+    return {
+        "location": "US",
+        "custom_placement_config": {"data_locations": ["US-CENTRAL1", "US-EAST1"]},
+    }
 
 
 @pytest.fixture
 def aws_dynamodb_global_table_config():
-    return {"name": "prod-global-table", "replication_group": [{"region_name": "us-east-1"}, {"region_name": "us-west-2"}]}
+    return {
+        "name": "prod-global-table",
+        "replication_group": [{"region_name": "us-east-1"}, {"region_name": "us-west-2"}],
+    }
 
 
 @pytest.fixture
@@ -435,22 +572,44 @@ def gcp_firestore_config():
 
 @pytest.fixture
 def aws_elasticache_config():
-    return {"replication_group_id": "prod-cache", "node_type": "cache.r6g.xlarge", "num_cache_nodes": 2, "at_rest_encryption_enabled": True, "transit_encryption_enabled": True}
+    return {
+        "replication_group_id": "prod-cache",
+        "node_type": "cache.r6g.xlarge",
+        "num_cache_nodes": 2,
+        "at_rest_encryption_enabled": True,
+        "transit_encryption_enabled": True,
+    }
 
 
 @pytest.fixture
 def azure_cache_config():
-    return {"name": "prod-cache", "location": "eastus", "sku": {"name": "Premium", "family": "P", "capacity": 1}}
+    return {
+        "name": "prod-cache",
+        "location": "eastus",
+        "sku": {"name": "Premium", "family": "P", "capacity": 1},
+    }
 
 
 @pytest.fixture
 def gcp_memorystore_config():
-    return {"name": "prod-cache", "region": "us-central1", "tier": "BASIC", "replica_count": 1, "project_id": "prod-project"}
+    return {
+        "name": "prod-cache",
+        "region": "us-central1",
+        "tier": "BASIC",
+        "replica_count": 1,
+        "project_id": "prod-project",
+    }
 
 
 @pytest.fixture
 def aws_lambda_config():
-    return {"function_name": "prod-processor", "runtime": "python3.11", "memory_size": 512, "timeout": 30, "vpc_config": {"subnet_ids": ["subnet-123"], "security_group_ids": ["sg-123"]}}
+    return {
+        "function_name": "prod-processor",
+        "runtime": "python3.11",
+        "memory_size": 512,
+        "timeout": 30,
+        "vpc_config": {"subnet_ids": ["subnet-123"], "security_group_ids": ["sg-123"]},
+    }
 
 
 @pytest.fixture
@@ -460,12 +619,22 @@ def azure_function_config():
 
 @pytest.fixture
 def gcp_cloud_function_config():
-    return {"name": "prod-processor", "region": "us-central1", "runtime": "python311", "memory": 512}
+    return {
+        "name": "prod-processor",
+        "region": "us-central1",
+        "runtime": "python311",
+        "memory": 512,
+    }
 
 
 @pytest.fixture
 def aws_eks_config():
-    return {"name": "prod-cluster", "version": "1.28", "endpoint_private_access": True, "endpoint_public_access": False}
+    return {
+        "name": "prod-cluster",
+        "version": "1.28",
+        "endpoint_private_access": True,
+        "endpoint_public_access": False,
+    }
 
 
 @pytest.fixture
@@ -475,7 +644,11 @@ def azure_aks_config():
 
 @pytest.fixture
 def gcp_gke_config():
-    return {"name": "prod-cluster", "location": "us-central1", "private_cluster_config": {"enable_private_endpoint": True}}
+    return {
+        "name": "prod-cluster",
+        "location": "us-central1",
+        "private_cluster_config": {"enable_private_endpoint": True},
+    }
 
 
 @pytest.fixture
@@ -490,7 +663,11 @@ def azure_servicebus_config():
 
 @pytest.fixture
 def gcp_pubsub_config():
-    return {"name": "prod-queue", "message_retention_duration": "86400s", "project_id": "prod-project"}
+    return {
+        "name": "prod-queue",
+        "message_retention_duration": "86400s",
+        "project_id": "prod-project",
+    }
 
 
 @pytest.fixture
@@ -525,7 +702,12 @@ def gcp_eventarc_config():
 
 @pytest.fixture
 def aws_step_functions_config():
-    return {"name": "prod-state-machine", "definition": json.dumps({"StartAt": "Process", "States": {"Process": {"Type": "Task", "End": True}}})}
+    return {
+        "name": "prod-state-machine",
+        "definition": json.dumps(
+            {"StartAt": "Process", "States": {"Process": {"Type": "Task", "End": True}}}
+        ),
+    }
 
 
 @pytest.fixture
@@ -570,7 +752,12 @@ def gcp_cloud_run_config():
 
 @pytest.fixture
 def aws_fargate_config():
-    return {"cluster_name": "prod-cluster", "service_name": "prod-service", "launch_type": "FARGATE", "network_configuration": {"assign_public_ip": "DISABLED"}}
+    return {
+        "cluster_name": "prod-cluster",
+        "service_name": "prod-service",
+        "launch_type": "FARGATE",
+        "network_configuration": {"assign_public_ip": "DISABLED"},
+    }
 
 
 @pytest.fixture
@@ -580,7 +767,11 @@ def azure_container_apps_config():
 
 @pytest.fixture
 def gcp_cloud_run_service_config():
-    return {"name": "prod-service", "region": "us-central1", "ingress": "INGRESS_TRAFFIC_INTERNAL_ONLY"}
+    return {
+        "name": "prod-service",
+        "region": "us-central1",
+        "ingress": "INGRESS_TRAFFIC_INTERNAL_ONLY",
+    }
 
 
 @pytest.fixture
@@ -615,7 +806,12 @@ def gcp_bigquery_config():
 
 @pytest.fixture
 def aws_redshift_config():
-    return {"cluster_identifier": "prod-redshift", "node_type": "ra3.xlplus", "number_of_nodes": 3, "encrypted": True}
+    return {
+        "cluster_identifier": "prod-redshift",
+        "node_type": "ra3.xlplus",
+        "number_of_nodes": 3,
+        "encrypted": True,
+    }
 
 
 @pytest.fixture
@@ -645,7 +841,14 @@ def gcp_dataproc_config():
 
 @pytest.fixture
 def aws_msk_config():
-    return {"cluster_name": "prod-kafka", "number_of_broker_nodes": 3, "encryption_info": {"encryption_at_rest": {"kms_key_arn": "arn:aws:kms:us-east-1:123456789:key/abc"}, "encryption_in_transit": {"client_broker": "TLS"}}}
+    return {
+        "cluster_name": "prod-kafka",
+        "number_of_broker_nodes": 3,
+        "encryption_info": {
+            "encryption_at_rest": {"kms_key_arn": "arn:aws:kms:us-east-1:123456789:key/abc"},
+            "encryption_in_transit": {"client_broker": "TLS"},
+        },
+    }
 
 
 @pytest.fixture
@@ -705,7 +908,10 @@ def gcp_filestore_config():
 
 @pytest.fixture
 def aws_datasync_config():
-    return {"source_location_arn": "arn:aws:datasync:us-east-1:123456789:location/loc-123", "destination_location_arn": "arn:aws:datasync:us-west-2:123456789:location/loc-456"}
+    return {
+        "source_location_arn": "arn:aws:datasync:us-east-1:123456789:location/loc-123",
+        "destination_location_arn": "arn:aws:datasync:us-west-2:123456789:location/loc-456",
+    }
 
 
 @pytest.fixture
@@ -1080,7 +1286,14 @@ def gcp_monitoring_config():
 
 @pytest.fixture
 def aws_xray_config():
-    return {"sampling_rule": {"rule_name": "prod-sampling", "priority": 1000, "reservoir_size": 5, "fixed_rate": 0.1}}
+    return {
+        "sampling_rule": {
+            "rule_name": "prod-sampling",
+            "priority": 1000,
+            "reservoir_size": 5,
+            "fixed_rate": 0.1,
+        }
+    }
 
 
 @pytest.fixture
@@ -1110,22 +1323,56 @@ def gcp_cloud_logging_config():
 
 @pytest.fixture
 def aws_cloudwatch_alarm_config():
-    return {"alarm_name": "prod-high-cpu", "metric_name": "CPUUtilization", "namespace": "AWS/EC2", "statistic": "Average", "period": 300, "evaluation_periods": 2, "threshold": 80, "comparison_operator": "GreaterThanThreshold", "alarm_actions": ["arn:aws:sns:us-east-1:123456789:prod-alerts"]}
+    return {
+        "alarm_name": "prod-high-cpu",
+        "metric_name": "CPUUtilization",
+        "namespace": "AWS/EC2",
+        "statistic": "Average",
+        "period": 300,
+        "evaluation_periods": 2,
+        "threshold": 80,
+        "comparison_operator": "GreaterThanThreshold",
+        "alarm_actions": ["arn:aws:sns:us-east-1:123456789:prod-alerts"],
+    }
 
 
 @pytest.fixture
 def azure_monitor_alert_config():
-    return {"name": "prod-high-cpu", "location": "eastus", "severity": 2, "frequency": "PT5M", "window_size": "PT15M"}
+    return {
+        "name": "prod-high-cpu",
+        "location": "eastus",
+        "severity": 2,
+        "frequency": "PT5M",
+        "window_size": "PT15M",
+    }
 
 
 @pytest.fixture
 def gcp_monitoring_alert_config():
-    return {"display_name": "prod-high-cpu", "comparison": "COMPARISON_GT", "threshold_value": 80, "duration": "300s"}
+    return {
+        "display_name": "prod-high-cpu",
+        "comparison": "COMPARISON_GT",
+        "threshold_value": 80,
+        "duration": "300s",
+    }
 
 
 @pytest.fixture
 def aws_ssm_config():
-    return {"name": "prod-patch-baseline", "operating_system": "AMAZON_LINUX_2", "approval_rules": {"patch_rules": [{"patch_filter_group": {"patch_filters": [{"key": "PRODUCT", "values": ["AmazonLinux2"]}]}, "approve_after_days": 7}]}}
+    return {
+        "name": "prod-patch-baseline",
+        "operating_system": "AMAZON_LINUX_2",
+        "approval_rules": {
+            "patch_rules": [
+                {
+                    "patch_filter_group": {
+                        "patch_filters": [{"key": "PRODUCT", "values": ["AmazonLinux2"]}]
+                    },
+                    "approve_after_days": 7,
+                }
+            ]
+        },
+    }
 
 
 @pytest.fixture
@@ -1140,12 +1387,21 @@ def gcp_os_config_config():
 
 @pytest.fixture
 def aws_inspector_config():
-    return {"assessment_template_name": "prod-inspector", "rules_package_arns": ["arn:aws:inspector:us-east-1:123456789:rulespackage/0-9hgA516p"]}
+    return {
+        "assessment_template_name": "prod-inspector",
+        "rules_package_arns": ["arn:aws:inspector:us-east-1:123456789:rulespackage/0-9hgA516p"],
+    }
 
 
 @pytest.fixture
 def azure_security_center_config():
-    return {"tier": "Standard", "extensions": [{"name": "Servers", "tier": "Standard"}, {"name": "Containers", "tier": "Standard"}]}
+    return {
+        "tier": "Standard",
+        "extensions": [
+            {"name": "Servers", "tier": "Standard"},
+            {"name": "Containers", "tier": "Standard"},
+        ],
+    }
 
 
 @pytest.fixture
@@ -1185,12 +1441,27 @@ def gcp_chronicle_config():
 
 @pytest.fixture
 def aws_security_hub_config():
-    return {"enable_default_standards": True, "standards": [{"standards_arn": "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0"}]}
+    return {
+        "enable_default_standards": True,
+        "standards": [
+            {
+                "standards_arn": "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0"
+            }
+        ],
+    }
 
 
 @pytest.fixture
 def azure_defender_for_cloud_config():
-    return {"tier": "Standard", "extensions": [{"name": "Servers", "tier": "Standard"}, {"name": "SqlServers", "tier": "Standard"}, {"name": "Containers", "tier": "Standard"}, {"name": "StorageAccounts", "tier": "Standard"}]}
+    return {
+        "tier": "Standard",
+        "extensions": [
+            {"name": "Servers", "tier": "Standard"},
+            {"name": "SqlServers", "tier": "Standard"},
+            {"name": "Containers", "tier": "Standard"},
+            {"name": "StorageAccounts", "tier": "Standard"},
+        ],
+    }
 
 
 @pytest.fixture
@@ -1285,7 +1556,10 @@ def gcp_resource_share_config():
 
 @pytest.fixture
 def aws_config_aggregator_config():
-    return {"aggregator_name": "prod-aggregator", "account_aggregation_sources": [{"account_ids": ["123456789012"], "all_aws_regions": True}]}
+    return {
+        "aggregator_name": "prod-aggregator",
+        "account_aggregation_sources": [{"account_ids": ["123456789012"], "all_aws_regions": True}],
+    }
 
 
 @pytest.fixture
@@ -1295,7 +1569,10 @@ def azure_policy_initiative_config():
 
 @pytest.fixture
 def aws_conformance_pack_config():
-    return {"conformance_pack_name": "prod-conformance", "template_s3_uri": "s3://prod-templates/conformance.yaml"}
+    return {
+        "conformance_pack_name": "prod-conformance",
+        "template_s3_uri": "s3://prod-templates/conformance.yaml",
+    }
 
 
 @pytest.fixture
@@ -1310,7 +1587,11 @@ def gcp_blueprint_config():
 
 @pytest.fixture
 def aws_security_token_config():
-    return {"role_arn": "arn:aws:iam::123456789:role/prod-role", "role_session_name": "prod-session", "duration_seconds": 3600}
+    return {
+        "role_arn": "arn:aws:iam::123456789:role/prod-role",
+        "role_session_name": "prod-session",
+        "duration_seconds": 3600,
+    }
 
 
 @pytest.fixture
@@ -1355,7 +1636,11 @@ def gcp_identity_platform_config():
 
 @pytest.fixture
 def aws_cognito_config():
-    return {"user_pool_name": "prod-user-pool", "mfa_configuration": "ON", "software_token_mfa_configuration": {"enabled": True}}
+    return {
+        "user_pool_name": "prod-user-pool",
+        "mfa_configuration": "ON",
+        "software_token_mfa_configuration": {"enabled": True},
+    }
 
 
 @pytest.fixture
@@ -1370,7 +1655,11 @@ def gcp_identity_toolkit_config():
 
 @pytest.fixture
 def aws_directory_service_config():
-    return {"name": "prod-directory", "size": "Large", "vpc_settings": {"vpc_id": "vpc-123", "subnet_ids": ["subnet-123", "subnet-456"]}}
+    return {
+        "name": "prod-directory",
+        "size": "Large",
+        "vpc_settings": {"vpc_id": "vpc-123", "subnet_ids": ["subnet-123", "subnet-456"]},
+    }
 
 
 @pytest.fixture
@@ -1385,7 +1674,11 @@ def gcp_managed_microsoft_ad_config():
 
 @pytest.fixture
 def aws_secrets_manager_config():
-    return {"name": "prod/secret", "description": "Production secret", "rotation_rules": {"automatically_after_days": 30}}
+    return {
+        "name": "prod/secret",
+        "description": "Production secret",
+        "rotation_rules": {"automatically_after_days": 30},
+    }
 
 
 @pytest.fixture
@@ -1425,7 +1718,12 @@ def azure_automation_config():
 
 @pytest.fixture
 def aws_maintenance_window_config():
-    return {"name": "prod-maintenance", "schedule": "cron(0 0 ? * SUN *)", "duration": 4, "cutoff": 1}
+    return {
+        "name": "prod-maintenance",
+        "schedule": "cron(0 0 ? * SUN *)",
+        "duration": 4,
+        "cutoff": 1,
+    }
 
 
 @pytest.fixture
@@ -1860,7 +2158,11 @@ def aws_documentdb_config():
 
 @pytest.fixture
 def aws_dynamodb_config():
-    return {"table_name": "prod-table", "billing_mode": "PAY_PER_REQUEST", "point_in_time_recovery": {"enabled": True}}
+    return {
+        "table_name": "prod-table",
+        "billing_mode": "PAY_PER_REQUEST",
+        "point_in_time_recovery": {"enabled": True},
+    }
 
 
 @pytest.fixture
@@ -2099,28 +2401,8 @@ def gcp_speech_to_text_config():
 
 
 @pytest.fixture
-def azure_translator_config():
-    return {"name": "prod-translator", "location": "eastus"}
-
-
-@pytest.fixture
 def azure_language_service_config():
     return {"name": "prod-language", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_form_recognizer_config():
-    return {"name": "prod-form-recognizer", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_document_ai_config():
-    return {"name": "prod-document-ai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_text_to_speech_config():
-    return {"name": "prod-tts", "location": "eastus"}
 
 
 @pytest.fixture
@@ -2129,73 +2411,8 @@ def gcp_text_to_speech_config():
 
 
 @pytest.fixture
-def azure_bot_service_config():
-    return {"name": "prod-bot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dialogflow_config():
-    return {"name": "prod-dialogflow", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_communication_services_config():
-    return {"name": "prod-communication", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_contact_center_ai_config():
-    return {"name": "prod-ccai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_notification_hubs_config():
-    return {"name": "prod-notification-hub", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_firebase_cloud_messaging_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
 def azure_email_communication_services_config():
     return {"name": "prod-email", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_sendgrid_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_teams_config():
-    return {"name": "prod-teams", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_meet_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_sharepoint_config():
-    return {"name": "prod-sharepoint", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_drive_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_exchange_config():
-    return {"name": "prod-exchange", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_gmail_config():
-    return {"project_id": "prod-project"}
 
 
 @pytest.fixture
@@ -2204,68 +2421,13 @@ def azure_power_bi_config():
 
 
 @pytest.fixture
-def gcp_looker_config():
-    return {"name": "prod-looker", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_dashboard_config():
-    return {"name": "prod-dashboard", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_application_insights_config():
-    return {"name": "prod-app-insights", "location": "eastus"}
-
-
-@pytest.fixture
 def gcp_cloud_trace_config():
     return {"project_id": "prod-project"}
 
 
 @pytest.fixture
-def azure_log_analytics_config():
-    return {"name": "prod-log-analytics", "location": "eastus", "retention_in_days": 90}
-
-
-@pytest.fixture
-def gcp_cloud_logging_config():
-    return {"project_id": "prod-project", "retention_days": 90}
-
-
-@pytest.fixture
-def azure_monitor_alert_config():
-    return {"name": "prod-high-cpu", "location": "eastus", "severity": 2, "frequency": "PT5M", "window_size": "PT15M"}
-
-
-@pytest.fixture
-def gcp_monitoring_alert_config():
-    return {"display_name": "prod-high-cpu", "comparison": "COMPARISON_GT", "threshold_value": 80, "duration": "300s"}
-
-
-@pytest.fixture
-def azure_automation_config():
-    return {"name": "prod-automation", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_deployment_manager_config():
-    return {"name": "prod-deployment", "region": "us-central1"}
-
-
-@pytest.fixture
 def azure_maintenance_configuration_config():
     return {"name": "prod-maintenance", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_maintenance_policy_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_update_management_config():
-    return {"name": "prod-update", "location": "eastus"}
 
 
 @pytest.fixture
@@ -2281,271 +2443,6 @@ def azure_desired_state_configuration_config():
 @pytest.fixture
 def gcp_os_config_manager_config():
     return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_maps_config():
-    return {"name": "prod-maps", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_maps_platform_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_iot_hub_config():
-    return {"name": "prod-iot-hub", "location": "eastus", "sku": "S1"}
-
-
-@pytest.fixture
-def gcp_iot_core_config():
-    return {"name": "prod-iot-core", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_sphere_config():
-    return {"name": "prod-sphere", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_iot_edge_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_iot_edge_config():
-    return {"name": "prod-iot-edge", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_edge_tpu_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_machine_learning_workspace_config():
-    return {"name": "prod-ml", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_ai_platform_notebook_config():
-    return {"name": "prod-ai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_openai_service_config():
-    return {"name": "prod-openai", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_gemini_api_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_copilot_config():
-    return {"name": "prod-copilot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bard_api_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_github_copilot_config():
-    return {"name": "prod-copilot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_codey_api_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_health_data_services_config():
-    return {"name": "prod-health", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_healthcare_api_config():
-    return {"name": "prod-healthcare", "location": "us-central1"}
-
-
-@pytest.fixture
-def azure_mainframe_rehosting_config():
-    return {"name": "prod-mainframe", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_mainframe_migration_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_site_recovery_config():
-    return {"name": "prod-site-recovery", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_disaster_recovery_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_recovery_services_vault_config():
-    return {"name": "prod-recovery", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_backup_for_gke_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_chaos_studio_config():
-    return {"name": "prod-chaos", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_chaos_engineering_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_migrate_config():
-    return {"name": "prod-migrate", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_migrate_for_compute_engine_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_data_share_config():
-    return {"name": "prod-data-share", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bigquery_data_transfer_service_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def gcp_analytics_hub_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_confidential_computing_config():
-    return {"name": "prod-confidential", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_confidential_computing_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_private_5g_core_config():
-    return {"name": "prod-private-5g", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_private_5g_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_orbital_config():
-    return {"name": "prod-orbital", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_satellite_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_drone_config():
-    return {"name": "prod-drone", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_drone_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_robotics_config():
-    return {"name": "prod-robotics", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_robotics_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_quantum_config():
-    return {"name": "prod-quantum", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_quantum_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_blockchain_service_config():
-    return {"name": "prod-blockchain", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_blockchain_node_engine_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_ledger_config():
-    return {"name": "prod-ledger", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_ledger_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_time_series_insights_config():
-    return {"name": "prod-tsi", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_time_series_insights_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_influxdb_config():
-    return {"name": "prod-influxdb", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_influxdb_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_cosmos_db_config():
-    return {"name": "prod-cosmos", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bigtable_config():
-    return {"name": "prod-bigtable", "location": "us-central1"}
 
 
 @pytest.fixture
@@ -2554,18 +2451,8 @@ def azure_cache_for_redis_config():
 
 
 @pytest.fixture
-def gcp_memorystore_config():
-    return {"name": "prod-cache", "region": "us-central1", "tier": "BASIC", "replica_count": 1, "project_id": "prod-project"}
-
-
-@pytest.fixture
 def azure_service_bus_config():
     return {"name": "prod-service-bus", "location": "eastus", "sku": "Premium"}
-
-
-@pytest.fixture
-def gcp_pubsub_config():
-    return {"name": "prod-queue", "message_retention_duration": "86400s", "project_id": "prod-project"}
 
 
 @pytest.fixture
@@ -2574,830 +2461,5 @@ def azure_event_grid_config():
 
 
 @pytest.fixture
-def azure_event_hubs_config():
-    return {"name": "prod-event-hubs", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_data_factory_config():
-    return {"name": "prod-data-factory", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dataflow_config():
-    return {"name": "prod-dataflow", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_data_lake_config():
-    return {"name": "prod-data-lake", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dataplex_config():
-    return {"name": "prod-dataplex", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_synapse_config():
-    return {"name": "prod-synapse", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bigquery_config():
-    return {"dataset_id": "prod_bigquery"}
-
-
-@pytest.fixture
-def azure_analytics_config():
-    return {"name": "prod-analytics", "location": "eastus"}
-
-
-@pytest.fixture
 def gcp_analytics_config():
     return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_anomaly_detector_config():
-    return {"name": "prod-anomaly-detector", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_custom_vision_config():
-    return {"name": "prod-custom-vision", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_vision_api_config():
-    return {"name": "prod-vision", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_speech_services_config():
-    return {"name": "prod-speech", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_speech_to_text_config():
-    return {"name": "prod-speech", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_translator_config():
-    return {"name": "prod-translator", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_translate_api_config():
-    return {"name": "prod-translate", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_language_service_config():
-    return {"name": "prod-language", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_natural_language_api_config():
-    return {"name": "prod-nlp", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_form_recognizer_config():
-    return {"name": "prod-form-recognizer", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_document_ai_config():
-    return {"name": "prod-document-ai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_text_to_speech_config():
-    return {"name": "prod-tts", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_text_to_speech_config():
-    return {"name": "prod-tts", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_bot_service_config():
-    return {"name": "prod-bot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dialogflow_config():
-    return {"name": "prod-dialogflow", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_communication_services_config():
-    return {"name": "prod-communication", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_contact_center_ai_config():
-    return {"name": "prod-ccai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_notification_hubs_config():
-    return {"name": "prod-notification-hub", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_firebase_cloud_messaging_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_email_communication_services_config():
-    return {"name": "prod-email", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_sendgrid_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_teams_config():
-    return {"name": "prod-teams", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_meet_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_sharepoint_config():
-    return {"name": "prod-sharepoint", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_drive_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_exchange_config():
-    return {"name": "prod-exchange", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_gmail_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_power_bi_config():
-    return {"name": "prod-power-bi", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_looker_config():
-    return {"name": "prod-looker", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_dashboard_config():
-    return {"name": "prod-dashboard", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_monitoring_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_application_insights_config():
-    return {"name": "prod-app-insights", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_cloud_trace_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_log_analytics_config():
-    return {"name": "prod-log-analytics", "location": "eastus", "retention_in_days": 90}
-
-
-@pytest.fixture
-def gcp_cloud_logging_config():
-    return {"project_id": "prod-project", "retention_days": 90}
-
-
-@pytest.fixture
-def azure_monitor_alert_config():
-    return {"name": "prod-high-cpu", "location": "eastus", "severity": 2, "frequency": "PT5M", "window_size": "PT15M"}
-
-
-@pytest.fixture
-def gcp_monitoring_alert_config():
-    return {"display_name": "prod-high-cpu", "comparison": "COMPARISON_GT", "threshold_value": 80, "duration": "300s"}
-
-
-@pytest.fixture
-def azure_automation_config():
-    return {"name": "prod-automation", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_deployment_manager_config():
-    return {"name": "prod-deployment", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_maintenance_configuration_config():
-    return {"name": "prod-maintenance", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_maintenance_policy_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_update_management_config():
-    return {"name": "prod-update", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_os_patch_management_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_desired_state_configuration_config():
-    return {"name": "prod-dsc", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_os_config_manager_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_maps_config():
-    return {"name": "prod-maps", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_maps_platform_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_iot_hub_config():
-    return {"name": "prod-iot-hub", "location": "eastus", "sku": "S1"}
-
-
-@pytest.fixture
-def gcp_iot_core_config():
-    return {"name": "prod-iot-core", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_sphere_config():
-    return {"name": "prod-sphere", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_iot_edge_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_iot_edge_config():
-    return {"name": "prod-iot-edge", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_edge_tpu_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_machine_learning_workspace_config():
-    return {"name": "prod-ml", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_ai_platform_notebook_config():
-    return {"name": "prod-ai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_openai_service_config():
-    return {"name": "prod-openai", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_gemini_api_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_copilot_config():
-    return {"name": "prod-copilot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bard_api_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_github_copilot_config():
-    return {"name": "prod-copilot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_codey_api_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_health_data_services_config():
-    return {"name": "prod-health", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_healthcare_api_config():
-    return {"name": "prod-healthcare", "location": "us-central1"}
-
-
-@pytest.fixture
-def azure_mainframe_rehosting_config():
-    return {"name": "prod-mainframe", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_mainframe_migration_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_site_recovery_config():
-    return {"name": "prod-site-recovery", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_disaster_recovery_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_recovery_services_vault_config():
-    return {"name": "prod-recovery", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_backup_for_gke_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_chaos_studio_config():
-    return {"name": "prod-chaos", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_chaos_engineering_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_migrate_config():
-    return {"name": "prod-migrate", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_migrate_for_compute_engine_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_data_share_config():
-    return {"name": "prod-data-share", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bigquery_data_transfer_service_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def gcp_analytics_hub_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_confidential_computing_config():
-    return {"name": "prod-confidential", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_confidential_computing_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_private_5g_core_config():
-    return {"name": "prod-private-5g", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_private_5g_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_orbital_config():
-    return {"name": "prod-orbital", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_satellite_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_drone_config():
-    return {"name": "prod-drone", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_drone_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_robotics_config():
-    return {"name": "prod-robotics", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_robotics_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_quantum_config():
-    return {"name": "prod-quantum", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_quantum_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_blockchain_service_config():
-    return {"name": "prod-blockchain", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_blockchain_node_engine_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_ledger_config():
-    return {"name": "prod-ledger", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_ledger_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_time_series_insights_config():
-    return {"name": "prod-tsi", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_time_series_insights_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_influxdb_config():
-    return {"name": "prod-influxdb", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_influxdb_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_cosmos_db_config():
-    return {"name": "prod-cosmos", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bigtable_config():
-    return {"name": "prod-bigtable", "location": "us-central1"}
-
-
-@pytest.fixture
-def azure_cache_for_redis_config():
-    return {"name": "prod-cache", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_memorystore_config():
-    return {"name": "prod-cache", "region": "us-central1", "tier": "BASIC", "replica_count": 1, "project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_service_bus_config():
-    return {"name": "prod-service-bus", "location": "eastus", "sku": "Premium"}
-
-
-@pytest.fixture
-def gcp_pubsub_config():
-    return {"name": "prod-queue", "message_retention_duration": "86400s", "project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_event_grid_config():
-    return {"name": "prod-event-grid", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_event_hubs_config():
-    return {"name": "prod-event-hubs", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_data_factory_config():
-    return {"name": "prod-data-factory", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dataflow_config():
-    return {"name": "prod-dataflow", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_data_lake_config():
-    return {"name": "prod-data-lake", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dataplex_config():
-    return {"name": "prod-dataplex", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_synapse_config():
-    return {"name": "prod-synapse", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_bigquery_config():
-    return {"dataset_id": "prod_bigquery"}
-
-
-@pytest.fixture
-def azure_analytics_config():
-    return {"name": "prod-analytics", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_analytics_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_anomaly_detector_config():
-    return {"name": "prod-anomaly-detector", "location": "eastus"}
-
-
-@pytest.fixture
-def azure_custom_vision_config():
-    return {"name": "prod-custom-vision", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_vision_api_config():
-    return {"name": "prod-vision", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_speech_services_config():
-    return {"name": "prod-speech", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_speech_to_text_config():
-    return {"name": "prod-speech", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_translator_config():
-    return {"name": "prod-translator", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_translate_api_config():
-    return {"name": "prod-translate", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_language_service_config():
-    return {"name": "prod-language", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_natural_language_api_config():
-    return {"name": "prod-nlp", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_form_recognizer_config():
-    return {"name": "prod-form-recognizer", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_document_ai_config():
-    return {"name": "prod-document-ai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_text_to_speech_config():
-    return {"name": "prod-tts", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_text_to_speech_config():
-    return {"name": "prod-tts", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_bot_service_config():
-    return {"name": "prod-bot", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_dialogflow_config():
-    return {"name": "prod-dialogflow", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_communication_services_config():
-    return {"name": "prod-communication", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_contact_center_ai_config():
-    return {"name": "prod-ccai", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_notification_hubs_config():
-    return {"name": "prod-notification-hub", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_firebase_cloud_messaging_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_email_communication_services_config():
-    return {"name": "prod-email", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_sendgrid_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_teams_config():
-    return {"name": "prod-teams", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_meet_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_sharepoint_config():
-    return {"name": "prod-sharepoint", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_drive_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_exchange_config():
-    return {"name": "prod-exchange", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_gmail_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_power_bi_config():
-    return {"name": "prod-power-bi", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_looker_config():
-    return {"name": "prod-looker", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_dashboard_config():
-    return {"name": "prod-dashboard", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_monitoring_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_application_insights_config():
-    return {"name": "prod-app-insights", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_cloud_trace_config():
-    return {"project_id": "prod-project"}
-
-
-@pytest.fixture
-def azure_log_analytics_config():
-    return {"name": "prod-log-analytics", "location": "eastus", "retention_in_days": 90}
-
-
-@pytest.fixture
-def gcp_cloud_logging_config():
-    return {"project_id": "prod-project", "retention_days": 90}
-
-
-@pytest.fixture
-def azure_monitor_alert_config():
-    return {"name": "prod-high-cpu", "location": "eastus", "severity": 2, "frequency": "PT5M", "window_size": "PT15M"}
-
-
-@pytest.fixture
-def gcp_monitoring_alert_config():
-    return {"display_name": "prod-high-cpu", "comparison": "COMPARISON_GT", "threshold_value": 80, "duration": "300s"}
-
-
-@pytest.fixture
-def azure_automation_config():
-    return {"name": "prod-automation", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_deployment_manager_config():
-    return {"name": "prod-deployment", "region": "us-central1"}
-
-
-@pytest.fixture
-def azure_maintenance_configuration_config():
-    return {"name": "prod-maintenance", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_maintenance_policy_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_update_management_config():
-    return {"name": "prod-update", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_os_patch_management_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}
-
-
-@pytest.fixture
-def azure_desired_state_configuration_config():
-    return {"name": "prod-dsc", "location": "eastus"}
-
-
-@pytest.fixture
-def gcp_os_config_manager_config():
-    return {"project_id": "prod-project", "zone": "us-central1-a"}

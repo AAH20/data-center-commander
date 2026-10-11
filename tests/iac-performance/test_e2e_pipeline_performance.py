@@ -6,31 +6,25 @@ These tests measure the total time for a full infrastructure deployment cycle.
 """
 
 import os
-import pytest
 import time
-import tempfile
-import shutil
-from pathlib import Path
 
+import pytest
+from utils.rego_utils import create_opa_input
 from utils.terraform_utils import (
     TerraformRunner,
-    generate_terraform_config,
-    create_terraform_workspace,
     cleanup_workspace,
+    create_terraform_workspace,
+    generate_terraform_config,
 )
-from utils.checkov_utils import CheckovRunner, generate_terraform_file
-from utils.rego_utils import OpaRunner, create_opa_input
-from utils.timing import assert_performance
-
 
 # End-to-end performance thresholds (in milliseconds)
 E2E_THRESHOLDS = {
-    "full_pipeline_small": 120_000,   # 2 minutes for small config full pipeline
+    "full_pipeline_small": 120_000,  # 2 minutes for small config full pipeline
     "full_pipeline_medium": 300_000,  # 5 minutes for medium config full pipeline
-    "full_pipeline_large": 600_000,   # 10 minutes for large config full pipeline
-    "validate_plan_scan_small": 60_000,   # 1 minute for validate+plan+scan (small)
+    "full_pipeline_large": 600_000,  # 10 minutes for large config full pipeline
+    "validate_plan_scan_small": 60_000,  # 1 minute for validate+plan+scan (small)
     "validate_plan_scan_medium": 180_000,  # 3 minutes for validate+plan+scan (medium)
-    "validate_plan_scan_large": 360_000,   # 6 minutes for validate+plan+scan (large)
+    "validate_plan_scan_large": 360_000,  # 6 minutes for validate+plan+scan (large)
 }
 
 
@@ -40,8 +34,15 @@ E2E_THRESHOLDS = {
 class TestEndToEndPipeline:
     """Test the complete IaC pipeline performance."""
 
-    def test_full_pipeline_small(self, terraform_runner, checkov_runner, opa_runner,
-                                  checkov_policy_dir, rego_policy_dir, temp_workspace):
+    def test_full_pipeline_small(
+        self,
+        terraform_runner,
+        checkov_runner,
+        opa_runner,
+        checkov_policy_dir,
+        rego_policy_dir,
+        temp_workspace,
+    ):
         """Test the full IaC pipeline with a small configuration."""
         config = generate_terraform_config(resource_count=5)
         workspace = create_terraform_workspace(config, temp_workspace)
@@ -64,8 +65,8 @@ class TestEndToEndPipeline:
             plan_ms = (time.perf_counter() - start) * 1000 - validate_ms
 
             # Step 4: Compliance scan
-            scan_result = checkov_runner.scan_directory(workspace)
-            scan_ms = (time.perf_counter() - start) * 1000 - validate_ms - plan_ms
+            checkov_runner.scan_directory(workspace)  # scan time feeds into total_ms
+            scan_ms = (time.perf_counter() - start) * 1000 - validate_ms - plan_ms  # noqa: F841 — timing probe
 
             # Step 5: Policy evaluation
             policy_path = os.path.join(rego_policy_dir, "compliance.rego")
@@ -84,8 +85,15 @@ class TestEndToEndPipeline:
         finally:
             cleanup_workspace(workspace)
 
-    def test_full_pipeline_medium(self, terraform_runner, checkov_runner, opa_runner,
-                                   checkov_policy_dir, rego_policy_dir, temp_workspace):
+    def test_full_pipeline_medium(
+        self,
+        terraform_runner,
+        checkov_runner,
+        opa_runner,
+        checkov_policy_dir,
+        rego_policy_dir,
+        temp_workspace,
+    ):
         """Test the full IaC pipeline with a medium configuration."""
         config = generate_terraform_config(resource_count=25)
         workspace = create_terraform_workspace(config, temp_workspace)
@@ -107,7 +115,7 @@ class TestEndToEndPipeline:
             assert plan_result.success
 
             # Scan
-            scan_result = checkov_runner.scan_directory(workspace)
+            checkov_runner.scan_directory(workspace)  # scan time feeds into total_ms
 
             # Policy eval
             policy_path = os.path.join(rego_policy_dir, "compliance.rego")
@@ -126,8 +134,15 @@ class TestEndToEndPipeline:
         finally:
             cleanup_workspace(workspace)
 
-    def test_full_pipeline_large(self, terraform_runner, checkov_runner, opa_runner,
-                                  checkov_policy_dir, rego_policy_dir, temp_workspace):
+    def test_full_pipeline_large(
+        self,
+        terraform_runner,
+        checkov_runner,
+        opa_runner,
+        checkov_policy_dir,
+        rego_policy_dir,
+        temp_workspace,
+    ):
         """Test the full IaC pipeline with a large configuration."""
         config = generate_terraform_config(resource_count=100)
         workspace = create_terraform_workspace(config, temp_workspace)
@@ -149,7 +164,7 @@ class TestEndToEndPipeline:
             assert plan_result.success
 
             # Scan
-            scan_result = checkov_runner.scan_directory(workspace)
+            checkov_runner.scan_directory(workspace)  # scan time feeds into total_ms
 
             # Policy eval
             policy_path = os.path.join(rego_policy_dir, "compliance.rego")
@@ -192,7 +207,7 @@ class TestValidatePlanScanPipeline:
             plan_result = tf_runner.plan()
             assert plan_result.success
 
-            scan_result = checkov_runner.scan_directory(workspace)
+            checkov_runner.scan_directory(workspace)  # scan time feeds into total_ms
 
             total_ms = (time.perf_counter() - start) * 1000
             assert total_ms < E2E_THRESHOLDS["validate_plan_scan_small"], (
@@ -220,7 +235,7 @@ class TestValidatePlanScanPipeline:
             plan_result = tf_runner.plan()
             assert plan_result.success
 
-            scan_result = checkov_runner.scan_directory(workspace)
+            checkov_runner.scan_directory(workspace)  # scan time feeds into total_ms
 
             total_ms = (time.perf_counter() - start) * 1000
             assert total_ms < E2E_THRESHOLDS["validate_plan_scan_medium"], (
@@ -248,7 +263,7 @@ class TestValidatePlanScanPipeline:
             plan_result = tf_runner.plan()
             assert plan_result.success
 
-            scan_result = checkov_runner.scan_directory(workspace)
+            checkov_runner.scan_directory(workspace)  # scan time feeds into total_ms
 
             total_ms = (time.perf_counter() - start) * 1000
             assert total_ms < E2E_THRESHOLDS["validate_plan_scan_large"], (

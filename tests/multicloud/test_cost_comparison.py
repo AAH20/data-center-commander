@@ -3,6 +3,7 @@
 Tests that validate cost comparison and optimization across
 AWS, Azure, and GCP for equivalent workloads.
 """
+
 import pytest
 
 
@@ -118,8 +119,6 @@ class TestCostComparison:
         internet_outbound_per_gb = 0.09
         # Inter-region: $0.02/GB
         inter_region_per_gb = 0.02
-        # CloudFront: $0.085/GB
-        cloudfront_per_gb = 0.085
         assert inter_region_per_gb < internet_outbound_per_gb
 
     def test_azure_data_transfer_cost(self):
@@ -128,8 +127,6 @@ class TestCostComparison:
         internet_outbound_per_gb = 0.087
         # Inter-region: $0.02/GB
         inter_region_per_gb = 0.02
-        # CDN: $0.085/GB
-        cdn_per_gb = 0.085
         assert inter_region_per_gb < internet_outbound_per_gb
 
     def test_gcp_data_transfer_cost(self):
@@ -138,8 +135,6 @@ class TestCostComparison:
         internet_outbound_per_gb = 0.12
         # Inter-region: $0.01/GB
         inter_region_per_gb = 0.01
-        # Cloud CDN: $0.02/GB
-        cdn_per_gb = 0.02
         assert inter_region_per_gb < internet_outbound_per_gb
 
     def test_aws_reserved_instance_savings(self):
@@ -233,25 +228,27 @@ class TestCostComparison:
 
     def test_aws_budget_alerts(self):
         """Verify AWS budget alert configuration."""
-        budget_threshold = 1000.0
         alert_thresholds = [50, 80, 100]  # Percentages
         assert all(t <= 100 for t in alert_thresholds)
 
     def test_azure_budget_alerts(self):
         """Verify Azure budget alert configuration."""
-        budget_threshold = 1000.0
         alert_thresholds = [50, 80, 100]  # Percentages
         assert all(t <= 100 for t in alert_thresholds)
 
     def test_gcp_budget_alerts(self):
         """Verify GCP budget alert configuration."""
-        budget_threshold = 1000.0
         alert_thresholds = [50, 80, 100]  # Percentages
         assert all(t <= 100 for t in alert_thresholds)
 
     def test_aws_cost_explorer(self):
         """Verify AWS Cost Explorer capabilities."""
-        capabilities = ["cost_analysis", "usage_forecasting", "reservation_planning", "savings_plans"]
+        capabilities = [
+            "cost_analysis",
+            "usage_forecasting",
+            "reservation_planning",
+            "savings_plans",
+        ]
         assert len(capabilities) >= 4
 
     def test_azure_cost_management(self):
@@ -261,7 +258,12 @@ class TestCostComparison:
 
     def test_gcp_cost_management(self):
         """Verify GCP cost management capabilities."""
-        capabilities = ["cost_analysis", "budget_alerts", "committed_use_discounts", "recommendations"]
+        capabilities = [
+            "cost_analysis",
+            "budget_alerts",
+            "committed_use_discounts",
+            "recommendations",
+        ]
         assert len(capabilities) >= 4
 
     def test_cross_cloud_cost_comparison(self):
@@ -279,27 +281,21 @@ class TestCostComparison:
         """Verify AWS S3 lifecycle cost optimization."""
         assert "versioning" in aws_s3_config
         # Lifecycle policies should transition to cheaper storage
-        lifecycle_rules = [
-            {"transition_to_ia": 30, "transition_to_glacier": 90}
-        ]
+        lifecycle_rules = [{"transition_to_ia": 30, "transition_to_glacier": 90}]
         assert len(lifecycle_rules) > 0
 
     def test_azure_storage_lifecycle_cost_optimization(self, azure_storage_config):
         """Verify Azure storage lifecycle cost optimization."""
         assert "account_tier" in azure_storage_config
         # Lifecycle policies should transition to cooler tiers
-        lifecycle_rules = [
-            {"transition_to_cool": 30, "transition_to_archive": 90}
-        ]
+        lifecycle_rules = [{"transition_to_cool": 30, "transition_to_archive": 90}]
         assert len(lifecycle_rules) > 0
 
     def test_gcp_storage_lifecycle_cost_optimization(self, gcp_storage_config):
         """Verify GCP storage lifecycle cost optimization."""
         assert "storage_class" in gcp_storage_config
         # Lifecycle policies should transition to cheaper storage
-        lifecycle_rules = [
-            {"transition_to_nearline": 30, "transition_to_coldline": 90}
-        ]
+        lifecycle_rules = [{"transition_to_nearline": 30, "transition_to_coldline": 90}]
         assert len(lifecycle_rules) > 0
 
     def test_aws_compute_optimizer(self):

@@ -6,7 +6,6 @@ These tests validate that Sentinel policies correctly enforce data center govern
 
 import json
 import os
-import pytest
 import subprocess
 import tempfile
 
@@ -29,7 +28,7 @@ def run_sentinel_test(policy_path: str, test_path: str) -> dict:
 
 def run_sentinel_apply(policy_path: str, input_data: dict) -> dict:
     """Run sentinel apply against a policy with given input."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         json.dump(input_data, f)
         input_file = f.name
 
@@ -120,5 +119,5 @@ class TestSentinelMockData:
         """Verify mock data files are present for each policy."""
         mock_dir = os.path.join(POLICY_DIR, "mock")
         if os.path.exists(mock_dir):
-            mock_files = [f for f in os.listdir(mock_dir) if f.endswith('.json')]
+            mock_files = [f for f in os.listdir(mock_dir) if f.endswith(".json")]
             assert len(mock_files) > 0

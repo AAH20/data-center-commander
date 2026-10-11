@@ -3,26 +3,25 @@ OPA/Rego evaluation utilities for performance testing.
 Wraps `opa eval` commands with timing and result capture.
 """
 
-import os
-import subprocess
-import tempfile
 import json
+import subprocess
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 
 @dataclass
 class OpaResult:
     """Result of an `opa eval` command."""
+
     command: str
     returncode: int
     stdout: str
     stderr: str
     elapsed_ms: float
     success: bool
-    parsed_output: Optional[Dict] = None
+    parsed_output: dict | None = None
 
 
 class OpaRunner:
@@ -43,13 +42,12 @@ class OpaRunner:
             )
             if result.returncode != 0:
                 raise RuntimeError(f"OPA not available: {result.stderr}")
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise RuntimeError(
-                f"OPA binary not found: {self.opa_bin}. "
-                "Install OPA or set OPA_BIN env var."
-            )
+                f"OPA binary not found: {self.opa_bin}. Install OPA or set OPA_BIN env var."
+            ) from e
 
-    def _run(self, args: List[str], timeout: int = 60) -> OpaResult:
+    def _run(self, args: list[str], timeout: int = 60) -> OpaResult:
         """Execute an opa command with timing."""
         cmd = [self.opa_bin] + args
         cmd_str = " ".join(cmd)
@@ -68,7 +66,7 @@ class OpaRunner:
             try:
                 parsed = json.loads(result.stdout)
             except json.JSONDecodeError:
-                pass
+                parsed = None
 
             return OpaResult(
                 command=cmd_str,
@@ -93,8 +91,8 @@ class OpaRunner:
     def eval(
         self,
         policy_path: str,
-        input_data: Optional[Dict] = None,
-        data_path: Optional[str] = None,
+        input_data: dict | None = None,
+        data_path: str | None = None,
         timeout: int = 60,
     ) -> OpaResult:
         """
@@ -127,7 +125,7 @@ class OpaRunner:
                 try:
                     parsed = json.loads(result.stdout)
                 except json.JSONDecodeError:
-                    pass
+                    parsed = None
 
                 return OpaResult(
                     command=cmd_str,
@@ -156,7 +154,7 @@ class OpaRunner:
         self,
         policy_path: str,
         input_path: str,
-        data_path: Optional[str] = None,
+        data_path: str | None = None,
         timeout: int = 60,
     ) -> OpaResult:
         """Run `opa eval` with input from a file."""
@@ -177,7 +175,7 @@ class OpaRunner:
     def bench(
         self,
         policy_path: str,
-        input_data: Optional[Dict] = None,
+        input_data: dict | None = None,
         iterations: int = 100,
         timeout: int = 120,
     ) -> OpaResult:
@@ -224,7 +222,7 @@ class OpaRunner:
             return self._run(args, timeout=timeout)
 
 
-def load_rego_policies(policy_dir: str) -> Dict[str, str]:
+def load_rego_policies(policy_dir: str) -> dict[str, str]:
     """Load all .rego files from a directory."""
     policies = {}
     policy_path = Path(policy_dir)
@@ -238,9 +236,9 @@ def create_opa_input(
     environment: str = "production",
     region: str = "us-east-1",
     resource_type: str = "aws_instance",
-    tags: Optional[Dict] = None,
+    tags: dict | None = None,
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a standard OPA input document for testing."""
     if tags is None:
         tags = {"owner": "test-team", "cost_center": "cc-1234"}

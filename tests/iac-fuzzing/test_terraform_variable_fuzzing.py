@@ -6,20 +6,18 @@ handles malformed, edge-case, and adversarial inputs without crashing.
 """
 
 import json
-import pytest
-from hypothesis import given, settings, HealthCheck
-from hypothesis import strategies as st
 
+import pytest
 from generators import (
-    terraform_variable,
-    terraform_variables,
-    terraform_variable as tf_var_strategy,
-    random_terraform_variable_dict,
-    TERRAFORM_STRING_VALUES,
     TERRAFORM_LIST_VALUES,
     TERRAFORM_MAP_VALUES,
+    TERRAFORM_STRING_VALUES,
     TERRAFORM_VARIABLE_NAMES,
+    terraform_variable,
+    terraform_variables,
 )
+from hypothesis import given
+from hypothesis import strategies as st
 
 
 class TestTerraformVariableFuzzing:
@@ -62,7 +60,8 @@ class TestTerraformVariableFuzzing:
     def test_variable_name_no_special_chars(self, var):
         """Variable name should only contain valid characters."""
         import re
-        assert re.match(r'^[a-zA-Z_-][a-zA-Z0-9_-]*$', var["name"])
+
+        assert re.match(r"^[a-zA-Z_-][a-zA-Z0-9_-]*$", var["name"])
 
     @given(vars=terraform_variables(min_vars=1, max_vars=50))
     def test_multiple_variables_no_crash(self, vars):
@@ -168,14 +167,28 @@ class TestTerraformVariableSecurity:
     """Security-focused fuzzing for Terraform variables."""
 
     @given(
-        name=st.sampled_from([
-            "admin_password", "db_password", "api_key", "secret_key",
-            "access_key", "private_key", "token", "credential",
-        ]),
-        default=st.sampled_from([
-            "password123", "admin", "root", "secret",
-            "AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-        ]),
+        name=st.sampled_from(
+            [
+                "admin_password",
+                "db_password",
+                "api_key",
+                "secret_key",
+                "access_key",
+                "private_key",
+                "token",
+                "credential",
+            ]
+        ),
+        default=st.sampled_from(
+            [
+                "password123",
+                "admin",
+                "root",
+                "secret",
+                "AKIAIOSFODNN7EXAMPLE",
+                "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+            ]
+        ),
     )
     def test_sensitive_variable_names(self, name, default):
         """Sensitive variable names should be flagged."""
@@ -184,15 +197,29 @@ class TestTerraformVariableSecurity:
         assert var["sensitive"] is True
 
     @given(
-        default=st.sampled_from([
-            "0.0.0.0/0", "::/0",
-            "password", "secret", "api_key", "apikey", "access_key", "private_key",
-        ]),
+        default=st.sampled_from(
+            [
+                "0.0.0.0/0",
+                "::/0",
+                "password",
+                "secret",
+                "api_key",
+                "apikey",
+                "access_key",
+                "private_key",
+            ]
+        ),
     )
     def test_sensitive_default_values(self, default):
         """Sensitive default values should be detected."""
-        var = {"name": "test", "type": "string", "default": default}
         # These values contain sensitive patterns
-        sensitive_patterns = ["password", "secret", "api_key", "apikey", "access_key", "private_key"]
+        sensitive_patterns = [
+            "password",
+            "secret",
+            "api_key",
+            "apikey",
+            "access_key",
+            "private_key",
+        ]
         has_sensitive = any(p in default.lower() for p in sensitive_patterns)
         assert has_sensitive or default in ["0.0.0.0/0", "::/0"]

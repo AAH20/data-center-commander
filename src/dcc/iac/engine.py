@@ -11,13 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from dcc.iac.dsl import InfrastructureDefinition, Resource
 
 
-class EngineAction(str, Enum):
+class EngineAction(StrEnum):
     """Possible infrastructure actions."""
 
     CREATE = "create"

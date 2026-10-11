@@ -8,9 +8,6 @@ Validates HorizontalPodAutoscaler (HPA) and PodDisruptionBudget (PDB) configurat
 - Scaling limits and bounds
 """
 
-import pytest
-from typing import Dict, List, Any
-
 
 class TestHPAPresence:
     """HPA existence and coverage checks."""
@@ -32,14 +29,16 @@ class TestHPAPresence:
 
     def test_hpas_in_correct_namespace(self, hpas, namespace):
         """HPAs should be in the data-center-commander namespace."""
-        ns_name = namespace.get("metadata", {}).get("name", "data-center-commander") if namespace else "data-center-commander"
+        ns_name = (
+            namespace.get("metadata", {}).get("name", "data-center-commander")
+            if namespace
+            else "data-center-commander"
+        )
         violations = []
         for hpa in hpas:
             hpa_ns = hpa.get("metadata", {}).get("namespace")
             if hpa_ns and hpa_ns != ns_name:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} in wrong namespace: {hpa_ns}"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} in wrong namespace: {hpa_ns}")
         assert not violations, f"HPAs in wrong namespace: {violations}"
 
     def test_hpas_have_labels(self, hpas):
@@ -48,9 +47,7 @@ class TestHPAPresence:
         for hpa in hpas:
             labels = hpa.get("metadata", {}).get("labels", {})
             if not labels:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} has no labels"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} has no labels")
         assert not violations, f"Unlabeled HPAs found: {violations}"
 
 
@@ -101,9 +98,7 @@ class TestHPAConfiguration:
                 for m in metrics
             )
             if not has_cpu:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} missing CPU metric"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} missing CPU metric")
         assert not violations, f"HPAs missing CPU metric: {violations}"
 
     def test_hpa_has_memory_metric(self, hpas):
@@ -116,9 +111,7 @@ class TestHPAConfiguration:
                 for m in metrics
             )
             if not has_memory:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} missing memory metric"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} missing memory metric")
         assert not violations, f"HPAs missing memory metric: {violations}"
 
     def test_hpa_cpu_target_reasonable(self, hpas):
@@ -173,9 +166,7 @@ class TestHPABehavior:
             behavior = hpa.get("spec", {}).get("behavior", {})
             scale_down = behavior.get("scaleDown", {})
             if not scale_down:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} missing scaleDown behavior"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} missing scaleDown behavior")
         assert not violations, f"HPAs missing scaleDown behavior: {violations}"
 
     def test_hpa_has_scale_up_behavior(self, hpas):
@@ -185,9 +176,7 @@ class TestHPABehavior:
             behavior = hpa.get("spec", {}).get("behavior", {})
             scale_up = behavior.get("scaleUp", {})
             if not scale_up:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} missing scaleUp behavior"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} missing scaleUp behavior")
         assert not violations, f"HPAs missing scaleUp behavior: {violations}"
 
     def test_hpa_scale_down_stabilization_window(self, hpas):
@@ -211,9 +200,7 @@ class TestHPABehavior:
             scale_down = behavior.get("scaleDown", {})
             policies = scale_down.get("policies", [])
             if not policies:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} scaleDown has no policies"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} scaleDown has no policies")
         assert not violations, f"HPAs with no scale-down policies: {violations}"
 
     def test_hpa_scale_up_has_policies(self, hpas):
@@ -224,9 +211,7 @@ class TestHPABehavior:
             scale_up = behavior.get("scaleUp", {})
             policies = scale_up.get("policies", [])
             if not policies:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} scaleUp has no policies"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} scaleUp has no policies")
         assert not violations, f"HPAs with no scale-up policies: {violations}"
 
     def test_hpa_scale_down_policy_type_percent(self, hpas):
@@ -238,9 +223,7 @@ class TestHPABehavior:
             policies = scale_down.get("policies", [])
             has_percent = any(p.get("type") == "Percent" for p in policies)
             if not has_percent:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} scaleDown missing Percent policy"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} scaleDown missing Percent policy")
         assert not violations, f"HPAs missing Percent scale-down policy: {violations}"
 
     def test_hpa_scale_up_policy_type_percent(self, hpas):
@@ -252,9 +235,7 @@ class TestHPABehavior:
             policies = scale_up.get("policies", [])
             has_percent = any(p.get("type") == "Percent" for p in policies)
             if not has_percent:
-                violations.append(
-                    f"HPA/{hpa['metadata']['name']} scaleUp missing Percent policy"
-                )
+                violations.append(f"HPA/{hpa['metadata']['name']} scaleUp missing Percent policy")
         assert not violations, f"HPAs missing Percent scale-up policy: {violations}"
 
 
@@ -307,21 +288,21 @@ class TestPDBPresence:
             dep_labels = dep.get("spec", {}).get("selector", {}).get("matchLabels", {})
             dep_key = tuple(sorted(dep_labels.items()))
             if dep_key not in pdb_selectors:
-                violations.append(
-                    f"Deployment/{dep['metadata']['name']} has no matching PDB"
-                )
+                violations.append(f"Deployment/{dep['metadata']['name']} has no matching PDB")
         assert not violations, f"Deployments without PDB: {violations}"
 
     def test_pdbs_in_correct_namespace(self, pdbs, namespace):
         """PDBs should be in the data-center-commander namespace."""
-        ns_name = namespace.get("metadata", {}).get("name", "data-center-commander") if namespace else "data-center-commander"
+        ns_name = (
+            namespace.get("metadata", {}).get("name", "data-center-commander")
+            if namespace
+            else "data-center-commander"
+        )
         violations = []
         for pdb in pdbs:
             pdb_ns = pdb.get("metadata", {}).get("namespace")
             if pdb_ns and pdb_ns != ns_name:
-                violations.append(
-                    f"PDB/{pdb['metadata']['name']} in wrong namespace: {pdb_ns}"
-                )
+                violations.append(f"PDB/{pdb['metadata']['name']} in wrong namespace: {pdb_ns}")
         assert not violations, f"PDBs in wrong namespace: {violations}"
 
     def test_pdbs_have_labels(self, pdbs):
@@ -330,9 +311,7 @@ class TestPDBPresence:
         for pdb in pdbs:
             labels = pdb.get("metadata", {}).get("labels", {})
             if not labels:
-                violations.append(
-                    f"PDB/{pdb['metadata']['name']} has no labels"
-                )
+                violations.append(f"PDB/{pdb['metadata']['name']} has no labels")
         assert not violations, f"Unlabeled PDBs found: {violations}"
 
 
@@ -345,9 +324,7 @@ class TestPDBConfiguration:
         for pdb in pdbs:
             min_available = pdb.get("spec", {}).get("minAvailable")
             if min_available is None:
-                violations.append(
-                    f"PDB/{pdb['metadata']['name']} has no minAvailable"
-                )
+                violations.append(f"PDB/{pdb['metadata']['name']} has no minAvailable")
             elif min_available < 1:
                 violations.append(
                     f"PDB/{pdb['metadata']['name']} minAvailable < 1: {min_available}"
@@ -371,9 +348,7 @@ class TestPDBConfiguration:
         for pdb in pdbs:
             selector = pdb.get("spec", {}).get("selector", {})
             if not selector:
-                violations.append(
-                    f"PDB/{pdb['metadata']['name']} has no selector"
-                )
+                violations.append(f"PDB/{pdb['metadata']['name']} has no selector")
         assert not violations, f"PDBs without selector: {violations}"
 
 
@@ -397,9 +372,7 @@ class TestScalingIntegration:
             dep_labels = dep.get("spec", {}).get("selector", {}).get("matchLabels", {})
             dep_key = tuple(sorted(dep_labels.items()))
             if dep_name in hpa_targets and dep_key not in pdb_selectors:
-                violations.append(
-                    f"Deployment/{dep_name} has HPA but no PDB"
-                )
+                violations.append(f"Deployment/{dep_name} has HPA but no PDB")
         assert not violations, f"Deployments with HPA but no PDB: {violations}"
 
     def test_deployment_replicas_match_hpa_min(self, deployments, hpas):

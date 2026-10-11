@@ -14,14 +14,23 @@ POLICY_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "policies
 def run_opa(input_data: dict, package: str = "datacenter.resource_tagging") -> dict:
     """Run OPA eval against the given input and return the result."""
     input_json = json.dumps(input_data)
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write(input_json)
         input_file = f.name
 
     try:
         result = subprocess.run(
-            ["opa", "eval", "--format", "json", "--data", POLICY_DIR,
-             "--input", input_file, f"data.{package}.deny"],
+            [
+                "opa",
+                "eval",
+                "--format",
+                "json",
+                "--data",
+                POLICY_DIR,
+                "--input",
+                input_file,
+                f"data.{package}.deny",
+            ],
             capture_output=True,
             text=True,
         )

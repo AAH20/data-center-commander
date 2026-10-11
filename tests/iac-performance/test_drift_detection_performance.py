@@ -5,34 +5,25 @@ Tests the performance of detecting configuration drift between
 the desired state (terraform config) and actual state (cloud resources).
 """
 
-import os
 import pytest
-import time
-import tempfile
-import shutil
-from pathlib import Path
-
 from utils.terraform_utils import (
     TerraformRunner,
-    TerraformConfig,
-    create_terraform_workspace,
     cleanup_workspace,
+    create_terraform_workspace,
     generate_terraform_config,
 )
-from utils.timing import assert_performance
-
 
 # Performance thresholds for drift detection (in milliseconds)
 DRIFT_THRESHOLDS = {
-    "refresh_small": 30_000,      # 30s for small config refresh
-    "refresh_medium": 60_000,     # 60s for medium config refresh
-    "refresh_large": 120_000,     # 120s for large config refresh
-    "plan_drift_small": 15_000,   # 15s for small config drift plan
+    "refresh_small": 30_000,  # 30s for small config refresh
+    "refresh_medium": 60_000,  # 60s for medium config refresh
+    "refresh_large": 120_000,  # 120s for large config refresh
+    "plan_drift_small": 15_000,  # 15s for small config drift plan
     "plan_drift_medium": 45_000,  # 45s for medium config drift plan
     "plan_drift_large": 120_000,  # 120s for large config drift plan
-    "state_list_small": 5_000,    # 5s for small config state list
+    "state_list_small": 5_000,  # 5s for small config state list
     "state_list_medium": 15_000,  # 15s for medium config state list
-    "state_list_large": 30_000,   # 30s for large config state list
+    "state_list_large": 30_000,  # 30s for large config state list
 }
 
 

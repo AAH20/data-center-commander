@@ -5,16 +5,13 @@ against Metron-enriched telemetry.
 """
 
 import csv
-import hashlib
 import ipaddress
 import json
 import logging
 import os
-import re
-import time
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
-from urllib.request import urlopen, Request
+from datetime import UTC, datetime, timedelta
+from typing import Any
+from urllib.request import Request, urlopen
 
 logger = logging.getLogger(__name__)
 
@@ -22,19 +19,25 @@ logger = logging.getLogger(__name__)
 class IOCEntry:
     """Represents a single Indicator of Compromise."""
 
-    def __init__(self, value: str, ioc_type: str, feed_name: str,
-                 confidence: str = "medium", category: str = "",
-                 first_seen: Optional[str] = None):
+    def __init__(
+        self,
+        value: str,
+        ioc_type: str,
+        feed_name: str,
+        confidence: str = "medium",
+        category: str = "",
+        first_seen: str | None = None,
+    ):
         self.value = value
         self.ioc_type = ioc_type
         self.feed_name = feed_name
         self.confidence = confidence
         self.category = category
-        self.first_seen = first_seen or datetime.now(timezone.utc).isoformat()
+        self.first_seen = first_seen or datetime.now(UTC).isoformat()
         self.last_seen = self.first_seen
         self.hit_count = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "value": self.value,
             "ioc_type": self.ioc_type,
@@ -50,7 +53,7 @@ class IOCEntry:
 class ThreatIntelFeed:
     """Manages a single threat intelligence feed."""
 
-    def __init__(self, feed_config: Dict[str, Any]):
+    def __init__(self, feed_config: dict[str, Any]):
         self.id = feed_config["id"]
         self.name = feed_config["name"]
         self.url = feed_config["url"]
@@ -59,24 +62,22 @@ class ThreatIntelFeed:
         self.update_interval_hours = feed_config.get("update_interval_hours", 24)
         self.confidence = feed_config.get("confidence", "medium")
         self.category = feed_config.get("category", "")
-        self._iocs: Dict[str, IOCEntry] = {}
-        self._last_update: Optional[datetime] = None
-        self._cache_file = os.path.join(
-            os.path.dirname(__file__), f".cache_{self.id}.json"
-        )
+        self._iocs: dict[str, IOCEntry] = {}
+        self._last_update: datetime | None = None
+        self._cache_file = os.path.join(os.path.dirname(__file__), f".cache_{self.id}.json")
 
     @property
     def ioc_count(self) -> int:
         return len(self._iocs)
 
     @property
-    def last_update(self) -> Optional[datetime]:
+    def last_update(self) -> datetime | None:
         return self._last_update
 
     def needs_update(self) -> bool:
         if self._last_update is None:
             return True
-        elapsed = datetime.now(timezone.utc) - self._last_update
+        elapsed = datetime.now(UTC) - self._last_update
         return elapsed > timedelta(hours=self.update_interval_hours)
 
     def fetch(self) -> bool:
@@ -98,7 +99,7 @@ class ThreatIntelFeed:
                 logger.warning("Unknown feed format: %s", self.format)
                 return False
 
-            self._last_update = datetime.now(timezone.utc)
+            self._last_update = datetime.now(UTC)
             self._save_cache()
             logger.info("Feed '%s' updated: %d IOCs", self.name, self.ioc_count)
             return True
@@ -150,12 +151,12 @@ class ThreatIntelFeed:
                 category=self.category,
             )
 
-    def match(self, value: str) -> Optional[IOCEntry]:
+    def match(self, value: str) -> IOCEntry | None:
         """Check if a value matches any IOC in this feed."""
         entry = self._iocs.get(value)
         if entry:
             entry.hit_count += 1
-            entry.last_seen = datetime.now(timezone.utc).isoformat()
+            entry.last_seen = datetime.now(UTC).isoformat()
             return entry
 
         # For IP blocklists, check CIDR membership
@@ -167,7 +168,7 @@ class ThreatIntelFeed:
                         network = ipaddress.ip_network(ioc_val, strict=False)
                         if addr in network:
                             ioc_entry.hit_count += 1
-                            ioc_entry.last_seen = datetime.now(timezone.utc).isoformat()
+                            ioc_entry.last_seen = datetime.now(UTC).isoformat()
                             return ioc_entry
                     except ValueError:
                         continue
@@ -192,7 +193,7 @@ class ThreatIntelFeed:
         try:
             if not os.path.exists(self._cache_file):
                 return False
-            with open(self._cache_file, "r") as f:
+            with open(self._cache_file) as f:
                 cache_data = json.load(f)
             for value, data in cache_data.get("iocs", {}).items():
                 entry = IOCEntry(
@@ -218,17 +219,15 @@ class ThreatIntelFeed:
 class ThreatIntelManager:
     """Manages all threat intelligence feeds and performs IOC matching."""
 
-    def __init__(self, feeds_config_path: Optional[str] = None):
+    def __init__(self, feeds_config_path: str | None = None):
         if feeds_config_path is None:
-            feeds_config_path = os.path.join(
-                os.path.dirname(__file__), "threat_intel_feeds.json"
-            )
-        self._feeds: Dict[str, ThreatIntelFeed] = {}
+            feeds_config_path = os.path.join(os.path.dirname(__file__), "threat_intel_feeds.json")
+        self._feeds: dict[str, ThreatIntelFeed] = {}
         self._load_feeds(feeds_config_path)
 
     def _load_feeds(self, config_path: str) -> None:
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 config = json.load(f)
             for feed_config in config.get("feeds", []):
                 feed = ThreatIntelFeed(feed_config)
@@ -238,7 +237,7 @@ class ThreatIntelManager:
         except Exception as e:
             logger.error("Failed to load threat intel feeds: %s", e)
 
-    def update_all_feeds(self) -> Dict[str, bool]:
+    def update_all_feeds(self) -> dict[str, bool]:
         """Update all feeds that need refreshing."""
         results = {}
         for feed_id, feed in self._feeds.items():
@@ -248,7 +247,7 @@ class ThreatIntelManager:
                 results[feed_id] = True
         return results
 
-    def match_ip(self, ip: str) -> List[IOCEntry]:
+    def match_ip(self, ip: str) -> list[IOCEntry]:
         """Match an IP address against all feeds."""
         matches = []
         for feed in self._feeds.values():
@@ -258,7 +257,7 @@ class ThreatIntelManager:
                     matches.append(entry)
         return matches
 
-    def match_domain(self, domain: str) -> List[IOCEntry]:
+    def match_domain(self, domain: str) -> list[IOCEntry]:
         """Match a domain against all feeds."""
         matches = []
         for feed in self._feeds.values():
@@ -268,7 +267,7 @@ class ThreatIntelManager:
                     matches.append(entry)
         return matches
 
-    def match_url(self, url: str) -> List[IOCEntry]:
+    def match_url(self, url: str) -> list[IOCEntry]:
         """Match a URL against all feeds."""
         matches = []
         for feed in self._feeds.values():
@@ -278,7 +277,7 @@ class ThreatIntelManager:
                     matches.append(entry)
         return matches
 
-    def match_record(self, record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def match_record(self, record: dict[str, Any]) -> list[dict[str, Any]]:
         """Match a telemetry record against all feeds. Returns list of matches."""
         matches = []
 
@@ -288,12 +287,14 @@ class ThreatIntelManager:
             ip = record.get(field, "")
             if ip:
                 for entry in self.match_ip(ip):
-                    matches.append({
-                        "field": field,
-                        "value": ip,
-                        "ioc": entry.to_dict(),
-                        "match_type": "ip",
-                    })
+                    matches.append(
+                        {
+                            "field": field,
+                            "value": ip,
+                            "ioc": entry.to_dict(),
+                            "match_type": "ip",
+                        }
+                    )
 
         # Extract domains/URLs from record
         domain_fields = ["request", "referer", "uri_stem", "host", "domain"]
@@ -301,23 +302,27 @@ class ThreatIntelManager:
             value = record.get(field, "")
             if value:
                 for entry in self.match_domain(value):
-                    matches.append({
-                        "field": field,
-                        "value": value,
-                        "ioc": entry.to_dict(),
-                        "match_type": "domain",
-                    })
+                    matches.append(
+                        {
+                            "field": field,
+                            "value": value,
+                            "ioc": entry.to_dict(),
+                            "match_type": "domain",
+                        }
+                    )
                 for entry in self.match_url(value):
-                    matches.append({
-                        "field": field,
-                        "value": value,
-                        "ioc": entry.to_dict(),
-                        "match_type": "url",
-                    })
+                    matches.append(
+                        {
+                            "field": field,
+                            "value": value,
+                            "ioc": entry.to_dict(),
+                            "match_type": "url",
+                        }
+                    )
 
         return matches
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get statistics about all feeds."""
         return {
             "total_feeds": len(self._feeds),

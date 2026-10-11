@@ -1,5 +1,3 @@
----
-# Elasticsearch Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,21 +5,21 @@ metadata:
   namespace: data-center-commander
   labels:
     app: elasticsearch
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 9200
-      targetPort: 9200
-      protocol: TCP
-      name: http
-    - port: 9300
-      targetPort: 9300
-      protocol: TCP
-      name: transport
+  - port: 9200
+    targetPort: 9200
+    protocol: TCP
+    name: http
+  - port: 9300
+    targetPort: 9300
+    protocol: TCP
+    name: transport
   selector:
     app: elasticsearch
 ---
-# Logstash Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -29,29 +27,29 @@ metadata:
   namespace: data-center-commander
   labels:
     app: logstash
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 5044
-      targetPort: 5044
-      protocol: TCP
-      name: beats
-    - port: 5000
-      targetPort: 5000
-      protocol: TCP
-      name: tcp
-    - port: 5000
-      targetPort: 5000
-      protocol: UDP
-      name: udp
-    - port: 9600
-      targetPort: 9600
-      protocol: TCP
-      name: monitoring
+  - port: 5044
+    targetPort: 5044
+    protocol: TCP
+    name: beats
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: tcp
+  - port: 5000
+    targetPort: 5000
+    protocol: UDP
+    name: udp
+  - port: 9600
+    targetPort: 9600
+    protocol: TCP
+    name: monitoring
   selector:
     app: logstash
 ---
-# Kibana Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -59,17 +57,17 @@ metadata:
   namespace: data-center-commander
   labels:
     app: kibana
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 5601
-      targetPort: 5601
-      protocol: TCP
-      name: http
+  - port: 5601
+    targetPort: 5601
+    protocol: TCP
+    name: http
   selector:
     app: kibana
 ---
-# Loki Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -77,17 +75,17 @@ metadata:
   namespace: data-center-commander
   labels:
     app: loki
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 3100
-      targetPort: 3100
-      protocol: TCP
-      name: http
+  - port: 3100
+    targetPort: 3100
+    protocol: TCP
+    name: http
   selector:
     app: loki
 ---
-# Promtail Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -95,17 +93,17 @@ metadata:
   namespace: data-center-commander
   labels:
     app: promtail
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 9080
-      targetPort: 9080
-      protocol: TCP
-      name: http
+  - port: 9080
+    targetPort: 9080
+    protocol: TCP
+    name: http
   selector:
     app: promtail
 ---
-# Grafana Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -113,17 +111,17 @@ metadata:
   namespace: data-center-commander
   labels:
     app: grafana
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 3000
-      targetPort: 3000
-      protocol: TCP
-      name: http
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
   selector:
     app: grafana
 ---
-# Filebeat Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -131,17 +129,17 @@ metadata:
   namespace: data-center-commander
   labels:
     app: filebeat
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 5066
-      targetPort: 5066
-      protocol: TCP
-      name: http
+  - port: 5066
+    targetPort: 5066
+    protocol: TCP
+    name: http
   selector:
     app: filebeat
 ---
-# Fluentd Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -149,16 +147,17 @@ metadata:
   namespace: data-center-commander
   labels:
     app: fluentd
+    team: platform-engineering
 spec:
   type: ClusterIP
   ports:
-    - port: 24224
-      targetPort: 24224
-      protocol: TCP
-      name: forward
-    - port: 24224
-      targetPort: 24224
-      protocol: UDP
-      name: forward-udp
+  - port: 24224
+    targetPort: 24224
+    protocol: TCP
+    name: forward
+  - port: 24224
+    targetPort: 24224
+    protocol: UDP
+    name: forward-udp
   selector:
     app: fluentd

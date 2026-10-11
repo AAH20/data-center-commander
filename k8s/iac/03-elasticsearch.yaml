@@ -1,5 +1,3 @@
----
-# Elasticsearch Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,6 +5,7 @@ metadata:
   namespace: data-center-commander
   labels:
     app: elasticsearch
+    team: platform-engineering
 spec:
   replicas: 1
   selector:
@@ -20,56 +19,56 @@ spec:
         app: elasticsearch
     spec:
       containers:
-        - name: elasticsearch
-          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
-          ports:
-            - containerPort: 9200
-              name: http
-            - containerPort: 9300
-              name: transport
-          env:
-            - name: discovery.type
-              value: single-node
-            - name: xpack.security.enabled
-              value: "false"
-            - name: xpack.security.enrollment.enabled
-              value: "false"
-            - name: xpack.security.http.ssl.enabled
-              value: "false"
-            - name: xpack.security.transport.ssl.enabled
-              value: "false"
-            - name: ES_JAVA_OPTS
-              value: "-Xms512m -Xmx512m"
-            - name: cluster.routing.allocation.disk.threshold_enabled
-              value: "false"
-          resources:
-            requests:
-              memory: "1Gi"
-              cpu: "500m"
-            limits:
-              memory: "2Gi"
-              cpu: "1000m"
-          volumeMounts:
-            - name: data
-              mountPath: /usr/share/elasticsearch/data
-          readinessProbe:
-            httpGet:
-              path: /_cluster/health
-              port: 9200
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /_cluster/health
-              port: 9200
-            initialDelaySeconds: 60
-            periodSeconds: 15
-      volumes:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9200
+          name: http
+        - containerPort: 9300
+          name: transport
+        env:
+        - name: discovery.type
+          value: single-node
+        - name: xpack.security.enabled
+          value: 'false'
+        - name: xpack.security.enrollment.enabled
+          value: 'false'
+        - name: xpack.security.http.ssl.enabled
+          value: 'false'
+        - name: xpack.security.transport.ssl.enabled
+          value: 'false'
+        - name: ES_JAVA_OPTS
+          value: -Xms512m -Xmx512m
+        - name: cluster.routing.allocation.disk.threshold_enabled
+          value: 'false'
+        resources:
+          requests:
+            memory: 1Gi
+            cpu: 500m
+          limits:
+            memory: 2Gi
+            cpu: 1000m
+        volumeMounts:
         - name: data
-          persistentVolumeClaim:
-            claimName: elasticsearch-data
+          mountPath: /usr/share/elasticsearch/data
+        readinessProbe:
+          httpGet:
+            path: /_cluster/health
+            port: 9200
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /_cluster/health
+            port: 9200
+          initialDelaySeconds: 60
+          periodSeconds: 15
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: elasticsearch-data
 ---
-# Logstash Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -77,6 +76,7 @@ metadata:
   namespace: data-center-commander
   labels:
     app: logstash
+    team: platform-engineering
 spec:
   replicas: 1
   selector:
@@ -88,49 +88,49 @@ spec:
         app: logstash
     spec:
       containers:
-        - name: logstash
-          image: docker.elastic.co/logstash/logstash:8.15.0
-          ports:
-            - containerPort: 5044
-              name: beats
-            - containerPort: 5000
-              name: tcp
-            - containerPort: 9600
-              name: monitoring
-          env:
-            - name: LS_JAVA_OPTS
-              value: "-Xms256m -Xmx256m"
-            - name: ELASTICSEARCH_HOSTS
-              value: "http://elasticsearch:9200"
-          resources:
-            requests:
-              memory: "512Mi"
-              cpu: "250m"
-            limits:
-              memory: "1Gi"
-              cpu: "500m"
-          volumeMounts:
-            - name: config
-              mountPath: /usr/share/logstash/config/logstash.yml
-              subPath: logstash.yml
-            - name: pipeline
-              mountPath: /usr/share/logstash/pipeline/pipeline.conf
-              subPath: pipeline.conf
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 9600
-            initialDelaySeconds: 30
-            periodSeconds: 10
-      volumes:
+      - name: logstash
+        image: docker.elastic.co/logstash/logstash:8.15.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5044
+          name: beats
+        - containerPort: 5000
+          name: tcp
+        - containerPort: 9600
+          name: monitoring
+        env:
+        - name: LS_JAVA_OPTS
+          value: -Xms256m -Xmx256m
+        - name: ELASTICSEARCH_HOSTS
+          value: http://elasticsearch:9200
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 250m
+          limits:
+            memory: 1Gi
+            cpu: 500m
+        volumeMounts:
         - name: config
-          configMap:
-            name: logstash-config
+          mountPath: /usr/share/logstash/config/logstash.yml
+          subPath: logstash.yml
         - name: pipeline
-          configMap:
-            name: logstash-config
+          mountPath: /usr/share/logstash/pipeline/pipeline.conf
+          subPath: pipeline.conf
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 9600
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: logstash-config
+      - name: pipeline
+        configMap:
+          name: logstash-config
 ---
-# Kibana Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -138,6 +138,7 @@ metadata:
   namespace: data-center-commander
   labels:
     app: kibana
+    team: platform-engineering
 spec:
   replicas: 1
   selector:
@@ -149,32 +150,33 @@ spec:
         app: kibana
     spec:
       containers:
-        - name: kibana
-          image: docker.elastic.co/kibana/kibana:8.15.0
-          ports:
-            - containerPort: 5601
-              name: http
-          env:
-            - name: ELASTICSEARCH_HOSTS
-              value: '["http://elasticsearch:9200"]'
-            - name: xpack.security.enabled
-              value: "false"
-          resources:
-            requests:
-              memory: "512Mi"
-              cpu: "250m"
-            limits:
-              memory: "1Gi"
-              cpu: "500m"
-          readinessProbe:
-            httpGet:
-              path: /api/status
-              port: 5601
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /api/status
-              port: 5601
-            initialDelaySeconds: 60
-            periodSeconds: 15
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:8.15.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5601
+          name: http
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: '["http://elasticsearch:9200"]'
+        - name: xpack.security.enabled
+          value: 'false'
+        resources:
+          requests:
+            memory: 512Mi
+            cpu: 250m
+          limits:
+            memory: 1Gi
+            cpu: 500m
+        readinessProbe:
+          httpGet:
+            path: /api/status
+            port: 5601
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/status
+            port: 5601
+          initialDelaySeconds: 60
+          periodSeconds: 15

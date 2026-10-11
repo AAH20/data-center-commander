@@ -1,7 +1,7 @@
 """Shared fixtures for IaC fuzzing tests."""
 
 import pytest
-from hypothesis import settings, Verbosity
+from hypothesis import Verbosity, settings
 
 # Configure hypothesis for fuzzing
 settings.register_profile("fuzzing", max_examples=1000, verbosity=Verbosity.quiet)

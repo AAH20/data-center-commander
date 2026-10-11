@@ -3,8 +3,6 @@ SOC - Security Operations Center Tests
 Validates security posture of Kubernetes manifests.
 """
 
-import pytest
-
 
 class TestContainerSecurity:
     """Container-level security checks."""
@@ -23,7 +21,14 @@ class TestContainerSecurity:
 
     def test_no_dangerous_capabilities(self, all_pods):
         """Containers should not add dangerous capabilities."""
-        dangerous_caps = {"NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "DAC_READ_SEARCH", "ALL"}
+        dangerous_caps = {
+            "NET_ADMIN",
+            "SYS_ADMIN",
+            "SYS_PTRACE",
+            "SYS_MODULE",
+            "DAC_READ_SEARCH",
+            "ALL",
+        }
         violations = []
         for pod in all_pods:
             for container in pod.get("spec", {}).get("containers", []):
@@ -125,29 +130,42 @@ class TestNetworkSecurity:
     def test_default_deny_ingress_exists(self, network_policies):
         """A default-deny ingress NetworkPolicy should exist."""
         deny_ingress = [
-            p for p in network_policies
+            p
+            for p in network_policies
             if "default-deny-ingress" in p.get("metadata", {}).get("name", "").lower()
-            or (p.get("spec", {}).get("podSelector") == {} and "Ingress" in p.get("spec", {}).get("policyTypes", []))
+            or (
+                p.get("spec", {}).get("podSelector") == {}
+                and "Ingress" in p.get("spec", {}).get("policyTypes", [])
+            )
         ]
         assert deny_ingress, "No default-deny ingress NetworkPolicy found"
 
     def test_default_deny_egress_exists(self, network_policies):
         """A default-deny egress NetworkPolicy should exist."""
         deny_egress = [
-            p for p in network_policies
+            p
+            for p in network_policies
             if "default-deny-egress" in p.get("metadata", {}).get("name", "").lower()
-            or (p.get("spec", {}).get("podSelector") == {} and "Egress" in p.get("spec", {}).get("policyTypes", []))
+            or (
+                p.get("spec", {}).get("podSelector") == {}
+                and "Egress" in p.get("spec", {}).get("policyTypes", [])
+            )
         ]
         assert deny_egress, "No default-deny egress NetworkPolicy found"
 
     def test_namespace_has_network_policies(self, network_policies, namespace):
         """The data-center-commander namespace should have NetworkPolicies."""
-        ns_name = namespace.get("metadata", {}).get("name", "data-center-commander") if namespace else "data-center-commander"
+        ns_name = (
+            namespace.get("metadata", {}).get("name", "data-center-commander")
+            if namespace
+            else "data-center-commander"
+        )
         ns_policies = [
-            p for p in network_policies
-            if p.get("metadata", {}).get("namespace") == ns_name
+            p for p in network_policies if p.get("metadata", {}).get("namespace") == ns_name
         ]
-        assert len(ns_policies) >= 2, f"Expected at least 2 NetworkPolicies in {ns_name}, found {len(ns_policies)}"
+        assert len(ns_policies) >= 2, (
+            f"Expected at least 2 NetworkPolicies in {ns_name}, found {len(ns_policies)}"
+        )
 
     def test_no_wildcard_ingress_rules(self, network_policies):
         """NetworkPolicies should not allow ingress from all sources."""
@@ -169,16 +187,13 @@ class TestNetworkSecurity:
         for svc in services:
             svc_type = svc.get("spec", {}).get("type", "ClusterIP")
             if svc_type in ("NodePort", "LoadBalancer"):
-                violations.append(
-                    f"Service/{svc['metadata']['name']} uses type {svc_type}"
-                )
+                violations.append(f"Service/{svc['metadata']['name']} uses type {svc_type}")
         assert not violations, f"Exposed service types found: {violations}"
 
     def test_network_policies_have_pod_selector(self, network_policies):
         """NetworkPolicies should have a podSelector."""
         selective_policies = [
-            p for p in network_policies
-            if p.get("spec", {}).get("podSelector", {}) != {}
+            p for p in network_policies if p.get("spec", {}).get("podSelector", {}) != {}
         ]
         assert len(selective_policies) >= 1, "No NetworkPolicies with specific pod selectors found"
 
@@ -221,9 +236,7 @@ class TestRBACSecurity:
             if doc.get("kind") == "ClusterRole":
                 rules = doc.get("rules", [])
                 if not rules:
-                    violations.append(
-                        f"ClusterRole/{doc['metadata']['name']} has no rules"
-                    )
+                    violations.append(f"ClusterRole/{doc['metadata']['name']} has no rules")
         assert not violations, f"Empty ClusterRoles found: {violations}"
 
     def test_no_wildcard_verbs(self, rbac_docs):
@@ -252,7 +265,11 @@ class TestRBACSecurity:
 
     def test_service_account_used_by_pods(self, rbac_docs, all_pods):
         """ServiceAccounts should be referenced by pods."""
-        sa_names = {sa.get("metadata", {}).get("name") for sa in rbac_docs if sa.get("kind") == "ServiceAccount"}
+        sa_names = {
+            sa.get("metadata", {}).get("name")
+            for sa in rbac_docs
+            if sa.get("kind") == "ServiceAccount"
+        }
         used_sas = set()
         for pod in all_pods:
             sa = pod.get("spec", {}).get("serviceAccountName")
@@ -271,21 +288,21 @@ class TestSecretsAndConfig:
         for cm in configmaps:
             labels = cm.get("metadata", {}).get("labels", {})
             if not labels:
-                violations.append(
-                    f"ConfigMap/{cm['metadata']['name']} has no labels"
-                )
+                violations.append(f"ConfigMap/{cm['metadata']['name']} has no labels")
         assert not violations, f"Unlabeled ConfigMaps found: {violations}"
 
     def test_configmaps_in_correct_namespace(self, configmaps, namespace):
         """ConfigMaps should be in the data-center-commander namespace."""
-        ns_name = namespace.get("metadata", {}).get("name", "data-center-commander") if namespace else "data-center-commander"
+        ns_name = (
+            namespace.get("metadata", {}).get("name", "data-center-commander")
+            if namespace
+            else "data-center-commander"
+        )
         violations = []
         for cm in configmaps:
             cm_ns = cm.get("metadata", {}).get("namespace")
             if cm_ns and cm_ns != ns_name:
-                violations.append(
-                    f"ConfigMap/{cm['metadata']['name']} in wrong namespace: {cm_ns}"
-                )
+                violations.append(f"ConfigMap/{cm['metadata']['name']} in wrong namespace: {cm_ns}")
         assert not violations, f"ConfigMaps in wrong namespace: {violations}"
 
 
@@ -298,9 +315,7 @@ class TestPodSecurity:
         for dep in deployments:
             replicas = dep.get("spec", {}).get("replicas")
             if replicas is None:
-                violations.append(
-                    f"Deployment/{dep['metadata']['name']} has no replica count"
-                )
+                violations.append(f"Deployment/{dep['metadata']['name']} has no replica count")
         assert not violations, f"Deployments without replicas: {violations}"
 
     def test_deployments_have_labels(self, deployments):
@@ -309,9 +324,7 @@ class TestPodSecurity:
         for dep in deployments:
             labels = dep.get("metadata", {}).get("labels", {})
             if not labels:
-                violations.append(
-                    f"Deployment/{dep['metadata']['name']} has no labels"
-                )
+                violations.append(f"Deployment/{dep['metadata']['name']} has no labels")
         assert not violations, f"Unlabeled Deployments found: {violations}"
 
     def test_daemonsets_have_labels(self, daemonsets):
@@ -320,9 +333,7 @@ class TestPodSecurity:
         for ds in daemonsets:
             labels = ds.get("metadata", {}).get("labels", {})
             if not labels:
-                violations.append(
-                    f"DaemonSet/{ds['metadata']['name']} has no labels"
-                )
+                violations.append(f"DaemonSet/{ds['metadata']['name']} has no labels")
         assert not violations, f"Unlabeled DaemonSets found: {violations}"
 
     def test_pods_have_labels(self, all_pods):
@@ -331,9 +342,7 @@ class TestPodSecurity:
         for pod in all_pods:
             labels = pod.get("metadata", {}).get("labels", {})
             if not labels:
-                violations.append(
-                    f"{pod['kind']}/{pod['name']} has no pod labels"
-                )
+                violations.append(f"{pod['kind']}/{pod['name']} has no pod labels")
         assert not violations, f"Unlabeled pods found: {violations}"
 
     def test_deployments_use_pvc_for_storage(self, deployments, pvcs):
@@ -357,9 +366,7 @@ class TestPodSecurity:
         for pvc in pvcs:
             sc = pvc.get("spec", {}).get("storageClassName")
             if not sc:
-                violations.append(
-                    f"PVC/{pvc['metadata']['name']} has no storageClassName"
-                )
+                violations.append(f"PVC/{pvc['metadata']['name']} has no storageClassName")
         assert not violations, f"PVCs without storage class: {violations}"
 
     def test_pvcs_have_access_modes(self, pvcs):
@@ -368,9 +375,7 @@ class TestPodSecurity:
         for pvc in pvcs:
             access_modes = pvc.get("spec", {}).get("accessModes", [])
             if not access_modes:
-                violations.append(
-                    f"PVC/{pvc['metadata']['name']} has no accessModes"
-                )
+                violations.append(f"PVC/{pvc['metadata']['name']} has no accessModes")
         assert not violations, f"PVCs without access modes: {violations}"
 
     def test_pvcs_have_storage_requests(self, pvcs):
@@ -379,9 +384,7 @@ class TestPodSecurity:
         for pvc in pvcs:
             requests = pvc.get("spec", {}).get("resources", {}).get("requests", {})
             if "storage" not in requests:
-                violations.append(
-                    f"PVC/{pvc['metadata']['name']} has no storage request"
-                )
+                violations.append(f"PVC/{pvc['metadata']['name']} has no storage request")
         assert not violations, f"PVCs without storage requests: {violations}"
 
 
@@ -401,9 +404,20 @@ class TestNamespaceSecurity:
 
     def test_resources_in_correct_namespace(self, k8s_docs, namespace):
         """All resources should be in the data-center-commander namespace."""
-        ns_name = namespace.get("metadata", {}).get("name", "data-center-commander") if namespace else "data-center-commander"
+        ns_name = (
+            namespace.get("metadata", {}).get("name", "data-center-commander")
+            if namespace
+            else "data-center-commander"
+        )
         violations = []
-        cluster_scoped = {"Namespace", "ClusterRole", "ClusterRoleBinding", "PersistentVolume", "StorageClass", "IngressClass"}
+        cluster_scoped = {
+            "Namespace",
+            "ClusterRole",
+            "ClusterRoleBinding",
+            "PersistentVolume",
+            "StorageClass",
+            "IngressClass",
+        }
         for doc in k8s_docs:
             kind = doc.get("kind")
             if kind in cluster_scoped:

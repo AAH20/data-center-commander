@@ -8,9 +8,8 @@ import json
 import logging
 import re
 import socket
-import time
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from kafka import KafkaProducer
@@ -43,20 +42,41 @@ RFC3164_PATTERN = re.compile(
 )
 
 FACILITY_NAMES = {
-    0: "kern", 1: "user", 2: "mail", 3: "daemon",
-    4: "auth", 5: "syslog", 6: "lpr", 7: "news",
-    8: "uucp", 9: "cron", 10: "authpriv", 11: "ftp",
-    16: "local0", 17: "local1", 18: "local2", 19: "local3",
-    20: "local4", 21: "local5", 22: "local6", 23: "local7",
+    0: "kern",
+    1: "user",
+    2: "mail",
+    3: "daemon",
+    4: "auth",
+    5: "syslog",
+    6: "lpr",
+    7: "news",
+    8: "uucp",
+    9: "cron",
+    10: "authpriv",
+    11: "ftp",
+    16: "local0",
+    17: "local1",
+    18: "local2",
+    19: "local3",
+    20: "local4",
+    21: "local5",
+    22: "local6",
+    23: "local7",
 }
 
 SEVERITY_NAMES = {
-    0: "emergency", 1: "alert", 2: "critical", 3: "error",
-    4: "warning", 5: "notice", 6: "info", 7: "debug",
+    0: "emergency",
+    1: "alert",
+    2: "critical",
+    3: "error",
+    4: "warning",
+    5: "notice",
+    6: "info",
+    7: "debug",
 }
 
 
-def parse_syslog(raw: str) -> Optional[Dict[str, Any]]:
+def parse_syslog(raw: str) -> dict[str, Any] | None:
     """Parse a raw syslog message into a structured dict."""
     # Try RFC 5424 first
     m = RFC5424_PATTERN.match(raw)
@@ -115,7 +135,7 @@ class SyslogToMetronConnector:
         self.listen_host = listen_host
         self.listen_port = listen_port
         self.protocol = protocol
-        self._producer: Optional[Any] = None
+        self._producer: Any | None = None
         self._running = False
 
     def _get_producer(self) -> Any:
@@ -132,7 +152,7 @@ class SyslogToMetronConnector:
             )
         return self._producer
 
-    def process_message(self, raw: str, source_ip: str = "") -> Optional[Dict[str, Any]]:
+    def process_message(self, raw: str, source_ip: str = "") -> dict[str, Any] | None:
         """Parse and enrich a single syslog message."""
         parsed = parse_syslog(raw)
         if parsed is None:
@@ -140,7 +160,7 @@ class SyslogToMetronConnector:
             return None
 
         parsed["source_ip"] = source_ip
-        parsed["ingest_timestamp"] = datetime.now(timezone.utc).isoformat()
+        parsed["ingest_timestamp"] = datetime.now(UTC).isoformat()
         parsed["connector"] = "syslog_connector"
         parsed["connector_version"] = "1.0.0"
 
@@ -153,7 +173,7 @@ class SyslogToMetronConnector:
 
         return parsed
 
-    def send_to_kafka(self, message: Dict[str, Any]) -> None:
+    def send_to_kafka(self, message: dict[str, Any]) -> None:
         """Send a parsed message to Metron's Kafka topic."""
         producer = self._get_producer()
         key = message.get("hostname", "")
@@ -165,7 +185,10 @@ class SyslogToMetronConnector:
         self._running = True
         logger.info(
             "Starting syslog connector on %s:%d (%s) -> Kafka topic '%s'",
-            self.listen_host, self.listen_port, self.protocol, self.kafka_topic,
+            self.listen_host,
+            self.listen_port,
+            self.protocol,
+            self.kafka_topic,
         )
 
         if self.protocol == "udp":
@@ -186,7 +209,7 @@ class SyslogToMetronConnector:
                 parsed = self.process_message(raw, source_ip=addr[0])
                 if parsed:
                     self.send_to_kafka(parsed)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception as e:
                 logger.error("Error processing syslog message: %s", e)
@@ -214,7 +237,7 @@ class SyslogToMetronConnector:
                     parsed = self.process_message(raw, source_ip=addr[0])
                     if parsed:
                         self.send_to_kafka(parsed)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception as e:
                 logger.error("Error processing TCP syslog message: %s", e)

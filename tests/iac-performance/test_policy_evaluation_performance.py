@@ -6,28 +6,23 @@ data center governance policies.
 """
 
 import os
-import pytest
-import time
 import tempfile
-import shutil
-import json
-from pathlib import Path
+import time
 
-from utils.rego_utils import OpaRunner, create_opa_input, load_rego_policies
-from utils.timing import assert_performance
-
+import pytest
+from utils.rego_utils import create_opa_input, load_rego_policies
 
 # Performance thresholds for policy evaluation (in milliseconds)
 POLICY_THRESHOLDS = {
-    "single_eval_small": 1_000,        # 1s for single policy evaluation
-    "single_eval_medium": 2_000,       # 2s for single policy evaluation
-    "single_eval_large": 5_000,        # 5s for single policy evaluation
-    "full_compliance_small": 5_000,    # 5s for full compliance check (small)
+    "single_eval_small": 1_000,  # 1s for single policy evaluation
+    "single_eval_medium": 2_000,  # 2s for single policy evaluation
+    "single_eval_large": 5_000,  # 5s for single policy evaluation
+    "full_compliance_small": 5_000,  # 5s for full compliance check (small)
     "full_compliance_medium": 10_000,  # 10s for full compliance check (medium)
-    "full_compliance_large": 30_000,   # 30s for full compliance check (large)
-    "batch_10": 10_000,                # 10s for batch of 10 evaluations
-    "batch_50": 30_000,                # 30s for batch of 50 evaluations
-    "batch_100": 60_000,               # 60s for batch of 100 evaluations
+    "full_compliance_large": 30_000,  # 30s for full compliance check (large)
+    "batch_10": 10_000,  # 10s for batch of 10 evaluations
+    "batch_50": 30_000,  # 30s for batch of 50 evaluations
+    "batch_100": 60_000,  # 60s for batch of 100 evaluations
 }
 
 
@@ -105,7 +100,9 @@ class TestPolicyEvaluationPerformance:
 class TestPolicyEvaluationNonCompliant:
     """Test policy evaluation performance with non-compliant inputs."""
 
-    def test_eval_non_compliant_compliance(self, opa_runner, rego_policy_dir, non_compliant_opa_input):
+    def test_eval_non_compliant_compliance(
+        self, opa_runner, rego_policy_dir, non_compliant_opa_input
+    ):
         """Test evaluation of compliance policy with non-compliant input."""
         policy_path = os.path.join(rego_policy_dir, "compliance.rego")
         if not os.path.exists(policy_path):
@@ -118,7 +115,9 @@ class TestPolicyEvaluationNonCompliant:
             f"threshold: {POLICY_THRESHOLDS['single_eval_medium']}ms"
         )
 
-    def test_eval_non_compliant_encryption(self, opa_runner, rego_policy_dir, non_compliant_opa_input):
+    def test_eval_non_compliant_encryption(
+        self, opa_runner, rego_policy_dir, non_compliant_opa_input
+    ):
         """Test evaluation of encryption policy with non-compliant input."""
         policy_path = os.path.join(rego_policy_dir, "encryption.rego")
         if not os.path.exists(policy_path):
@@ -204,7 +203,7 @@ class TestPolicyEvaluationAllPolicies:
         start = time.perf_counter()
         for policy_name, policy_content in policies.items():
             # Write policy to temp file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.rego', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".rego", delete=False) as f:
                 f.write(policy_content)
                 policy_path = f.name
 
@@ -220,7 +219,9 @@ class TestPolicyEvaluationAllPolicies:
             f"threshold: {POLICY_THRESHOLDS['full_compliance_small']}ms"
         )
 
-    def test_eval_all_policies_non_compliant(self, opa_runner, rego_policy_dir, non_compliant_opa_input):
+    def test_eval_all_policies_non_compliant(
+        self, opa_runner, rego_policy_dir, non_compliant_opa_input
+    ):
         """Test evaluation of all policies with a non-compliant input."""
         policies = load_rego_policies(rego_policy_dir)
         if not policies:
@@ -228,7 +229,7 @@ class TestPolicyEvaluationAllPolicies:
 
         start = time.perf_counter()
         for policy_name, policy_content in policies.items():
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.rego', delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".rego", delete=False) as f:
                 f.write(policy_content)
                 policy_path = f.name
 

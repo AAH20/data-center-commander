@@ -2,13 +2,11 @@
 Shared fixtures and helpers for SOC + Auto Scaling + Container tests.
 """
 
-import os
-import sys
-import yaml
-import pytest
-import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+import pytest
+import yaml
 
 # Project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -16,13 +14,13 @@ K8S_IAC_DIR = PROJECT_ROOT / "k8s" / "iac"
 POLICIES_DIR = PROJECT_ROOT / "policies"
 
 
-def load_yaml_docs(path: Path) -> List[Dict[str, Any]]:
+def load_yaml_docs(path: Path) -> list[dict[str, Any]]:
     """Load all YAML documents from a file."""
     with open(path) as f:
         return [doc for doc in yaml.safe_load_all(f) if doc is not None]
 
 
-def load_all_k8s_docs() -> List[Dict[str, Any]]:
+def load_all_k8s_docs() -> list[dict[str, Any]]:
     """Load all Kubernetes manifests from the iac directory."""
     docs = []
     for yaml_file in sorted(K8S_IAC_DIR.glob("*.yaml")):
@@ -30,15 +28,16 @@ def load_all_k8s_docs() -> List[Dict[str, Any]]:
     return docs
 
 
-def get_docs_by_kind(kind: str) -> List[Dict[str, Any]]:
+def get_docs_by_kind(kind: str) -> list[dict[str, Any]]:
     """Get all documents of a specific kind."""
     return [d for d in load_all_k8s_docs() if d.get("kind") == kind]
 
 
-def get_docs_by_name(kind: str, name: str) -> List[Dict[str, Any]]:
+def get_docs_by_name(kind: str, name: str) -> list[dict[str, Any]]:
     """Get documents by kind and name."""
     return [
-        d for d in load_all_k8s_docs()
+        d
+        for d in load_all_k8s_docs()
         if d.get("kind") == kind and d.get("metadata", {}).get("name") == name
     ]
 
@@ -100,7 +99,12 @@ def ingresses(k8s_docs):
 @pytest.fixture(scope="session")
 def rbac_docs(k8s_docs):
     """All RBAC documents."""
-    return [d for d in k8s_docs if d.get("kind") in ("ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Role", "RoleBinding")]
+    return [
+        d
+        for d in k8s_docs
+        if d.get("kind")
+        in ("ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Role", "RoleBinding")
+    ]
 
 
 @pytest.fixture(scope="session")
@@ -123,31 +127,35 @@ def all_pods(deployments, daemonsets):
     for dep in deployments:
         spec = dep.get("spec", {}).get("template", {}).get("spec", {})
         metadata = dep.get("spec", {}).get("template", {}).get("metadata", {})
-        pods.append({
-            "kind": "Deployment",
-            "name": dep.get("metadata", {}).get("name"),
-            "namespace": dep.get("metadata", {}).get("namespace"),
-            "spec": spec,
-            "metadata": metadata,
-        })
+        pods.append(
+            {
+                "kind": "Deployment",
+                "name": dep.get("metadata", {}).get("name"),
+                "namespace": dep.get("metadata", {}).get("namespace"),
+                "spec": spec,
+                "metadata": metadata,
+            }
+        )
     for ds in daemonsets:
         spec = ds.get("spec", {}).get("template", {}).get("spec", {})
         metadata = ds.get("spec", {}).get("template", {}).get("metadata", {})
-        pods.append({
-            "kind": "DaemonSet",
-            "name": ds.get("metadata", {}).get("name"),
-            "namespace": ds.get("metadata", {}).get("namespace"),
-            "spec": spec,
-            "metadata": metadata,
-        })
+        pods.append(
+            {
+                "kind": "DaemonSet",
+                "name": ds.get("metadata", {}).get("name"),
+                "namespace": ds.get("metadata", {}).get("namespace"),
+                "spec": spec,
+                "metadata": metadata,
+            }
+        )
     return pods
 
 
-def get_containers(pod_spec: Dict) -> List[Dict]:
+def get_containers(pod_spec: dict) -> list[dict]:
     """Extract containers from a pod spec."""
     return pod_spec.get("spec", {}).get("containers", [])
 
 
-def get_init_containers(pod_spec: Dict) -> List[Dict]:
+def get_init_containers(pod_spec: dict) -> list[dict]:
     """Extract init containers from a pod spec."""
     return pod_spec.get("spec", {}).get("initContainers", [])

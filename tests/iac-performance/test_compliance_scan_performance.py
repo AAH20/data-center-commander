@@ -6,27 +6,21 @@ with both built-in and custom data center policies.
 """
 
 import os
+
 import pytest
-import time
-import tempfile
-import shutil
-from pathlib import Path
-
-from utils.checkov_utils import CheckovRunner, generate_terraform_file, generate_terraform_module
-from utils.timing import assert_performance
-
+from utils.checkov_utils import generate_terraform_file, generate_terraform_module
 
 # Performance thresholds for compliance scanning (in milliseconds)
 SCAN_THRESHOLDS = {
-    "small_built_in": 30_000,       # 30s for small config with built-in checks
-    "medium_built_in": 60_000,      # 60s for medium config with built-in checks
-    "large_built_in": 120_000,      # 120s for large config with built-in checks
-    "small_custom": 30_000,         # 30s for small config with custom checks
-    "medium_custom": 60_000,        # 60s for medium config with custom checks
-    "large_custom": 120_000,        # 120s for large config with custom checks
-    "small_combined": 45_000,       # 45s for small config with combined checks
-    "medium_combined": 90_000,      # 90s for medium config with combined checks
-    "large_combined": 180_000,      # 180s for large config with combined checks
+    "small_built_in": 30_000,  # 30s for small config with built-in checks
+    "medium_built_in": 60_000,  # 60s for medium config with built-in checks
+    "large_built_in": 120_000,  # 120s for large config with built-in checks
+    "small_custom": 30_000,  # 30s for small config with custom checks
+    "medium_custom": 60_000,  # 60s for medium config with custom checks
+    "large_custom": 120_000,  # 120s for large config with custom checks
+    "small_combined": 45_000,  # 45s for small config with combined checks
+    "medium_combined": 90_000,  # 90s for medium config with combined checks
+    "large_combined": 180_000,  # 180s for large config with combined checks
 }
 
 
@@ -187,7 +181,7 @@ class TestComplianceScanWithModules:
 
         # Create main config that uses the module
         with open(os.path.join(temp_workspace, "main.tf"), "w") as f:
-            f.write('''
+            f.write("""
 module "vpc" {
   source = "./modules/vpc"
 }
@@ -201,7 +195,7 @@ resource "aws_instance" "server" {
     Owner       = "test-team"
   }
 }
-''')
+""")
 
         result = checkov_runner.scan_directory(temp_workspace)
         # Modules add overhead

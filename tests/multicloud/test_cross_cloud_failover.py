@@ -3,6 +3,7 @@
 Tests that validate failover configurations work correctly across
 AWS, Azure, and GCP for disaster recovery scenarios.
 """
+
 import pytest
 
 
@@ -47,7 +48,11 @@ class TestCrossCloudFailover:
 
     def test_azure_storage_geo_replication(self, azure_storage_replication_config):
         """Verify Azure Storage GRS for cross-region failover."""
-        assert azure_storage_replication_config["account_replication_type"] in ["GRS", "GZRS", "RA-GRS"]
+        assert azure_storage_replication_config["account_replication_type"] in [
+            "GRS",
+            "GZRS",
+            "RA-GRS",
+        ]
 
     def test_gcp_storage_dual_region(self, gcp_storage_replication_config):
         """Verify GCP dual-region storage for failover."""
@@ -66,14 +71,20 @@ class TestCrossCloudFailover:
         """Verify GCP Firestore multi-region for failover."""
         assert gcp_firestore_config["type"] == "FIRESTORE_NATIVE"
 
-    def test_aws_route53_health_check_failover(self, aws_route53_config, aws_route53_health_check_config):
+    def test_aws_route53_health_check_failover(
+        self, aws_route53_config, aws_route53_health_check_config
+    ):
         """Verify AWS Route 53 health check failover routing."""
         assert aws_route53_config["health_check_id"] is not None
         assert aws_route53_health_check_config["failure_threshold"] >= 1
 
     def test_azure_traffic_manager_failover(self, azure_traffic_manager_config):
         """Verify Azure Traffic Manager for failover routing."""
-        assert azure_traffic_manager_config["routing_method"] in ["Performance", "Priority", "Weighted"]
+        assert azure_traffic_manager_config["routing_method"] in [
+            "Performance",
+            "Priority",
+            "Weighted",
+        ]
 
     def test_gcp_global_lb_failover(self, gcp_lb_config):
         """Verify GCP global load balancer for failover."""
@@ -83,7 +94,9 @@ class TestCrossCloudFailover:
         """Verify AWS Global Accelerator for failover."""
         assert aws_global_accelerator_config["enabled"] is True
 
-    def test_cross_cloud_backup_strategy(self, aws_backup_config, azure_backup_config, gcp_backup_config):
+    def test_cross_cloud_backup_strategy(
+        self, aws_backup_config, azure_backup_config, gcp_backup_config
+    ):
         """Verify all three clouds have backup configurations for cross-cloud DR."""
         assert "backup_vault_name" in aws_backup_config
         assert "vault_name" in azure_backup_config
@@ -139,7 +152,12 @@ class TestCrossCloudFailover:
         """Verify all cloud providers support failover capabilities."""
         failover_features = {
             "aws": ["multi_az", "cross_region_replication", "global_tables", "route53"],
-            "azure": ["zone_redundant", "geo_replication", "multi_region_writes", "traffic_manager"],
+            "azure": [
+                "zone_redundant",
+                "geo_replication",
+                "multi_region_writes",
+                "traffic_manager",
+            ],
             "gcp": ["regional", "dual_region", "global_lb", "auto_healing"],
         }
         assert provider in failover_features

@@ -3,8 +3,6 @@ Compliance Tests
 Validates overall compliance posture across SOC, Auto Scaling, and Container security.
 """
 
-import pytest
-
 
 class TestCrossCuttingCompliance:
     """Cross-cutting compliance checks across all security domains."""
@@ -12,7 +10,14 @@ class TestCrossCuttingCompliance:
     def test_all_resources_have_labels(self, k8s_docs):
         """All namespaced resources should have labels."""
         violations = []
-        cluster_scoped = {"Namespace", "ClusterRole", "ClusterRoleBinding", "PersistentVolume", "StorageClass", "IngressClass"}
+        cluster_scoped = {
+            "Namespace",
+            "ClusterRole",
+            "ClusterRoleBinding",
+            "PersistentVolume",
+            "StorageClass",
+            "IngressClass",
+        }
         for doc in k8s_docs:
             kind = doc.get("kind")
             if kind in cluster_scoped:
@@ -27,9 +32,20 @@ class TestCrossCuttingCompliance:
 
     def test_all_resources_in_namespace(self, k8s_docs, namespace):
         """All namespaced resources should be in the data-center-commander namespace."""
-        ns_name = namespace.get("metadata", {}).get("name", "data-center-commander") if namespace else "data-center-commander"
+        ns_name = (
+            namespace.get("metadata", {}).get("name", "data-center-commander")
+            if namespace
+            else "data-center-commander"
+        )
         violations = []
-        cluster_scoped = {"Namespace", "ClusterRole", "ClusterRoleBinding", "PersistentVolume", "StorageClass", "IngressClass"}
+        cluster_scoped = {
+            "Namespace",
+            "ClusterRole",
+            "ClusterRoleBinding",
+            "PersistentVolume",
+            "StorageClass",
+            "IngressClass",
+        }
         for doc in k8s_docs:
             kind = doc.get("kind")
             if kind in cluster_scoped:
@@ -41,7 +57,9 @@ class TestCrossCuttingCompliance:
             if not doc_ns:
                 violations.append(f"{kind}/{metadata.get('name', 'unknown')} has no namespace")
             elif doc_ns != ns_name:
-                violations.append(f"{kind}/{metadata.get('name', 'unknown')} in wrong namespace: {doc_ns}")
+                violations.append(
+                    f"{kind}/{metadata.get('name', 'unknown')} in wrong namespace: {doc_ns}"
+                )
         assert not violations, f"Resources in wrong namespace: {violations}"
 
     def test_deployments_have_hpa_and_pdb(self, deployments, hpas, pdbs):
@@ -90,6 +108,7 @@ class TestPolicyEnforcement:
     def test_opa_policies_exist(self):
         """OPA/Rego policy files should exist."""
         from pathlib import Path
+
         policies_dir = Path(__file__).resolve().parent.parent.parent / "policies" / "rego"
         rego_files = list(policies_dir.glob("*.rego")) if policies_dir.exists() else []
         assert len(rego_files) >= 1, "No OPA/Rego policy files found"
@@ -97,6 +116,7 @@ class TestPolicyEnforcement:
     def test_checkov_policies_exist(self):
         """Checkov custom policy files should exist."""
         from pathlib import Path
+
         policies_dir = Path(__file__).resolve().parent.parent.parent / "policies" / "checkov"
         py_files = list(policies_dir.glob("**/*.py")) if policies_dir.exists() else []
         assert len(py_files) >= 1, "No Checkov policy files found"
@@ -104,6 +124,7 @@ class TestPolicyEnforcement:
     def test_sentinel_policies_exist(self):
         """Sentinel policy files should exist."""
         from pathlib import Path
+
         policies_dir = Path(__file__).resolve().parent.parent.parent / "policies" / "sentinel"
         if not policies_dir.exists():
             policies_dir = Path("/Users/ahmedhassan/policies/sentinel")
@@ -113,6 +134,7 @@ class TestPolicyEnforcement:
     def test_azure_policy_exists(self):
         """Azure policy definitions should exist."""
         from pathlib import Path
+
         policies_dir = Path(__file__).resolve().parent.parent.parent / "policies" / "azure-policy"
         json_files = list(policies_dir.glob("*.json")) if policies_dir.exists() else []
         assert len(json_files) >= 1, "No Azure policy files found"
@@ -124,18 +146,21 @@ class TestComplianceDocumentation:
     def test_compliance_readme_exists(self):
         """Compliance README should exist."""
         from pathlib import Path
+
         readme = Path(__file__).resolve().parent.parent / "compliance" / "README.md"
         assert readme.exists(), "Compliance README not found"
 
     def test_soc_readme_exists(self):
         """SOC test suite README should exist."""
         from pathlib import Path
+
         readme = Path(__file__).resolve().parent / "README.md"
         assert readme.exists(), "SOC README not found"
 
     def test_benchmarks_documentation_exists(self):
         """Benchmarks documentation should exist."""
         from pathlib import Path
+
         benchmarks = Path(__file__).resolve().parent.parent.parent / "BENCHMARKS-IAC.md"
         assert benchmarks.exists(), "BENCHMARKS-IAC.md not found"
 
@@ -171,7 +196,7 @@ class TestAuditTrailCompliance:
         cm_names = {cm.get("metadata", {}).get("name") for cm in configmaps}
         monitoring_config = {"grafana-provisioning", "prometheus-config"}
         found = monitoring_config & cm_names
-        assert found, f"No monitoring configuration found in ConfigMaps"
+        assert found, "No monitoring configuration found in ConfigMaps"
 
 
 class TestComplianceScopeValidation:
@@ -186,7 +211,14 @@ class TestComplianceScopeValidation:
     def test_resources_have_owner_labels(self, k8s_docs):
         """Resources should have owner/team labels for accountability."""
         violations = []
-        cluster_scoped = {"Namespace", "ClusterRole", "ClusterRoleBinding", "PersistentVolume", "StorageClass", "IngressClass"}
+        cluster_scoped = {
+            "Namespace",
+            "ClusterRole",
+            "ClusterRoleBinding",
+            "PersistentVolume",
+            "StorageClass",
+            "IngressClass",
+        }
         for doc in k8s_docs:
             kind = doc.get("kind")
             if kind in cluster_scoped:
@@ -197,12 +229,15 @@ class TestComplianceScopeValidation:
             labels = metadata.get("labels", {})
             has_owner = any(k in labels for k in ("owner", "team", "app.kubernetes.io/name"))
             if not has_owner:
-                violations.append(f"{kind}/{metadata.get('name', 'unknown')} has no owner/team label")
+                violations.append(
+                    f"{kind}/{metadata.get('name', 'unknown')} has no owner/team label"
+                )
         assert not violations, f"Resources without owner labels: {violations}"
 
     def test_security_policies_documented(self):
         """Security policies should be documented."""
         from pathlib import Path
+
         docs_dir = Path(__file__).resolve().parent.parent.parent / "docs" / "policy"
         policy_files = list(docs_dir.glob("*.md")) if docs_dir.exists() else []
         assert len(policy_files) >= 1, "No policy documentation found"

@@ -7,8 +7,9 @@ and other security devices, forwarding them to Metron's Kafka.
 import json
 import logging
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from contextlib import suppress
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from kafka import KafkaProducer
@@ -33,7 +34,7 @@ CEF_HEADER_PATTERN = re.compile(
 CEF_EXTENSION_PATTERN = re.compile(r"(\w+)=((?:[^=\\]|\\.)*?)(?=\s+\w+=|$)")
 
 
-def parse_cef_message(raw: str) -> Optional[Dict[str, Any]]:
+def parse_cef_message(raw: str) -> dict[str, Any] | None:
     """Parse a CEF message into a structured dict."""
     raw = raw.strip()
     m = CEF_HEADER_PATTERN.match(raw)
@@ -54,14 +55,16 @@ def parse_cef_message(raw: str) -> Optional[Dict[str, Any]]:
 
     # Map CEF severity to numeric
     severity_map = {
-        "Unknown": 0, "Low": 1, "Medium": 5, "High": 8, "Very-High": 10,
+        "Unknown": 0,
+        "Low": 1,
+        "Medium": 5,
+        "High": 8,
+        "Very-High": 10,
     }
     severity_str = gd.get("severity", "Unknown")
     severity_num = severity_map.get(severity_str, 0)
-    try:
+    with suppress(ValueError):
         severity_num = int(severity_str)
-    except ValueError:
-        pass
 
     record = {
         "cef_version": int(gd.get("version", 0)),
@@ -87,8 +90,9 @@ def parse_cef_message(raw: str) -> Optional[Dict[str, Any]]:
 
     # Derived fields
     record["is_high_severity"] = severity_num >= 8
-    record["is_blocked"] = record["action"].lower() in ("block", "deny", "drop", "reset")
-    record["is_allowed"] = record["action"].lower() in ("allow", "permit", "accept")
+    action = str(record.get("action") or "").lower()
+    record["is_blocked"] = action in ("block", "deny", "drop", "reset")
+    record["is_allowed"] = action in ("allow", "permit", "accept")
 
     return record
 
@@ -103,7 +107,7 @@ class CEFToMetronConnector:
     ):
         self.kafka_brokers = kafka_brokers
         self.kafka_topic = kafka_topic
-        self._producer: Optional[Any] = None
+        self._producer: Any | None = None
 
     def _get_producer(self) -> Any:
         if self._producer is None:
@@ -119,7 +123,7 @@ class CEFToMetronConnector:
             )
         return self._producer
 
-    def process_message(self, raw: str, source_ip: str = "") -> Optional[Dict[str, Any]]:
+    def process_message(self, raw: str, source_ip: str = "") -> dict[str, Any] | None:
         """Parse and enrich a CEF message."""
         record = parse_cef_message(raw)
         if record is None:
@@ -127,7 +131,7 @@ class CEFToMetronConnector:
             return None
 
         record["source_ip"] = source_ip
-        record["ingest_timestamp"] = datetime.now(timezone.utc).isoformat()
+        record["ingest_timestamp"] = datetime.now(UTC).isoformat()
         record["connector"] = "cef_connector"
         record["connector_version"] = "1.0.0"
         record["metron_enrichment"] = {
@@ -138,7 +142,7 @@ class CEFToMetronConnector:
 
         return record
 
-    def send_to_kafka(self, record: Dict[str, Any]) -> None:
+    def send_to_kafka(self, record: dict[str, Any]) -> None:
         """Send a parsed CEF record to Metron's Kafka topic."""
         producer = self._get_producer()
         key = record.get("signature_id", "")
@@ -148,7 +152,7 @@ class CEFToMetronConnector:
     def process_file(self, filepath: str) -> int:
         """Process an entire CEF log file and send to Kafka."""
         count = 0
-        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             for line in f:
                 record = self.process_message(line)
                 if record:

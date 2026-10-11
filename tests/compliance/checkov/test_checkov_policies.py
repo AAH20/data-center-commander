@@ -4,20 +4,22 @@ Tests for Checkov custom policies.
 These tests validate that Checkov policies correctly enforce data center governance rules.
 """
 
+import importlib.util
 import os
 import sys
-import pytest
-import importlib.util
 
 # Add the checkov policies directory to the path for direct module loading
-CHECKOV_POLICY_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "policies", "checkov")
+CHECKOV_POLICY_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "..", "policies", "checkov"
+)
 
 # Ensure the installed checkov package takes precedence over the local directory
 # Remove any path entries that point to the local checkov policies directory
 sys.path = [p for p in sys.path if os.path.abspath(p or ".") != os.path.abspath(CHECKOV_POLICY_DIR)]
 
-from checkov.common.models.enums import CheckResult, CheckCategories
-from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
+from checkov.common.models.enums import (  # noqa: E402 — path must be rewritten before import
+    CheckResult,
+)
 
 
 def load_checkov_module(module_name: str):
@@ -39,21 +41,25 @@ class TestCheckovNetworkSecurity:
 
         # Should pass - no public RDP
         conf = {
-            "ingress": [{
-                "from_port": 443,
-                "to_port": 443,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 443,
+                    "to_port": 443,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.PASSED
 
         # Should fail - public RDP
         conf = {
-            "ingress": [{
-                "from_port": 3389,
-                "to_port": 3389,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 3389,
+                    "to_port": 3389,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.FAILED
 
@@ -64,21 +70,25 @@ class TestCheckovNetworkSecurity:
 
         # Should pass - no public SSH
         conf = {
-            "ingress": [{
-                "from_port": 443,
-                "to_port": 443,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 443,
+                    "to_port": 443,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.PASSED
 
         # Should fail - public SSH
         conf = {
-            "ingress": [{
-                "from_port": 22,
-                "to_port": 22,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 22,
+                    "to_port": 22,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.FAILED
 
@@ -89,21 +99,25 @@ class TestCheckovNetworkSecurity:
 
         # Should pass - no public database ports
         conf = {
-            "ingress": [{
-                "from_port": 443,
-                "to_port": 443,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 443,
+                    "to_port": 443,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.PASSED
 
         # Should fail - public MySQL port
         conf = {
-            "ingress": [{
-                "from_port": 3306,
-                "to_port": 3306,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 3306,
+                    "to_port": 3306,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.FAILED
 
@@ -179,21 +193,25 @@ class TestCheckovNetworkSecurity:
 
         # Should pass - web port with wildcard
         conf = {
-            "ingress": [{
-                "from_port": 443,
-                "to_port": 443,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 443,
+                    "to_port": 443,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.PASSED
 
         # Should fail - non-web port with wildcard
         conf = {
-            "ingress": [{
-                "from_port": 8081,
-                "to_port": 8081,
-                "cidr_blocks": ["0.0.0.0/0"],
-            }]
+            "ingress": [
+                {
+                    "from_port": 8081,
+                    "to_port": 8081,
+                    "cidr_blocks": ["0.0.0.0/0"],
+                }
+            ]
         }
         assert check.scan_resource_conf(conf) == CheckResult.FAILED
 
@@ -380,7 +398,11 @@ class TestCheckovStorageSecurity:
         check = mod.S3BucketEncryptionEnabled()
 
         # Should pass - encryption configured
-        conf = {"server_side_encryption_configuration": [{"apply_server_side_encryption_by_default": {"sse_algorithm": "AES256"}}]}
+        conf = {
+            "server_side_encryption_configuration": [
+                {"apply_server_side_encryption_by_default": {"sse_algorithm": "AES256"}}
+            ]
+        }
         assert check.scan_resource_conf(conf) == CheckResult.PASSED
 
         # Should fail - no encryption

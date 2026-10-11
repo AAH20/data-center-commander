@@ -6,11 +6,9 @@ EC2, RDS, S3, CloudWatch, and IAM. Validates HCL2 parsing, resource
 structure, and security compliance of Terraform configurations.
 """
 
-import json
-import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pytest
 
@@ -20,6 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     import hcl2
+
     HAS_HCL2 = True
 except ImportError:
     HAS_HCL2 = False
@@ -28,6 +27,7 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _deep_clean(value: Any) -> Any:
     """Recursively strip extra wrapping quotes that hcl2 adds to strings."""
@@ -42,7 +42,7 @@ def _deep_clean(value: Any) -> Any:
     return value
 
 
-def parse_hcl(hcl_string: str) -> Dict[str, Any]:
+def parse_hcl(hcl_string: str) -> dict[str, Any]:
     """Parse an HCL string into a Python dict."""
     if not HAS_HCL2:
         pytest.skip("python-hcl2 not available")
@@ -51,13 +51,12 @@ def parse_hcl(hcl_string: str) -> Dict[str, Any]:
 
 def _strip_quotes(value: Any) -> Any:
     """Strip extra wrapping quotes that hcl2 adds to string values."""
-    if isinstance(value, str) and len(value) >= 2:
-        if value.startswith('"') and value.endswith('"'):
-            return value[1:-1]
+    if isinstance(value, str) and len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+        return value[1:-1]
     return value
 
 
-def get_resources(parsed: Dict, resource_type: str) -> List[Dict]:
+def get_resources(parsed: dict, resource_type: str) -> list[dict]:
     """Extract resources of a given type from parsed HCL.
 
     hcl2 returns resource as a list of single-key dicts like:
@@ -68,15 +67,14 @@ def get_resources(parsed: Dict, resource_type: str) -> List[Dict]:
         for key, value in block.items():
             # hcl2 may wrap keys in extra quotes
             clean_key = _strip_quotes(key)
-            if clean_key == resource_type:
-                if isinstance(value, dict):
-                    for res_name, res_config in value.items():
-                        if isinstance(res_config, dict):
-                            resources.append(res_config)
+            if clean_key == resource_type and isinstance(value, dict):
+                for _res_name, res_config in value.items():
+                    if isinstance(res_config, dict):
+                        resources.append(res_config)
     return resources
 
 
-def get_blocks(parsed: Dict, block_type: str) -> List[Dict]:
+def get_blocks(parsed: dict, block_type: str) -> list[dict]:
     """Extract top-level blocks of a given type."""
     return parsed.get(block_type, [])
 
@@ -714,6 +712,7 @@ resource "aws_iam_password_policy" "strict" {
 # VPC Tests
 # ---------------------------------------------------------------------------
 
+
 class TestVPCModule:
     """Tests for AWS VPC module configuration."""
 
@@ -768,6 +767,7 @@ class TestVPCModule:
 # Subnet Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSubnetsModule:
     """Tests for AWS subnets module configuration."""
 
@@ -808,6 +808,7 @@ class TestSubnetsModule:
 # Security Group Tests
 # ---------------------------------------------------------------------------
 
+
 class TestSecurityGroupsModule:
     """Tests for AWS security groups module configuration."""
 
@@ -823,10 +824,7 @@ class TestSecurityGroupsModule:
         sgs = get_resources(parsed, "aws_security_group")
         web_sg = [sg for sg in sgs if sg["name"] == "prod-web-sg"][0]
         ingress = web_sg["ingress"]
-        assert any(
-            rule["from_port"] == 443 and rule["to_port"] == 443
-            for rule in ingress
-        )
+        assert any(rule["from_port"] == 443 and rule["to_port"] == 443 for rule in ingress)
 
     def test_web_sg_no_ssh(self, parsed):
         sgs = get_resources(parsed, "aws_security_group")
@@ -868,6 +866,7 @@ class TestSecurityGroupsModule:
 # ---------------------------------------------------------------------------
 # EC2 Tests
 # ---------------------------------------------------------------------------
+
 
 class TestEC2Module:
     """Tests for AWS EC2 module configuration."""
@@ -916,6 +915,7 @@ class TestEC2Module:
 # ---------------------------------------------------------------------------
 # RDS Tests
 # ---------------------------------------------------------------------------
+
 
 class TestRDSModule:
     """Tests for AWS RDS module configuration."""
@@ -970,6 +970,7 @@ class TestRDSModule:
 # S3 Tests
 # ---------------------------------------------------------------------------
 
+
 class TestS3Module:
     """Tests for AWS S3 module configuration."""
 
@@ -1018,6 +1019,7 @@ class TestS3Module:
 # CloudWatch Tests
 # ---------------------------------------------------------------------------
 
+
 class TestCloudWatchModule:
     """Tests for AWS CloudWatch module configuration."""
 
@@ -1058,6 +1060,7 @@ class TestCloudWatchModule:
 # ---------------------------------------------------------------------------
 # IAM Tests
 # ---------------------------------------------------------------------------
+
 
 class TestIAMModule:
     """Tests for AWS IAM module configuration."""
@@ -1113,6 +1116,7 @@ class TestIAMModule:
 # ---------------------------------------------------------------------------
 # Cross-module integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestCrossModuleIntegration:
     """Tests that validate cross-module references and consistency."""

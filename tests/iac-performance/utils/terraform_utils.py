@@ -3,39 +3,39 @@ Terraform command utilities for performance testing.
 Wraps terraform CLI commands with timing and error handling.
 """
 
-import os
+import json
+import shutil
 import subprocess
 import tempfile
-import shutil
-import json
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
 class TerraformResult:
     """Result of a terraform command execution."""
+
     command: str
     returncode: int
     stdout: str
     stderr: str
     elapsed_ms: float
     success: bool
-    parsed_output: Optional[Dict] = None
+    parsed_output: dict | None = None
 
 
 @dataclass
 class TerraformConfig:
     """Represents a Terraform configuration for testing."""
+
     name: str
     main_tf: str
-    variables_tf: Optional[str] = None
-    outputs_tf: Optional[str] = None
-    terraform_tfvars: Optional[str] = None
-    backend_tf: Optional[str] = None
-    modules: Dict[str, str] = field(default_factory=dict)
+    variables_tf: str | None = None
+    outputs_tf: str | None = None
+    terraform_tfvars: str | None = None
+    backend_tf: str | None = None
+    modules: dict[str, str] = field(default_factory=dict)
 
 
 class TerraformRunner:
@@ -57,13 +57,13 @@ class TerraformRunner:
             )
             if result.returncode != 0:
                 raise RuntimeError(f"Terraform not available: {result.stderr}")
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             raise RuntimeError(
                 f"Terraform binary not found: {self.terraform_bin}. "
                 "Install terraform or set TERRAFORM_BIN env var."
-            )
+            ) from e
 
-    def _run(self, args: List[str], timeout: int = 300) -> TerraformResult:
+    def _run(self, args: list[str], timeout: int = 300) -> TerraformResult:
         """Execute a terraform command with timing."""
         cmd = [self.terraform_bin] + args
         cmd_str = " ".join(cmd)
@@ -84,7 +84,7 @@ class TerraformRunner:
                 try:
                     parsed = json.loads(result.stdout)
                 except json.JSONDecodeError:
-                    pass
+                    parsed = None
 
             return TerraformResult(
                 command=cmd_str,
@@ -115,7 +115,7 @@ class TerraformRunner:
 
     def plan(
         self,
-        out_file: Optional[str] = None,
+        out_file: str | None = None,
         detailed_exitcode: bool = False,
         timeout: int = 300,
     ) -> TerraformResult:
@@ -129,7 +129,7 @@ class TerraformRunner:
 
     def apply(
         self,
-        plan_file: Optional[str] = None,
+        plan_file: str | None = None,
         auto_approve: bool = True,
         timeout: int = 600,
     ) -> TerraformResult:
@@ -179,7 +179,7 @@ class TerraformRunner:
 
 def create_terraform_workspace(
     config: TerraformConfig,
-    base_dir: Optional[str] = None,
+    base_dir: str | None = None,
 ) -> str:
     """
     Create a temporary terraform workspace from a TerraformConfig.
@@ -236,8 +236,6 @@ def generate_terraform_config(
     Useful for scaling performance tests.
     """
     resources = []
-    variables = []
-    outputs = []
 
     for i in range(resource_count):
         if provider == "aws":
@@ -245,23 +243,23 @@ def generate_terraform_config(
                 'resource "aws_instance" "server_' + str(i) + '" {\n'
                 '  ami           = "ami-12345678"\n'
                 '  instance_type = "t3.micro"\n'
-                '  tags = {\n'
+                "  tags = {\n"
                 '    Name        = "server-' + str(i) + '"\n'
                 '    Environment = "test"\n'
                 '    Project     = "perf-test"\n'
-                '  }\n'
-                '}'
+                "  }\n"
+                "}"
             )
         elif provider == "azurerm":
             resources.append(
                 'resource "azurerm_resource_group" "rg_' + str(i) + '" {\n'
                 '  name     = "rg-' + str(i) + '"\n'
                 '  location = "East US"\n'
-                '  tags = {\n'
+                "  tags = {\n"
                 '    Environment = "test"\n'
                 '    Project     = "perf-test"\n'
-                '  }\n'
-                '}'
+                "  }\n"
+                "}"
             )
         elif provider == "google":
             resources.append(
@@ -269,23 +267,23 @@ def generate_terraform_config(
                 '  name         = "vm-' + str(i) + '"\n'
                 '  machine_type = "e2-micro"\n'
                 '  zone         = "us-central1-a"\n'
-                '\n'
-                '  boot_disk {\n'
-                '    initialize_params {\n'
+                "\n"
+                "  boot_disk {\n"
+                "    initialize_params {\n"
                 '      image = "debian-cloud/debian-11"\n'
-                '    }\n'
-                '  }\n'
-                '\n'
-                '  network_interface {\n'
+                "    }\n"
+                "  }\n"
+                "\n"
+                "  network_interface {\n"
                 '    network = "default"\n'
-                '  }\n'
-                '}'
+                "  }\n"
+                "}"
             )
 
     main_tf = "\n".join(resources)
 
     if include_variables:
-        variables_tf = '''
+        variables_tf = """
 variable "region" {
   description = "AWS region"
   type        = string
@@ -297,22 +295,22 @@ variable "environment" {
   type        = string
   default     = "test"
 }
-'''
+"""
     else:
         variables_tf = None
 
     if include_outputs:
-        outputs_tf = '''
+        outputs_tf = """
 output "instance_count" {
   value = COUNT_PLACEHOLDER
 }
-'''.replace("COUNT_PLACEHOLDER", str(resource_count))
+""".replace("COUNT_PLACEHOLDER", str(resource_count))
     else:
         outputs_tf = None
 
     modules_tf = {}
     if include_modules:
-        modules_tf["vpc"] = '''
+        modules_tf["vpc"] = """
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   tags = {
@@ -327,7 +325,7 @@ resource "aws_subnet" "public" {
     Name = "perf-test-subnet"
   }
 }
-'''
+"""
 
     return TerraformConfig(
         name=f"perf_test_{resource_count}",

@@ -3,8 +3,6 @@ Container Security Tests
 Validates container-level security configurations.
 """
 
-import pytest
-
 
 class TestImageSecurity:
     """Container image security checks."""
@@ -78,7 +76,14 @@ class TestContainerRuntimeSecurity:
 
     def test_no_dangerous_capabilities(self, all_pods):
         """Containers should not add dangerous capabilities."""
-        dangerous_caps = {"NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "DAC_READ_SEARCH", "ALL"}
+        dangerous_caps = {
+            "NET_ADMIN",
+            "SYS_ADMIN",
+            "SYS_PTRACE",
+            "SYS_MODULE",
+            "DAC_READ_SEARCH",
+            "ALL",
+        }
         violations = []
         for pod in all_pods:
             for container in pod.get("spec", {}).get("containers", []):
@@ -114,9 +119,7 @@ class TestContainerRuntimeSecurity:
             for vol in volumes:
                 host_path = vol.get("hostPath", {}).get("path", "")
                 if "docker.sock" in host_path:
-                    violations.append(
-                        f"{pod['kind']}/{pod['name']} mounts Docker socket"
-                    )
+                    violations.append(f"{pod['kind']}/{pod['name']} mounts Docker socket")
         assert not violations, f"Docker socket mounts found: {violations}"
 
     def test_no_host_network(self, all_pods):
@@ -124,9 +127,8 @@ class TestContainerRuntimeSecurity:
         violations = []
         for pod in all_pods:
             spec = pod.get("spec", {})
-            if spec.get("hostNetwork", False):
-                if pod["name"] != "filebeat":
-                    violations.append(f"{pod['kind']}/{pod['name']} uses host network")
+            if spec.get("hostNetwork", False) and pod["name"] != "filebeat":
+                violations.append(f"{pod['kind']}/{pod['name']} uses host network")
         assert not violations, f"Host network usage found: {violations}"
 
     def test_no_host_pid(self, all_pods):
@@ -154,9 +156,14 @@ class TestVolumeSecurity:
     def test_no_sensitive_host_paths(self, all_pods):
         """Pods should not mount sensitive host paths."""
         sensitive_paths = {
-            "/etc/shadow", "/etc/passwd", "/etc/hosts",
-            "/proc", "/sys", "/var/run/docker.sock",
-            "/root", "/home",
+            "/etc/shadow",
+            "/etc/passwd",
+            "/etc/hosts",
+            "/proc",
+            "/sys",
+            "/var/run/docker.sock",
+            "/root",
+            "/home",
         }
         violations = []
         for pod in all_pods:
@@ -186,11 +193,11 @@ class TestVolumeSecurity:
         """PVC storage requests should be positive values."""
         violations = []
         for pvc in pvcs:
-            storage = pvc.get("spec", {}).get("resources", {}).get("requests", {}).get("storage", "")
+            storage = (
+                pvc.get("spec", {}).get("resources", {}).get("requests", {}).get("storage", "")
+            )
             if not storage:
-                violations.append(
-                    f"PVC/{pvc['metadata']['name']} has no storage request"
-                )
+                violations.append(f"PVC/{pvc['metadata']['name']} has no storage request")
         assert not violations, f"PVCs without storage requests: {violations}"
 
 
@@ -206,11 +213,14 @@ class TestEnvironmentSecurity:
                 env = container.get("env", [])
                 for env_var in env:
                     name = env_var.get("name", "").lower()
-                    if any(pk in name for pk in password_keys):
-                        if "value" in env_var and "valueFrom" not in env_var:
-                            violations.append(
-                                f"{pod['kind']}/{pod['name']}:{container['name']} env {env_var['name']} may contain hardcoded secret"
-                            )
+                    if (
+                        any(pk in name for pk in password_keys)
+                        and "value" in env_var
+                        and "valueFrom" not in env_var
+                    ):
+                        violations.append(
+                            f"{pod['kind']}/{pod['name']}:{container['name']} env {env_var['name']} may contain hardcoded secret"
+                        )
         assert not violations, f"Potential hardcoded secrets in env: {violations}"
 
     def test_secrets_use_value_from(self, all_pods):
@@ -222,11 +232,14 @@ class TestEnvironmentSecurity:
                 env = container.get("env", [])
                 for env_var in env:
                     name = env_var.get("name", "").lower()
-                    if any(sk in name for sk in sensitive_keys):
-                        if "valueFrom" not in env_var and "value" in env_var:
-                            violations.append(
-                                f"{pod['kind']}/{pod['name']}:{container['name']} env {env_var['name']} should use valueFrom"
-                            )
+                    if (
+                        any(sk in name for sk in sensitive_keys)
+                        and "valueFrom" not in env_var
+                        and "value" in env_var
+                    ):
+                        violations.append(
+                            f"{pod['kind']}/{pod['name']}:{container['name']} env {env_var['name']} should use valueFrom"
+                        )
         assert not violations, f"Secrets not using valueFrom: {violations}"
 
 

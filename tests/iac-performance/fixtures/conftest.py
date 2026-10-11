@@ -3,19 +3,19 @@ Fixtures for IaC performance tests.
 """
 
 import os
-import sys
-import pytest
-import tempfile
 import shutil
+import sys
+import tempfile
 from pathlib import Path
+
+import pytest
 
 # Add utils to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.terraform_utils import TerraformRunner, TerraformConfig, create_terraform_workspace, cleanup_workspace
+from utils.checkov_utils import CheckovRunner
 from utils.rego_utils import OpaRunner, create_opa_input
-from utils.checkov_utils import CheckovRunner, generate_terraform_file
-
+from utils.terraform_utils import TerraformRunner
 
 # Path to the project's policy directories
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -79,6 +79,7 @@ def temp_workspace():
 def small_terraform_config():
     """Generate a small terraform config (5 resources)."""
     from utils.terraform_utils import generate_terraform_config
+
     return generate_terraform_config(resource_count=5)
 
 
@@ -86,6 +87,7 @@ def small_terraform_config():
 def medium_terraform_config():
     """Generate a medium terraform config (25 resources)."""
     from utils.terraform_utils import generate_terraform_config
+
     return generate_terraform_config(resource_count=25)
 
 
@@ -93,6 +95,7 @@ def medium_terraform_config():
 def large_terraform_config():
     """Generate a large terraform config (100 resources)."""
     from utils.terraform_utils import generate_terraform_config
+
     return generate_terraform_config(resource_count=100)
 
 

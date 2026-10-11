@@ -6,16 +6,14 @@ handles malformed, edge-case, and adversarial inputs.
 """
 
 import json
-import pytest
-from hypothesis import given, settings, HealthCheck
-from hypothesis import strategies as st
 
+import pytest
 from generators import (
-    azure_policy_parameter,
     azure_policy_definition,
-    AZURE_POLICY_EFFECTS,
-    AZURE_POLICY_LOCATIONS,
+    azure_policy_parameter,
 )
+from hypothesis import given
+from hypothesis import strategies as st
 
 
 class TestAzurePolicyParameterFuzzing:
@@ -129,7 +127,15 @@ class TestAzurePolicyDefinitionFuzzing:
     @given(policy=azure_policy_definition())
     def test_policy_effect_valid(self, policy):
         """Policy effect should be valid."""
-        valid_effects = ["Deny", "Audit", "Disabled", "Append", "DeployIfNotExists", "Modify", "AuditIfNotExists"]
+        valid_effects = [
+            "Deny",
+            "Audit",
+            "Disabled",
+            "Append",
+            "DeployIfNotExists",
+            "Modify",
+            "AuditIfNotExists",
+        ]
         assert policy["properties"]["policyRule"]["then"]["effect"] in valid_effects
 
     @given(policy=azure_policy_definition())
@@ -150,7 +156,22 @@ class TestAzurePolicyEdgeCases:
     """Test edge cases for Azure Policy."""
 
     @given(
-        effect=st.sampled_from(["Deny", "Audit", "Disabled", "Append", "DeployIfNotExists", "Modify", "AuditIfNotExists", "deny", "audit", "disabled", "", "unknown"]),
+        effect=st.sampled_from(
+            [
+                "Deny",
+                "Audit",
+                "Disabled",
+                "Append",
+                "DeployIfNotExists",
+                "Modify",
+                "AuditIfNotExists",
+                "deny",
+                "audit",
+                "disabled",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_effect_case_sensitivity(self, effect):
         """Effect should be case-insensitive."""
@@ -163,7 +184,18 @@ class TestAzurePolicyEdgeCases:
         assert isinstance(is_disabled, bool)
 
     @given(
-        mode=st.sampled_from(["Indexed", "All", "Microsoft.DataPlane", "Microsoft.Kubernetes.DataPlane", "indexed", "all", "", "unknown"]),
+        mode=st.sampled_from(
+            [
+                "Indexed",
+                "All",
+                "Microsoft.DataPlane",
+                "Microsoft.Kubernetes.DataPlane",
+                "indexed",
+                "all",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_mode_case_sensitivity(self, mode):
         """Mode should be case-insensitive."""
@@ -174,7 +206,9 @@ class TestAzurePolicyEdgeCases:
         assert isinstance(is_all, bool)
 
     @given(
-        policy_type=st.sampled_from(["BuiltIn", "Custom", "Static", "builtin", "custom", "static", "", "unknown"]),
+        policy_type=st.sampled_from(
+            ["BuiltIn", "Custom", "Static", "builtin", "custom", "static", "", "unknown"]
+        ),
     )
     def test_policy_type_case_sensitivity(self, policy_type):
         """Policy type should be case-insensitive."""
@@ -187,7 +221,26 @@ class TestAzurePolicyEdgeCases:
         assert isinstance(is_static, bool)
 
     @given(
-        param_type=st.sampled_from(["String", "Array", "Object", "Boolean", "Integer", "Float", "DateTime", "string", "array", "object", "boolean", "integer", "float", "datetime", "", "unknown"]),
+        param_type=st.sampled_from(
+            [
+                "String",
+                "Array",
+                "Object",
+                "Boolean",
+                "Integer",
+                "Float",
+                "DateTime",
+                "string",
+                "array",
+                "object",
+                "boolean",
+                "integer",
+                "float",
+                "datetime",
+                "",
+                "unknown",
+            ]
+        ),
     )
     def test_parameter_type_case_sensitivity(self, param_type):
         """Parameter type should be case-insensitive."""

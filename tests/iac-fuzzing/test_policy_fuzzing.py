@@ -7,29 +7,13 @@ inputs without crashing.
 """
 
 import json
-import pytest
-from hypothesis import given, settings, HealthCheck
-from hypothesis import strategies as st
 
+import pytest
 from generators import (
     policy_input,
-    POLICY_RESOURCE_IDS,
-    POLICY_ENVIRONMENTS,
-    POLICY_REGIONS,
-    POLICY_TAGS,
-    POLICY_ENCRYPTION,
-    POLICY_NETWORK,
-    POLICY_ACCESS,
-    POLICY_RETENTION,
-    POLICY_BACKUP,
-    POLICY_MONITORING,
-    POLICY_LOGGING,
-    POLICY_CERTIFICATE,
-    POLICY_LICENSE,
-    POLICY_SUPPORT,
-    POLICY_MANAGEMENT,
-    random_policy_input_dict,
 )
+from hypothesis import given
+from hypothesis import strategies as st
 
 
 class TestPolicyInputFuzzing:
@@ -266,8 +250,14 @@ class TestPolicyInputValidation:
     def test_valid_regions(self, input_doc):
         """Region should be a valid AWS region."""
         valid_regions = [
-            "us-east-1", "us-west-2", "eu-west-1", "eu-central-1",
-            "us-east-2", "us-west-1", "eu-west-2", "eu-west-3",
+            "us-east-1",
+            "us-west-2",
+            "eu-west-1",
+            "eu-central-1",
+            "us-east-2",
+            "us-west-1",
+            "eu-west-2",
+            "eu-west-3",
         ]
         if input_doc["region"] not in valid_regions:
             pytest.skip(f"Invalid region: {input_doc['region']}")
@@ -282,7 +272,18 @@ class TestPolicyInputValidation:
     @given(input_doc=policy_input())
     def test_valid_encryption_algorithms(self, input_doc):
         """Encryption algorithm should be valid."""
-        valid_algs = ["AES-256", "AES-128", "DES", "3DES", "RC4", "RSA", "RSA-2048", "RSA-4096", "ECC", "ChaCha20-Poly1305"]
+        valid_algs = [
+            "AES-256",
+            "AES-128",
+            "DES",
+            "3DES",
+            "RC4",
+            "RSA",
+            "RSA-2048",
+            "RSA-4096",
+            "ECC",
+            "ChaCha20-Poly1305",
+        ]
         if input_doc["encryption"]["algorithm"] not in valid_algs:
             pytest.skip(f"Invalid algorithm: {input_doc['encryption']['algorithm']}")
 
@@ -312,7 +313,9 @@ class TestPolicyInputValidation:
         """Certificate key algorithm should be valid."""
         valid_algs = ["RSA", "ECC", "DSA", "DH", "Ed25519"]
         if input_doc["encryption"]["certificate_key_algorithm"] not in valid_algs:
-            pytest.skip(f"Invalid certificate key algorithm: {input_doc['encryption']['certificate_key_algorithm']}")
+            pytest.skip(
+                f"Invalid certificate key algorithm: {input_doc['encryption']['certificate_key_algorithm']}"
+            )
 
     @given(input_doc=policy_input())
     def test_valid_snmp_versions(self, input_doc):

@@ -3,6 +3,7 @@
 Tests that validate state can be migrated between AWS, Azure, and GCP
 without data loss or configuration drift.
 """
+
 import pytest
 
 
@@ -103,17 +104,23 @@ class TestStateMigration:
         assert "sku" in azure_keyvault_config
         assert "purpose" in gcp_kms_config
 
-    def test_aws_to_azure_secrets_migration(self, aws_secretsmanager_config, azure_keyvault_secret_config):
+    def test_aws_to_azure_secrets_migration(
+        self, aws_secretsmanager_config, azure_keyvault_secret_config
+    ):
         """Verify secrets can migrate from AWS to Azure."""
         assert "rotation_rules" in aws_secretsmanager_config
         assert "vault_uri" in azure_keyvault_secret_config
 
-    def test_aws_to_gcp_secrets_migration(self, aws_secretsmanager_config, gcp_secretmanager_config):
+    def test_aws_to_gcp_secrets_migration(
+        self, aws_secretsmanager_config, gcp_secretmanager_config
+    ):
         """Verify secrets can migrate from AWS to GCP."""
         assert "rotation_rules" in aws_secretsmanager_config
         assert "replication" in gcp_secretmanager_config
 
-    def test_azure_to_gcp_secrets_migration(self, azure_keyvault_secret_config, gcp_secretmanager_config):
+    def test_azure_to_gcp_secrets_migration(
+        self, azure_keyvault_secret_config, gcp_secretmanager_config
+    ):
         """Verify secrets can migrate from Azure to GCP."""
         assert "vault_uri" in azure_keyvault_secret_config
         assert "replication" in gcp_secretmanager_config
@@ -248,7 +255,9 @@ class TestStateMigration:
         assert "runtime" in aws_lambda_config
         assert "runtime" in gcp_cloud_function_config
 
-    def test_azure_to_gcp_serverless_migration(self, azure_function_config, gcp_cloud_function_config):
+    def test_azure_to_gcp_serverless_migration(
+        self, azure_function_config, gcp_cloud_function_config
+    ):
         """Verify serverless config can migrate from Azure to GCP."""
         assert "runtime" in azure_function_config
         assert "runtime" in gcp_cloud_function_config

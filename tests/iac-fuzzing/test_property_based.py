@@ -6,22 +6,17 @@ invariants across the entire input space.
 """
 
 import json
-import pytest
-from hypothesis import given, settings, HealthCheck, assume
-from hypothesis import strategies as st
 
 from generators import (
+    azure_policy_definition,
+    azure_policy_parameter,
+    policy_input,
+    terraform_configuration,
+    terraform_resource,
     terraform_variable,
     terraform_variables,
-    terraform_resource,
-    terraform_configuration,
-    policy_input,
-    azure_policy_parameter,
-    azure_policy_definition,
-    random_terraform_variable_dict,
-    random_policy_input_dict,
-    random_terraform_resource_dict,
 )
+from hypothesis import HealthCheck, given, settings
 
 
 class TestTerraformVariableProperties:
@@ -263,7 +258,15 @@ class TestAzurePolicyProperties:
     @given(policy=azure_policy_definition())
     def test_policy_effect_is_valid(self, policy):
         """Property: policy effect is always valid."""
-        valid_effects = ["Deny", "Audit", "Disabled", "Append", "DeployIfNotExists", "Modify", "AuditIfNotExists"]
+        valid_effects = [
+            "Deny",
+            "Audit",
+            "Disabled",
+            "Append",
+            "DeployIfNotExists",
+            "Modify",
+            "AuditIfNotExists",
+        ]
         assert policy["properties"]["policyRule"]["then"]["effect"] in valid_effects
 
     @given(policy=azure_policy_definition())

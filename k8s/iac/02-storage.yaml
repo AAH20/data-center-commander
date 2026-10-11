@@ -1,5 +1,3 @@
----
-# Elasticsearch Persistent Volume Claim
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -7,15 +5,15 @@ metadata:
   namespace: data-center-commander
   labels:
     app: elasticsearch
+    team: platform-engineering
 spec:
   accessModes:
-    - ReadWriteOnce
+  - ReadWriteOnce
   resources:
     requests:
       storage: 20Gi
   storageClassName: standard
 ---
-# Loki Persistent Volume Claim
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -23,15 +21,15 @@ metadata:
   namespace: data-center-commander
   labels:
     app: loki
+    team: platform-engineering
 spec:
   accessModes:
-    - ReadWriteOnce
+  - ReadWriteOnce
   resources:
     requests:
       storage: 10Gi
   storageClassName: standard
 ---
-# Grafana Persistent Volume Claim
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -39,9 +37,10 @@ metadata:
   namespace: data-center-commander
   labels:
     app: grafana
+    team: platform-engineering
 spec:
   accessModes:
-    - ReadWriteOnce
+  - ReadWriteOnce
   resources:
     requests:
       storage: 5Gi

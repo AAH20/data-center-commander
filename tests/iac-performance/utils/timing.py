@@ -3,11 +3,12 @@ Timing utilities for IaC performance tests.
 Provides decorators and helpers for measuring execution time.
 """
 
-import time
 import functools
 import statistics
-from typing import Callable, Any, List, Dict, Optional
+import time
+from collections.abc import Callable
 from contextlib import contextmanager
+from typing import Any
 
 
 class Timer:
@@ -15,8 +16,8 @@ class Timer:
 
     def __init__(self, name: str = "operation"):
         self.name = name
-        self.start_time: Optional[float] = None
-        self.end_time: Optional[float] = None
+        self.start_time: float | None = None
+        self.end_time: float | None = None
         self.elapsed: float = 0.0
 
     def __enter__(self):
@@ -37,14 +38,15 @@ def benchmark(repeats: int = 5, warmup: int = 1) -> Callable:
     Decorator that benchmarks a function over multiple repeats.
     Returns a dict with timing statistics.
     """
+
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Dict[str, Any]:
+        def wrapper(*args, **kwargs) -> dict[str, Any]:
             # Warmup runs
             for _ in range(warmup):
                 func(*args, **kwargs)
 
-            timings: List[float] = []
+            timings: list[float] = []
             for _ in range(repeats):
                 start = time.perf_counter()
                 result = func(*args, **kwargs)
@@ -61,7 +63,9 @@ def benchmark(repeats: int = 5, warmup: int = 1) -> Callable:
                 "max_ms": max(timings),
                 "repeats": repeats,
             }
+
         return wrapper
+
     return decorator
 
 

@@ -13,9 +13,9 @@ Usage:
 """
 
 import argparse
+import os
 import subprocess
 import sys
-import os
 
 
 def run_pytest(profile: str, coverage: bool = False, verbose: bool = False):
@@ -28,11 +28,15 @@ def run_pytest(profile: str, coverage: bool = False, verbose: bool = False):
     if coverage:
         cmd.extend(["--cov=.", "--cov-report=term-missing", "--cov-report=html"])
 
-    cmd.extend([
-        "-m", "fuzzing",
-        "--hypothesis-profile", profile,
-        "tests/iac-fuzzing/",
-    ])
+    cmd.extend(
+        [
+            "-m",
+            "fuzzing",
+            "--hypothesis-profile",
+            profile,
+            "tests/iac-fuzzing/",
+        ]
+    )
 
     print(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd)
@@ -42,8 +46,10 @@ def run_pytest(profile: str, coverage: bool = False, verbose: bool = False):
 def run_atheris_fuzzer(target: str, runs: int):
     """Run atheris fuzzer."""
     cmd = [
-        sys.executable, "-m", "atheris",
-        f"tests/iac-fuzzing/fuzz_atheris.py",
+        sys.executable,
+        "-m",
+        "atheris",
+        "tests/iac-fuzzing/fuzz_atheris.py",
         f"-atheris_runs={runs}",
     ]
 
