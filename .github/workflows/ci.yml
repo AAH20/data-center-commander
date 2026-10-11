@@ -59,6 +59,16 @@ jobs:
           cache: "pip"
       - name: Install dependencies
         run: pip install -e ".[test,postgres,async]"
+      # tests/compliance/opa/* shell out to the `opa` CLI; it is not on the
+      # runner image, which produced FileNotFoundError: 'opa' for the whole
+      # resource_tagging module.
+      - name: Install OPA
+        run: |
+          OPA_VERSION=v0.68.0
+          curl -sSL "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static" \
+            -o /usr/local/bin/opa
+          chmod +x /usr/local/bin/opa
+          opa version
       - name: Run all tests with coverage
         env:
           PYTHONPATH: src

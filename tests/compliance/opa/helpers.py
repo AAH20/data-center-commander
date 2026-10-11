@@ -5,14 +5,27 @@ Common utilities for OPA policy tests.
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 
+import pytest
+
 POLICY_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "policies", "rego")
+
+OPA_BIN = "opa"
 
 
 def run_opa(input_data: dict, package: str = "datacenter.resource_tagging") -> dict:
-    """Run OPA eval against the given input and return the result."""
+    """Run OPA eval against the given input and return the result.
+
+    The `opa` CLI is an external dependency (CI installs it; a dev machine may
+    not have it). Skip rather than error so the suite degrades honestly instead
+    of reporting a FileNotFoundError as a policy failure.
+    """
+    if shutil.which(OPA_BIN) is None:
+        pytest.skip("opa CLI not installed; skipping Rego policy evaluation")
+
     input_json = json.dumps(input_data)
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         f.write(input_json)
@@ -21,7 +34,7 @@ def run_opa(input_data: dict, package: str = "datacenter.resource_tagging") -> d
     try:
         result = subprocess.run(
             [
-                "opa",
+                OPA_BIN,
                 "eval",
                 "--format",
                 "json",

@@ -51,7 +51,7 @@ env:
   KUBECTL_VERSION: 'v1.28.0'
   KUSTOMIZE_VERSION: 'v5.2.1'
   CHECKOV_VERSION: '3.2.316'
-  TRIVY_VERSION: '0.48.3'
+  TRIVY_VERSION: '0.75.0'
   GRYPE_VERSION: '0.73.0'
   OPA_VERSION: 'v0.68.0'
 
@@ -344,6 +344,23 @@ jobs:
             --soft-fail \
             --compact || true
 
+      # upload-sarif requires actual SARIF; checkov's --output json is its own
+      # schema and is rejected ("No SARIF files found"). Produce a separate
+      # SARIF report for the Security tab and keep the JSON for the artifacts.
+      - name: Run Checkov IaC scan (SARIF)
+        run: |
+          mkdir -p sarif-out
+          checkov -d . \
+            --external-checks-dir ./policies/checkov/terraform/ \
+            --check DC_ \
+            --output sarif \
+            --output-file-path sarif-out \
+            --soft-fail || true
+          # checkov names the file results_sarif.sarif, but normalise whatever it emits.
+          found=$(find sarif-out -name '*.sarif' -type f | head -1)
+          if [ -n "$found" ]; then cp "$found" checkov-report.sarif; fi
+          ls -la checkov-report.sarif 2>/dev/null || echo "no SARIF produced"
+
       - name: Install OPA
         run: |
           wget -q "https://openpolicyagent.org/downloads/${{ env.OPA_VERSION }}/opa_linux_amd64_static" \
@@ -360,9 +377,9 @@ jobs:
 
       - name: Upload Checkov SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('checkov-report.sarif') != ''
         with:
-          sarif_file: checkov-report.json
+          sarif_file: checkov-report.sarif
           category: checkov-iac
 
       - name: Upload scan reports
@@ -428,7 +445,7 @@ jobs:
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-fs-report.json') != ''
         with:
           sarif_file: trivy-fs-report.json
           category: trivy-filesystem

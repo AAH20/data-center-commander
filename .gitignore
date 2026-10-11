@@ -20,3 +20,11 @@ build/
 
 # CI benchmark output
 evaluation_report.json
+
+# CI scan output
+checkov-*.json
+checkov-*.sarif
+trivy-*.json
+grype-*.json
+sarif-out/
+soc-audit-report.json

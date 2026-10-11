@@ -126,8 +126,6 @@ class TestPolicyEnforcement:
         from pathlib import Path
 
         policies_dir = Path(__file__).resolve().parent.parent.parent / "policies" / "sentinel"
-        if not policies_dir.exists():
-            policies_dir = Path("/Users/ahmedhassan/policies/sentinel")
         sentinel_files = list(policies_dir.glob("*.sentinel")) if policies_dir.exists() else []
         assert len(sentinel_files) >= 1, "No Sentinel policy files found"
 
