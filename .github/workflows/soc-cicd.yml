@@ -40,8 +40,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-  IAC_IMAGE_NAME: ${{ github.repository }}/iac-scanner
+  # GHCR requires a fully lowercase repository path; github.repository keeps the
+  # owner's original casing ("AAH20/..."), which fails the tag validation.
+  IMAGE_NAME: ${{ github.repository_owner }}/data-center-commander
+  IAC_IMAGE_NAME: ${{ github.repository_owner }}/data-center-commander/iac-scanner
   PYTHON_VERSION: '3.12'
   KUBECTL_VERSION: 'v1.28.0'
   KUSTOMIZE_VERSION: 'v5.2.1'
@@ -140,6 +142,11 @@ jobs:
           - tests/multicloud
           - tests/iac-performance
       fail-fast: false
+    env:
+      # Artifact names reject "/" and cobertura paths dislike it too, so use a
+      # filesystem-safe slug of the matrix value (tests/multicloud -> multicloud).
+      GROUP: ${{ matrix.test-group }}
+      GROUP_SLUG: ${{ matrix.test-group == 'tests/multicloud' && 'multicloud' || 'iac-performance' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -166,13 +173,13 @@ jobs:
 
       - name: Run tests (${{ matrix.test-group }})
         run: |
-          pytest ${{ matrix.test-group }} \
+          pytest "$GROUP" \
             -v \
             --tb=short \
             --cov=. \
-            --cov-report=xml:coverage-${{ matrix.test-group }}.xml \
-            --cov-report=html:htmlcov-${{ matrix.test-group }} \
-            --junitxml=test-results-${{ matrix.test-group }}.xml \
+            --cov-report=xml:coverage-$GROUP_SLUG.xml \
+            --cov-report=html:htmlcov-$GROUP_SLUG \
+            --junitxml=test-results-$GROUP_SLUG.xml \
             -n auto \
             --timeout=300
 
@@ -180,11 +187,11 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-${{ matrix.test-group }}
+          name: test-results-${{ env.GROUP_SLUG }}
           path: |
-            test-results-${{ matrix.test-group }}.xml
-            coverage-${{ matrix.test-group }}.xml
-            htmlcov-${{ matrix.test-group }}/
+            test-results-${{ env.GROUP_SLUG }}.xml
+            coverage-${{ env.GROUP_SLUG }}.xml
+            htmlcov-${{ env.GROUP_SLUG }}/
           retention-days: 30
 
   # ===========================================================================
@@ -270,7 +277,8 @@ jobs:
       - name: Build log-processor image
         uses: docker/build-push-action@v5
         with:
-          context: ./logging
+          context: .
+          file: Dockerfile.log-processor
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/log-processor:${{ github.sha }}
