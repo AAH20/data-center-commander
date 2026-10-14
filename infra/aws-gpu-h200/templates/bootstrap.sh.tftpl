@@ -1,0 +1,105 @@
+#!/bin/bash
+# =============================================================================
+# 8x H200 node bootstrap — EFA stack, local NVMe, FSx mount, DCGM exporter
+# =============================================================================
+# Runs once on first boot. The AMI supplies NVIDIA drivers and CUDA; this adds
+# the fabric and observability layers that do not ship in the base image.
+set -euo pipefail
+
+exec > >(tee /var/log/dcc-bootstrap.log | logger -t dcc-bootstrap -s 2>/dev/console) 2>&1
+
+echo "[dcc] bootstrap start: $(date -Is)"
+
+# ---------------------------------------------------------------------------
+# 1. EFA user-space stack
+# ---------------------------------------------------------------------------
+# Without this, NCCL falls back to TCP sockets: multi-node all-reduce drops to
+# roughly a tenth of the EFA path and 3,200 Gbps of fabric sits idle.
+if ! command -v fi_info >/dev/null 2>&1; then
+  echo "[dcc] installing EFA installer"
+  cd /tmp
+  curl -fsSL -O https://efa-installer.amazonaws.com/aws-efa-installer-latest.tar.gz
+  tar -xf aws-efa-installer-latest.tar.gz
+  cd aws-efa-installer
+  ./efa_installer.sh -y --skip-kmod --skip-limit-conf --no-verify
+  cd /
+fi
+
+# Verify the fabric is actually up. A silent failure here is the single most
+# common cause of "the cluster is slow" reports.
+if ! fi_info -p efa -t FI_EP_RDM >/dev/null 2>&1; then
+  echo "[dcc] FATAL: EFA provider not available after install" >&2
+  exit 1
+fi
+echo "[dcc] EFA provider OK — $(fi_info -p efa -t FI_EP_RDM 2>/dev/null | grep -c 'provider: efa') device(s)"
+
+# ---------------------------------------------------------------------------
+# 2. Local NVMe RAID0 for rollout scratch
+# ---------------------------------------------------------------------------
+# 8 x 3.84 TB instance-store drives. RAID0 gives one 30.4 TB scratch volume at
+# the cost of any redundancy — correct for disposable rollout buffers, WRONG
+# for checkpoints. Checkpoints go to FSx.
+NVME_DEVS=$(ls /dev/nvme*n1 2>/dev/null | grep -v nvme0n1 || true)
+if [ -n "$NVME_DEVS" ] && ! mountpoint -q /mnt/nvme; then
+  echo "[dcc] building RAID0 scratch over: $NVME_DEVS"
+  mdadm --create /dev/md0 --level=0 --raid-devices="$(echo "$NVME_DEVS" | wc -l)" $NVME_DEVS --force
+  mkfs.xfs -f /dev/md0
+  mkdir -p /mnt/nvme
+  mount /dev/md0 /mnt/nvme
+  echo "/dev/md0 /mnt/nvme xfs defaults,noatime 0 0" >> /etc/fstab
+  chmod 1777 /mnt/nvme
+fi
+
+# ---------------------------------------------------------------------------
+# 3. FSx for Lustre
+# ---------------------------------------------------------------------------
+%{ if enable_fsx ~}
+if ! mountpoint -q /mnt/fsx; then
+  echo "[dcc] mounting FSx Lustre"
+  mkdir -p /mnt/fsx
+  mount -t lustre -o noatime,flock "${fsx_dns_name}@tcp:/${fsx_mount_name}" /mnt/fsx
+  echo "${fsx_dns_name}@tcp:/${fsx_mount_name} /mnt/fsx lustre defaults,noatime,flock,_netdev 0 0" >> /etc/fstab
+fi
+%{ endif ~}
+
+# ---------------------------------------------------------------------------
+# 4. DCGM exporter — GPU telemetry into CloudWatch
+# ---------------------------------------------------------------------------
+# The only way to attribute GPU-hours to a workload, and the signal the
+# Capacity Block ROI calculation depends on.
+if ! systemctl is-active --quiet dcgm-exporter; then
+  echo "[dcc] installing DCGM exporter"
+  DCGM_VERSION=3.3.7-3.6.0
+  curl -fsSL "https://github.com/NVIDIA/dcgm-exporter/releases/download/v$${DCGM_VERSION}/dcgm-exporter-$${DCGM_VERSION}.tar.gz" \
+    -o /tmp/dcgm-exporter.tar.gz || true
+  if [ -s /tmp/dcgm-exporter.tar.gz ]; then
+    mkdir -p /opt/dcgm-exporter
+    tar -xf /tmp/dcgm-exporter.tar.gz -C /opt/dcgm-exporter
+    cp /opt/dcgm-exporter/dcgm-exporter /usr/local/bin/ 2>/dev/null || true
+    cat >/etc/systemd/system/dcgm-exporter.service <<'UNIT'
+[Unit]
+Description=NVIDIA DCGM Exporter
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/dcgm-exporter
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable --now dcgm-exporter || true
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 5. Report
+# ---------------------------------------------------------------------------
+echo "[dcc] --- node summary ---"
+nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader || true
+echo "[dcc] hbm total: $(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | awk '{s+=$1} END {print s/1024 \" GiB\"}')"
+echo "[dcc] vcpus: $(nproc)"
+echo "[dcc] mem: $(free -g | awk '/^Mem:/{print $2 \" GiB\"}')"
+echo "[dcc] bootstrap complete: $(date -Is)"
