@@ -60,6 +60,10 @@ jobs:
           DCC_DATABASE_URL: postgresql://dcc_test:dcc_test_password@localhost:5432/dcc_test
           PYTHONPATH: src
         run: |
-          python -m unittest discover -s tests -v
+          # pytest suite (71 files import pytest); unittest discover cannot collect
+          # it. e2e needs a browser against a running app; terraform asserts against
+          # a module layout that does not exist.
+          python -m pytest tests/ -q -p no:cacheprovider \
+            --ignore=tests/e2e --ignore=tests/terraform
       - name: Validate shell scripts
         run: bash -n scripts/*.sh
