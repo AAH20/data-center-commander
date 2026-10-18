@@ -36,7 +36,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: pip install -e ".[test]"
+        # checkov is imported by tests/compliance/checkov; without it pytest aborts
+        # with "Interrupted: 1 error during collection" and the job fails having run
+        # no integration tests at all.
+        run: pip install -e ".[test,checkov]"
       - name: Wait for PostgreSQL
         run: |
           until pg_isready -h localhost -p 5432; do
