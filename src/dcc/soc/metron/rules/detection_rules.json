@@ -1,0 +1,227 @@
+{
+  "rules": [
+    {
+      "id": "METRON-001",
+      "name": "SSH Brute Force Detection",
+      "description": "Detects SSH brute force attempts by counting failed authentication events from a single source IP within a time window.",
+      "severity": "HIGH",
+      "category": "brute_force",
+      "mitre_technique": "T1110",
+      "mitre_tactic": "Credential Access",
+      "data_source": "syslog",
+      "stellar_expression": "SSH_BRUTE_FORCE := IF (syslog_message CONTAINS 'Failed password' AND syslog_message CONTAINS 'sshd') THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["source_ip"],
+        "window_minutes": 5,
+        "threshold": 10
+      },
+      "alert": {
+        "title": "SSH Brute Force Detected",
+        "description": "Multiple failed SSH login attempts from {source_ip}",
+        "priority": "P2"
+      }
+    },
+    {
+      "id": "METRON-002",
+      "name": "Port Scan Detection",
+      "description": "Detects horizontal port scans by counting unique destination ports from a single source IP.",
+      "severity": "MEDIUM",
+      "category": "reconnaissance",
+      "mitre_technique": "T1046",
+      "mitre_tactic": "Discovery",
+      "data_source": "netflow",
+      "stellar_expression": "PORT_SCAN := IF (netflow_dstport_count > 100 AND netflow_srcaddr IS NOT NULL) THEN true ELSE false",
+      "aggregation": {
+        "type": "count_distinct",
+        "field": "dstport",
+        "group_by": ["srcaddr"],
+        "window_minutes": 1,
+        "threshold": 100
+      },
+      "alert": {
+        "title": "Port Scan Detected",
+        "description": "Host {srcaddr} scanned {netflow_dstport_count} unique ports",
+        "priority": "P3"
+      }
+    },
+    {
+      "id": "METRON-003",
+      "name": "Data Exfiltration Detection",
+      "description": "Detects potential data exfiltration by monitoring outbound data volume to external IPs.",
+      "severity": "CRITICAL",
+      "category": "exfiltration",
+      "mitre_technique": "T1041",
+      "mitre_tactic": "Exfiltration",
+      "data_source": "netflow",
+      "stellar_expression": "EXFILTRATION := IF (netflow_dOctets > 104857600 AND netflow_dstaddr NOT IN ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')) THEN true ELSE false",
+      "aggregation": {
+        "type": "sum",
+        "field": "dOctets",
+        "group_by": ["srcaddr", "dstaddr"],
+        "window_minutes": 10,
+        "threshold": 104857600
+      },
+      "alert": {
+        "title": "Potential Data Exfiltration",
+        "description": "Large outbound transfer from {srcaddr} to {dstaddr}: {total_bytes} bytes",
+        "priority": "P1"
+      }
+    },
+    {
+      "id": "METRON-004",
+      "name": "DNS Tunneling Detection",
+      "description": "Detects DNS tunneling by monitoring DNS query entropy and volume.",
+      "severity": "HIGH",
+      "category": "command_and_control",
+      "mitre_technique": "T1071.004",
+      "mitre_tactic": "Command and Control",
+      "data_source": "netflow",
+      "stellar_expression": "DNS_TUNNEL := IF (netflow_dstport == 53 AND netflow_dOctets > 512 AND netflow_dPkts > 10) THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["srcaddr", "dstaddr"],
+        "window_minutes": 5,
+        "threshold": 50
+      },
+      "alert": {
+        "title": "DNS Tunneling Detected",
+        "description": "Suspicious DNS traffic from {srcaddr} to {dstaddr}",
+        "priority": "P2"
+      }
+    },
+    {
+      "id": "METRON-005",
+      "name": "Web Shell Detection",
+      "description": "Detects potential web shell activity via HTTP request patterns.",
+      "severity": "CRITICAL",
+      "category": "persistence",
+      "mitre_technique": "T1505.003",
+      "mitre_tactic": "Persistence",
+      "data_source": "http",
+      "stellar_expression": "WEBSHELL := IF (http_request CONTAINS '.php' AND http_request CONTAINS 'cmd' AND http_method == 'POST') THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["srcaddr", "request"],
+        "window_minutes": 5,
+        "threshold": 5
+      },
+      "alert": {
+        "title": "Potential Web Shell Activity",
+        "description": "Suspicious POST requests to {request} from {srcaddr}",
+        "priority": "P1"
+      }
+    },
+    {
+      "id": "METRON-006",
+      "name": "SQL Injection Attempt",
+      "description": "Detects SQL injection patterns in HTTP requests.",
+      "severity": "HIGH",
+      "category": "attack",
+      "mitre_technique": "T1190",
+      "mitre_tactic": "Initial Access",
+      "data_source": "http",
+      "stellar_expression": "SQL_INJECTION := IF (http_request CONTAINS \"' OR\" OR http_request CONTAINS 'UNION SELECT' OR http_request CONTAINS '1=1') THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["srcaddr"],
+        "window_minutes": 1,
+        "threshold": 3
+      },
+      "alert": {
+        "title": "SQL Injection Attempt",
+        "description": "SQL injection pattern detected from {srcaddr}",
+        "priority": "P2"
+      }
+    },
+    {
+      "id": "METRON-007",
+      "name": "Lateral Movement Detection",
+      "description": "Detects lateral movement by monitoring internal SMB/RDP connections.",
+      "severity": "HIGH",
+      "category": "lateral_movement",
+      "mitre_technique": "T1021",
+      "mitre_tactic": "Lateral Movement",
+      "data_source": "netflow",
+      "stellar_expression": "LATERAL_MOVEMENT := IF (netflow_dstport IN (445, 3389, 135, 139) AND netflow_srcaddr IN ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16') AND netflow_dstaddr IN ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')) THEN true ELSE false",
+      "aggregation": {
+        "type": "count_distinct",
+        "field": "dstaddr",
+        "group_by": ["srcaddr"],
+        "window_minutes": 10,
+        "threshold": 10
+      },
+      "alert": {
+        "title": "Lateral Movement Detected",
+        "description": "Host {srcaddr} connected to {unique_dst_count} internal hosts via SMB/RDP",
+        "priority": "P2"
+      }
+    },
+    {
+      "id": "METRON-008",
+      "name": "Beaconing Detection",
+      "description": "Detects C2 beaconing by analyzing connection regularity.",
+      "severity": "CRITICAL",
+      "category": "command_and_control",
+      "mitre_technique": "T1071",
+      "mitre_tactic": "Command and Control",
+      "data_source": "netflow",
+      "stellar_expression": "BEACONING := IF (netflow_connection_count > 20 AND netflow_interval_variance < 0.1 AND netflow_dstaddr NOT IN ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')) THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["srcaddr", "dstaddr"],
+        "window_minutes": 30,
+        "threshold": 20
+      },
+      "alert": {
+        "title": "C2 Beaconing Detected",
+        "description": "Regular beaconing pattern from {srcaddr} to {dstaddr}",
+        "priority": "P1"
+      }
+    },
+    {
+      "id": "METRON-009",
+      "name": "Privilege Escalation Detection",
+      "description": "Detects privilege escalation attempts via sudo/su abuse.",
+      "severity": "HIGH",
+      "category": "privilege_escalation",
+      "mitre_technique": "T1068",
+      "mitre_tactic": "Privilege Escalation",
+      "data_source": "syslog",
+      "stellar_expression": "PRIV_ESC := IF (syslog_message CONTAINS 'sudo:' AND syslog_message CONTAINS 'authentication failure') OR (syslog_message CONTAINS 'su:' AND syslog_message CONTAINS 'FAILED') THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["hostname", "source_ip"],
+        "window_minutes": 5,
+        "threshold": 5
+      },
+      "alert": {
+        "title": "Privilege Escalation Attempt",
+        "description": "Multiple privilege escalation failures on {hostname}",
+        "priority": "P2"
+      }
+    },
+    {
+      "id": "METRON-010",
+      "name": "Malware C2 Communication",
+      "description": "Detects known malware C2 communication patterns.",
+      "severity": "CRITICAL",
+      "category": "command_and_control",
+      "mitre_technique": "T1071.001",
+      "mitre_tactic": "Command and Control",
+      "data_source": "cef",
+      "stellar_expression": "MALWARE_C2 := IF (cef_signature_id IN ('Trojan.Generic', 'Backdoor.Agent', 'Ransom.WannaCry') AND cef_severity >= 8) THEN true ELSE false",
+      "aggregation": {
+        "type": "count",
+        "group_by": ["srcaddr", "dstaddr"],
+        "window_minutes": 1,
+        "threshold": 1
+      },
+      "alert": {
+        "title": "Malware C2 Communication",
+        "description": "Known malware C2 detected: {cef_signature_id} from {srcaddr} to {dstaddr}",
+        "priority": "P1"
+      }
+    }
+  ]
+}

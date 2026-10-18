@@ -1,0 +1,44 @@
+<div class="container">
+  <header class="card">
+    <h1>Sizing, Estimating & Unit Economics</h1>
+    <p>Versioned lifecycle estimates connecting capacity, area, racks, energy and workloads to classified quantities and traceable prices.</p>
+  </header>
+  <div class="grid" id="estimate-cards"></div>
+  <div class="card" style="margin-top:1rem">
+    <h2>Price Book</h2>
+    <div id="price-view" class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.finance = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/costs');
+      const cards = container.querySelector('#estimate-cards');
+      if (!data.estimates.length) {
+        cards.innerHTML = '<div class="empty">No estimates</div>';
+      } else {
+        cards.innerHTML = data.estimates.map(e => `
+          <article class="card">
+            <div class="label">${DCC.utils.escapeHtml(e.lifecycle_phase)}</div>
+            <div class="value">${DCC.utils.formatCurrency(e.lifecycle_pv, e.currency)}</div>
+            <div class="label">${DCC.utils.escapeHtml(e.name)} · ${e.horizon_months} months</div>
+          </article>
+        `).join('');
+      }
+      container.querySelector('#price-view').innerHTML = data.prices.length
+        ? `<table class="table"><thead><tr><th>Item</th><th>Price</th><th>Unit</th><th>Source</th></tr></thead>
+           <tbody>${data.prices.slice(0,20).map(p => `<tr>
+             <td>${DCC.utils.escapeHtml(p.item_code)}</td>
+             <td>${DCC.utils.formatCurrency(p.unit_price, p.currency)}</td>
+             <td>${DCC.utils.escapeHtml(p.quantity_unit)}</td>
+             <td><span class="badge ${p.source_kind === 'synthetic_demo' ? 'badge-warning' : 'badge-success'}">${DCC.utils.escapeHtml(p.source_kind)}</span></td>
+           </tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No price observations</div>';
+    } catch (e) {
+      container.querySelector('#estimate-cards').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

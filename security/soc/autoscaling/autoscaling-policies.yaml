@@ -1,0 +1,365 @@
+# Autoscaling Security Policies — Data Center Commander SOC
+# Version: 1.0.0
+# Kubernetes resources for secure autoscaling with Trivy + OPA integration
+
+---
+# =============================================================================
+# HORIZONTAL POD AUTOSCALER — Web Tier
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-tier-hpa
+  namespace: data-center-commander
+  labels:
+    app: web-tier
+    component: autoscaling
+    security-policy: enforced
+  annotations:
+    security.data-center-commander/policy: "container-security"
+    security.data-center-commander/scan: "trivy"
+    security.data-center-commander/opa: "enabled"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-tier
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+      selectPolicy: Min
+
+---
+# =============================================================================
+# HORIZONTAL POD AUTOSCALER — API Tier
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-tier-hpa
+  namespace: data-center-commander
+  labels:
+    app: api-tier
+    component: autoscaling
+    security-policy: enforced
+  annotations:
+    security.data-center-commander/policy: "container-security"
+    security.data-center-commander/scan: "trivy"
+    security.data-center-commander/opa: "enabled"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-tier
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "1000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+        - type: Pods
+          value: 5
+          periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 5
+          periodSeconds: 60
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min
+
+---
+# =============================================================================
+# HORIZONTAL POD AUTOSCALER — Worker Tier
+# =============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker-tier-hpa
+  namespace: data-center-commander
+  labels:
+    app: worker-tier
+    component: autoscaling
+    security-policy: enforced
+  annotations:
+    security.data-center-commander/policy: "container-security"
+    security.data-center-commander/scan: "trivy"
+    security.data-center-commander/opa: "enabled"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker-tier
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 85
+    - type: External
+      external:
+        metric:
+          name: queue_messages_ready
+          selector:
+            matchLabels:
+              queue: worker
+        target:
+          type: AverageValue
+          averageValue: "100"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 5
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 120
+        - type: Pods
+          value: 2
+          periodSeconds: 120
+      selectPolicy: Min
+
+---
+# =============================================================================
+# VERTICAL POD AUTOSCALER — Web Tier
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: web-tier-vpa
+  namespace: data-center-commander
+  labels:
+    app: web-tier
+    component: autoscaling
+    security-policy: enforced
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-tier
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 2
+  resourcePolicy:
+    containerPolicies:
+      - containerName: web-tier
+        minAllowed:
+          cpu: 50m
+          memory: 128Mi
+        maxAllowed:
+          cpu: 2
+          memory: 2Gi
+        controlledResources: ["cpu", "memory"]
+        controlledValues: RequestsAndLimits
+
+---
+# =============================================================================
+# VERTICAL POD AUTOSCALER — API Tier
+# =============================================================================
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: api-tier-vpa
+  namespace: data-center-commander
+  labels:
+    app: api-tier
+    component: autoscaling
+    security-policy: enforced
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-tier
+  updatePolicy:
+    updateMode: "Auto"
+    minReplicas: 3
+  resourcePolicy:
+    containerPolicies:
+      - containerName: api-tier
+        minAllowed:
+          cpu: 100m
+          memory: 256Mi
+        maxAllowed:
+          cpu: 4
+          memory: 4Gi
+        controlledResources: ["cpu", "memory"]
+        controlledValues: RequestsAndLimits
+
+---
+# =============================================================================
+# POD DISRUPTION BUDGET — Web Tier
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-tier-pdb
+  namespace: data-center-commander
+  labels:
+    app: web-tier
+    component: autoscaling
+    security-policy: enforced
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: web-tier
+
+---
+# =============================================================================
+# POD DISRUPTION BUDGET — API Tier
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-tier-pdb
+  namespace: data-center-commander
+  labels:
+    app: api-tier
+    component: autoscaling
+    security-policy: enforced
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-tier
+
+---
+# =============================================================================
+# POD DISRUPTION BUDGET — Worker Tier
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-tier-pdb
+  namespace: data-center-commander
+  labels:
+    app: worker-tier
+    component: autoscaling
+    security-policy: enforced
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: worker-tier
+
+---
+# =============================================================================
+# PRIORITY CLASS — Security Critical
+# =============================================================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: security-critical
+  labels:
+    component: autoscaling
+    security-policy: enforced
+value: 1000000
+globalDefault: false
+description: "Priority class for security-critical workloads"
+
+---
+# =============================================================================
+# PRIORITY CLASS — Security High
+# =============================================================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: security-high
+  labels:
+    component: autoscaling
+    security-policy: enforced
+value: 500000
+globalDefault: false
+description: "Priority class for high-security workloads"
+
+---
+# =============================================================================
+# PRIORITY CLASS — Security Medium
+# =============================================================================
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: security-medium
+  labels:
+    component: autoscaling
+    security-policy: enforced
+value: 100000
+globalDefault: false
+description: "Priority class for medium-security workloads"

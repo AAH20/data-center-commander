@@ -1,0 +1,48 @@
+# =============================================================================
+# Data Center Commander — Custom Autoscaler Image
+# =============================================================================
+# Lightweight autoscaler that monitors container metrics and scales services
+# based on CPU/memory thresholds.
+#
+# Usage:
+#   docker build -f Dockerfile.autoscaler -t data-center-commander:autoscaler .
+# =============================================================================
+
+FROM python:3.12-slim
+
+LABEL org.opencontainers.image.title="Data Center Commander — Autoscaler"
+LABEL org.opencontainers.image.description="Custom container autoscaler with Prometheus metrics"
+LABEL org.opencontainers.image.licenses="MIT"
+
+WORKDIR /app
+
+# Install dependencies
+COPY autoscaler/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy autoscaler code
+COPY autoscaler/ /app/autoscaler/
+
+# Create non-root user
+RUN groupadd -r dce && useradd -r -g dce -d /home/dce -s /bin/bash dce \
+    && chown -R dce:dce /app
+
+# Environment configuration
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PROMETHEUS_PORT=9102 \
+    AUTOSCALER_INTERVAL=30 \
+    AUTOSCALER_MIN_REPLICAS=2 \
+    AUTOSCALER_MAX_REPLICAS=10 \
+    AUTOSCALER_CPU_THRESHOLD=75 \
+    AUTOSCALER_MEMORY_THRESHOLD=80 \
+    DOCKER_SOCKET=/var/run/docker.sock
+
+# Expose Prometheus metrics port
+EXPOSE 9102
+
+# Switch to non-root user
+USER dce
+
+# Run autoscaler
+ENTRYPOINT ["python", "-m", "autoscaler.autoscaler"]

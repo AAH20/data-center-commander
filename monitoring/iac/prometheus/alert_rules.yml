@@ -1,0 +1,149 @@
+groups:
+  - name: iac_security_alerts
+    interval: 60s
+    rules:
+      # Critical security findings from Checkov
+      - alert: IACCriticalFindings
+        expr: iac_checkov_failed_critical > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Critical IaC security findings detected"
+          description: "{{ $value }} critical security check(s) failed in the last scan. Review Checkov output immediately."
+
+      # High security findings
+      - alert: IACHighFindings
+        expr: iac_checkov_failed_high > 5
+        for: 10m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High IaC security findings detected"
+          description: "{{ $value }} high-severity check(s) failed. Review and remediate."
+
+      # Medium findings threshold
+      - alert: IACMediumFindingsSpike
+        expr: iac_checkov_failed_medium > 20
+        for: 15m
+        labels:
+          severity: info
+          team: security
+        annotations:
+          summary: "Medium IaC findings spike"
+          description: "{{ $value }} medium-severity check(s) failed. Consider remediation."
+
+      # Exporter down
+      - alert: IACExporterDown
+        expr: up{job="iac-exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "IaC exporter is down"
+          description: "The IaC metrics exporter has been unreachable for more than 5 minutes."
+
+      # Prometheus target down
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Prometheus target down: {{ $labels.job }}"
+          description: "Target {{ $labels.instance }} of job {{ $labels.job }} is down."
+
+      # Terraform plan drift detection
+      - alert: TerraformDriftDetected
+        expr: iac_terraform_drift_detected > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Terraform drift detected"
+          description: "Infrastructure drift detected in {{ $value }} resource(s). Run terraform plan to review."
+
+      # Policy compliance score drop
+      - alert: IACComplianceScoreDrop
+        expr: iac_compliance_score < 80
+        for: 10m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "IaC compliance score below 80%"
+          description: "Current compliance score is {{ $value }}%. Review failing policies."
+
+      # Unencrypted resources detected
+      - alert: IACUnencryptedResources
+        expr: iac_unencrypted_resources > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Unencrypted resources detected in IaC"
+          description: "{{ $value }} resource(s) lack encryption. This is a compliance violation."
+
+      # Public exposure detected
+      - alert: IACPublicExposure
+        expr: iac_public_exposure > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Public exposure detected in IaC"
+          description: "{{ $value }}(s) are publicly exposed. Review security groups and firewall rules."
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # High CPU on monitoring stack
+      - alert: MonitoringHighCPU
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU on monitoring node"
+          description: "CPU usage above 85% for 5 minutes on {{ $labels.instance }}."
+
+      # Disk space warning
+      - alert: MonitoringDiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Low disk space on monitoring node"
+          description: "Disk usage above 85% on {{ $labels.instance }} mount {{ $labels.mountpoint }}."
+
+      # Memory pressure
+      - alert: MonitoringMemoryPressure
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Low memory on monitoring node"
+          description: "Available memory below 10% on {{ $labels.instance }}."
+
+      # Prometheus storage growing fast
+      - alert: PrometheusStorageGrowth
+        expr: prometheus_tsdb_storage_blocks_bytes / 1024 / 1024 / 1024 > 20
+        for: 30m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Prometheus storage exceeds 20GB"
+          description: "Prometheus TSDB size is {{ $value }}GB. Consider increasing retention or storage."

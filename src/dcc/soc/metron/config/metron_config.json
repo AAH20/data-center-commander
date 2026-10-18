@@ -1,0 +1,117 @@
+{
+  "metron": {
+    "version": "0.7.0",
+    "kafka": {
+      "brokers": "localhost:9092",
+      "topics": {
+        "syslog": "syslog",
+        "netflow": "netflow",
+        "http": "http",
+        "cef": "cef",
+        "enriched": "enriched",
+        "alerts": "metron_alerts",
+        "threat_intel": "metron_threat_intel_matches"
+      },
+      "consumer_group": "metron-soc-consumer",
+      "producer_config": {
+        "acks": "all",
+        "retries": 3,
+        "linger_ms": 10,
+        "batch_size": 16384,
+        "compression_type": "snappy"
+      }
+    },
+    "zookeeper": {
+      "hosts": "localhost:2181",
+      "root": "/metron"
+    },
+    "storm": {
+      "topology": "metron",
+      "spout_parallelism": 3,
+      "bolt_parallelism": 6,
+      "workers": 4
+    },
+    "elasticsearch": {
+      "hosts": "localhost:9200",
+      "index_prefix": "metron",
+      "index_pattern": "{source}-{YYYY.MM.dd}",
+      "retention_days": 90,
+      "shards": 3,
+      "replicas": 1
+    },
+    "hbase": {
+      "zookeeper_quorum": "localhost",
+      "tables": {
+        "meta": "metron_meta",
+        "threat_intel": "metron_threat_intel",
+        "enrichment": "metron_enrichment"
+      }
+    },
+    "connectors": {
+      "syslog": {
+        "enabled": true,
+        "listen_host": "0.0.0.0",
+        "listen_port": 514,
+        "protocol": "udp",
+        "kafka_topic": "syslog"
+      },
+      "netflow": {
+        "enabled": true,
+        "listen_host": "0.0.0.0",
+        "listen_port": 2055,
+        "kafka_topic": "netflow"
+      },
+      "http": {
+        "enabled": true,
+        "kafka_topic": "http",
+        "log_format": "auto"
+      },
+      "cef": {
+        "enabled": true,
+        "kafka_topic": "cef"
+      }
+    },
+    "enrichment": {
+      "geoip": {
+        "enabled": true,
+        "database_path": "/usr/share/GeoIP/GeoLite2-City.mmdb"
+      },
+      "host_reputation": {
+        "enabled": true,
+        "kafka_topic": "host_reputation"
+      },
+      "whois": {
+        "enabled": true,
+        "cache_ttl_hours": 24
+      }
+    },
+    "alerting": {
+      "enabled": true,
+      "kafka_topic": "metron_alerts",
+      "elasticsearch_index": "metron-alerts",
+      "notification_channels": {
+        "email": {
+          "enabled": false,
+          "smtp_host": "localhost",
+          "smtp_port": 587,
+          "from_address": "metron-alerts@example.com",
+          "to_addresses": []
+        },
+        "slack": {
+          "enabled": false,
+          "webhook_url": ""
+        },
+        "pagerduty": {
+          "enabled": false,
+          "service_key": ""
+        }
+      }
+    },
+    "retention": {
+      "hot_storage_days": 7,
+      "warm_storage_days": 30,
+      "cold_storage_days": 90,
+      "archive_enabled": false
+    }
+  }
+}

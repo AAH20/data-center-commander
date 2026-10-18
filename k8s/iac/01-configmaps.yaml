@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: data-center-commander
+  labels:
+    app: loki
+    team: platform-engineering
+data:
+  local-config.yaml: "auth_enabled: false\nserver:\n  http_listen_port: 3100\ncommon:\n\
+    \  instance_addr: 127.0.0.1\n  path_prefix: /loki\n  storage:\n    filesystem:\n\
+    \      chunks_directory: /loki/chunks\n      rules_directory: /loki/rules\n  replication_factor:\
+    \ 1\n  ring:\n    kvstore:\n      store: inmemory\nschema_config:\n  configs:\n\
+    \    - from: 2024-01-01\n      store: tsdb\n      object_store: filesystem\n \
+    \     schema: v13\n      index:\n        prefix: index_\n        period: 24h\n\
+    ruler:\n  alertmanager_url: http://localhost:9093\nlimits_config:\n  reject_old_samples:\
+    \ true\n  reject_old_samples_max_age: 168h\n  ingestion_rate_mb: 16\n  ingestion_burst_size_mb:\
+    \ 32\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: promtail-config
+  namespace: data-center-commander
+  labels:
+    app: promtail
+    team: platform-engineering
+data:
+  config.yml: "server:\n  http_listen_port: 9080\n  grpc_listen_port: 0\npositions:\n\
+    \  filename: /run/promtail/positions.yaml\nclients:\n  - url: http://loki:3100/loki/api/v1/push\n\
+    scrape_configs:\n  - job_name: system\n    static_configs:\n      - targets:\n\
+    \          - localhost\n        labels:\n          job: varlogs\n          __path__:\
+    \ /var/log/*log\n  - job_name: containers\n    static_configs:\n      - targets:\n\
+    \          - localhost\n        labels:\n          job: containerlogs\n      \
+    \    __path__: /var/lib/docker/containers/*/*-json.log\n    pipeline_stages:\n\
+    \      - docker: {}\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-config
+  namespace: data-center-commander
+  labels:
+    app: logstash
+    team: platform-engineering
+data:
+  logstash.yml: 'http.host: "0.0.0.0"
+
+    http.port: 9600
+
+    pipeline.workers: 2
+
+    pipeline.batch.size: 125
+
+    pipeline.batch.delay: 50
+
+    log.level: info
+
+    '
+  pipeline.conf: "input {\n  beats {\n    port => 5044\n  }\n  tcp {\n    port =>\
+    \ 5000\n    codec => json_lines\n  }\n  udp {\n    port => 5000\n    codec =>\
+    \ json_lines\n  }\n}\nfilter {\n  if [message] {\n    grok {\n      match => {\
+    \ \"message\" => \"%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:msg}\"\
+    \ }\n      tag_on_failure => [\"_grokparsefailure\"]\n    }\n    date {\n    \
+    \  match => [\"timestamp\", \"ISO8601\"]\n      target => \"@timestamp\"\n   \
+    \ }\n  }\n  mutate {\n    remove_field => [\"@version\", \"host\", \"agent\",\
+    \ \"ecs\", \"input\", \"log\", \"tags\"]\n  }\n}\noutput {\n  elasticsearch {\n\
+    \    hosts => [\"http://elasticsearch:9200\"]\n    index => \"logstash-%{+YYYY.MM.dd}\"\
+    \n  }\n  stdout { codec => rubydebug }\n}\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provisioning
+  namespace: data-center-commander
+  labels:
+    app: grafana
+    team: platform-engineering
+data:
+  datasources.yaml: "apiVersion: 1\ndatasources:\n  - name: Loki\n    type: loki\n\
+    \    access: proxy\n    url: http://loki:3100\n    isDefault: true\n    editable:\
+    \ true\n  - name: Elasticsearch\n    type: elasticsearch\n    access: proxy\n\
+    \    url: http://elasticsearch:9200\n    editable: true\n    database: \"logstash-*\"\
+    \n    jsonData:\n      timeField: \"@timestamp\"\n      esVersion: \"8.0.0\"\n"
+  dashboards.yaml: "apiVersion: 1\nproviders:\n  - name: default\n    orgId: 1\n \
+    \   folder: \"\"\n    type: file\n    disableDeletion: false\n    editable: true\n\
+    \    options:\n      path: /var/lib/grafana/dashboards\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-config
+  namespace: data-center-commander
+  labels:
+    app: filebeat
+    team: platform-engineering
+data:
+  filebeat.yml: "filebeat.inputs:\n  - type: container\n    paths:\n      - /var/lib/docker/containers/*/*.log\n\
+    \    processors:\n      - add_kubernetes_metadata:\n          host: ${NODE_NAME}\n\
+    \          matchers:\n            - logs_path:\n                logs_path: \"\
+    /var/lib/docker/containers/\"\n  - type: log\n    enabled: true\n    paths:\n\
+    \      - /var/log/*.log\noutput.logstash:\n  hosts: [\"logstash:5044\"]\nlogging.level:\
+    \ info\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-config
+  namespace: data-center-commander
+  labels:
+    app: fluentd
+    team: platform-engineering
+data:
+  fluent.conf: "<source>\n  @type forward\n  port 24224\n  bind 0.0.0.0\n</source>\n\
+    <source>\n  @type tail\n  path /var/log/*.log\n  pos_file /var/log/fluentd.pos\n\
+    \  tag system.*\n  format none\n</source>\n<match system.**>\n  @type elasticsearch\n\
+    \  host elasticsearch\n  port 9200\n  logstash_format true\n  logstash_prefix\
+    \ fluentd\n  include_tag_key true\n  type_name _doc\n  flush_interval 10s\n</match>\n\
+    <match fluent.**>\n  @type null\n</match>\n"

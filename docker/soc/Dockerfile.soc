@@ -1,0 +1,106 @@
+# =============================================================================
+# Data Center Commander — SOC (Security Operations Center) Tools Image
+# =============================================================================
+# Multi-stage build for security monitoring, runtime threat detection,
+# and compliance scanning.
+#
+# Usage:
+#   docker build -f Dockerfile.soc -t data-center-commander:soc .
+# =============================================================================
+
+# ---- Stage 1: Base dependencies ---------------------------------------------
+FROM python:3.12-slim AS base
+
+LABEL org.opencontainers.image.title="Data Center Commander — SOC Tools"
+LABEL org.opencontainers.image.description="Security monitoring, runtime threat detection, and compliance scanning"
+LABEL org.opencontainers.image.licenses="MIT"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    jq \
+    git \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Stage 2: Install Falco --------------------------------------------------
+FROM base AS falco-installer
+
+ARG FALCO_VERSION=0.38.0
+RUN curl -fsSL https://falco.org/repo/falcosecurity-packages.asc | gpg --dearmor -o /usr/share/keyrings/falco-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/falco-archive-keyring.gpg] https://download.falco.org/packages/deb stable main" > /etc/apt/sources.list.d/falco.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    falco=${FALCO_VERSION} \
+    && falco --version
+
+# ---- Stage 3: Install Trivy --------------------------------------------------
+FROM base AS trivy-installer
+
+ARG TRIVY_VERSION=0.55.0
+RUN wget -q "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb" \
+    && dpkg -i "trivy_${TRIVY_VERSION}_Linux-64bit.deb" \
+    && trivy --version
+
+# ---- Stage 4: Install Python security tools ---------------------------------
+FROM base AS python-deps
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir \
+    prometheus-client==0.20.0 \
+    requests==2.32.3 \
+    pyyaml==6.0.2 \
+    docker==7.1.0 \
+    psutil==6.0.0 \
+    schedule==1.2.2
+
+# ---- Stage 5: Final image ---------------------------------------------------
+FROM base AS final
+
+# Copy Falco
+COPY --from=falco-installer /usr/bin/falco /usr/bin/falco
+COPY --from=falco-installer /usr/bin/falco-driver-loader /usr/bin/falco-driver-loader
+COPY --from=falco-installer /etc/falco /etc/falco
+COPY --from=falco-installer /usr/lib/x86_64-linux-gnu/falco /usr/lib/x86_64-linux-gnu/falco
+
+# Copy Trivy
+COPY --from=trivy-installer /usr/bin/trivy /usr/bin/trivy
+
+# Copy Python packages
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+
+# Create non-root user
+RUN groupadd -r dce && useradd -r -g dce -d /home/dce -s /bin/bash dce
+
+# Copy application code
+WORKDIR /app
+COPY --chown=dce:dce soc-tools/ /app/soc-tools/
+COPY --chown=dce:dce autoscaler/ /app/autoscaler/
+
+# Create directories
+RUN mkdir -p /data /reports /var/log/soc && chown -R dce:dce /data /reports /var/log/soc /app
+
+# Environment configuration
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PROMETHEUS_PORT=9102 \
+    FALCO_RULES_PATH=/app/soc-tools/falco-rules.yaml \
+    TRIVY_CACHE_DIR=/data/trivy-cache \
+    REPORTS_DIR=/reports \
+    AUTOSCALER_INTERVAL=30 \
+    AUTOSCALER_MIN_REPLICAS=2 \
+    AUTOSCALER_MAX_REPLICAS=10 \
+    AUTOSCALER_CPU_THRESHOLD=75 \
+    AUTOSCALER_MEMORY_THRESHOLD=80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:9102/metrics || exit 1
+
+# Switch to non-root user
+USER dce
+
+# Default entrypoint: run autoscaler
+ENTRYPOINT ["python", "-m", "autoscaler.autoscaler"]

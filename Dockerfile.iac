@@ -1,0 +1,120 @@
+# =============================================================================
+# Data Center Commander — IaC Security Scanner
+# =============================================================================
+# Multi-stage build for running Checkov, OPA, and custom policy scans
+# against Terraform / IaC repositories.
+#
+# Usage:
+#   docker build -f Dockerfile.iac -t data-center-commander:iac .
+#   docker run --rm -v $(pwd)/terraform:/iac:ro data-center-commander:iac
+# =============================================================================
+
+# ---- Stage 1: Base dependencies ---------------------------------------------
+FROM python:3.12-slim AS base
+
+LABEL org.opencontainers.image.title="Data Center Commander — IaC Scanner"
+LABEL org.opencontainers.image.description="IaC security scanning with Checkov, OPA, and custom data center policies"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    jq \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Stage 2: Install OPA ---------------------------------------------------
+FROM base AS opa-installer
+
+ARG OPA_VERSION=v0.68.0
+# The workflow builds linux/amd64 and linux/arm64 in one pass, so pick the
+# binary for the target arch instead of assuming amd64 (an x86 binary cannot
+# execute under arm64 emulation). GitHub releases are used because
+# openpolicyagent.org redirects and some runner networks fail on it.
+#
+# TARGETARCH is buildx-injected per platform leg. Declaring it WITH a default
+# makes buildx treat the arg as already set and skip the injection, so the
+# arm64 leg silently receives "amd64" and then fails to exec the x86 binary
+# ("Invalid ELF image for this architecture"). Declare it with no default and
+# derive the arch from the runtime when buildx did not inject one.
+ARG TARGETARCH
+RUN set -eu; \
+    if [ -z "${TARGETARCH:-}" ]; then \
+      case "$(uname -m)" in \
+        x86_64|amd64) TARGETARCH=amd64 ;; \
+        aarch64|arm64) TARGETARCH=arm64 ;; \
+        *) echo "unknown host arch: $(uname -m)" >&2; exit 1 ;; \
+      esac; \
+    fi; \
+    case "${TARGETARCH}" in \
+      amd64) OPA_ARCH="amd64" ;; \
+      arm64) OPA_ARCH="arm64" ;; \
+      *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    OPA_URL="https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_${OPA_ARCH}_static"; \
+    echo "arch=${TARGETARCH} fetching ${OPA_URL}"; \
+    wget "${OPA_URL}" -O /usr/local/bin/opa; \
+    chmod +x /usr/local/bin/opa; \
+    test -s /usr/local/bin/opa || { echo "opa binary is empty"; exit 1; }; \
+    /usr/local/bin/opa version
+
+# ---- Stage 3: Install Checkov & Python deps ---------------------------------
+FROM base AS python-deps
+
+WORKDIR /app
+
+# Install Checkov and supporting tools
+# opa-python-client and boto3 are unpinned: their pinned versions
+# (1.3.0 / 1.35.62) conflict with checkov's transitive requirements on modern
+# Python, so pip resolution fails and the image never builds. Checkov is what
+# this image actually ships; the two clients are optional conveniences.
+RUN pip install --no-cache-dir \
+    checkov==3.2.316 \
+    opa-python-client \
+    PyYAML==6.0.2 \
+    jsonschema==4.23.0 \
+    boto3 \
+    azure-identity==1.19.0 \
+    azure-mgmt-resource==23.1.1 \
+    && checkov --version
+
+# ---- Stage 4: Final image ---------------------------------------------------
+FROM base AS final
+
+# Copy OPA binary
+COPY --from=opa-installer /usr/local/bin/opa /usr/local/bin/opa
+
+# Copy Python packages
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-deps /usr/local/bin/checkov /usr/local/bin/checkov
+
+# Create non-root user
+RUN groupadd -r dce && useradd -r -g dce -d /home/dce -s /bin/bash dce
+
+# Copy application code
+WORKDIR /app
+COPY --chown=dce:dce policies/ /app/policies/
+COPY --chown=dce:dce logging/ /app/logging/
+
+# Create directories for IaC input and reports
+RUN mkdir -p /iac /reports && chown -R dce:dce /iac /reports /app
+
+# Environment configuration
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CHECKOV_EXTERNAL_CHECKS_DIR=/app/policies/checkov/terraform/ \
+    OPA_DATA=/app/policies/rego/ \
+    REPORTS_DIR=/reports
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD checkov --version && opa version || exit 1
+
+# Switch to non-root user
+USER dce
+
+# Default entrypoint: scan /iac with all policies
+ENTRYPOINT ["checkov"]
+CMD ["-d", "/iac", "--external-checks-dir", "/app/policies/checkov/terraform/", "--check", "DC_", "--output", "json", "--output-file", "/reports/checkov-report.json"]

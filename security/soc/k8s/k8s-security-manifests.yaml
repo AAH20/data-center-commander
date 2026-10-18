@@ -1,0 +1,657 @@
+# Kubernetes Security Manifests — Data Center Commander SOC
+# Version: 2.0.0
+# Trivy + OPA integration for container security
+
+---
+# =============================================================================
+# NAMESPACE
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data-center-commander
+  labels:
+    app: data-center-commander
+    security-policy: enforced
+    trivy-scan: enabled
+    opa-policy: enabled
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+# =============================================================================
+# SERVICE ACCOUNT — Trivy Scanner
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trivy-scanner
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+automountServiceAccountToken: false
+
+---
+# =============================================================================
+# SERVICE ACCOUNT — OPA Agent
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opa-agent
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+automountServiceAccountToken: false
+
+---
+# =============================================================================
+# ROLE — Trivy Scanner
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: trivy-scanner-role
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers", "verticalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch"]
+
+---
+# =============================================================================
+# ROLE BINDING — Trivy Scanner
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: trivy-scanner-binding
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+subjects:
+  - kind: ServiceAccount
+    name: trivy-scanner
+    namespace: data-center-commander
+roleRef:
+  kind: Role
+  name: trivy-scanner-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# ROLE — OPA Agent
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: opa-agent-role
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "serviceaccounts", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers", "verticalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch"]
+
+---
+# =============================================================================
+# ROLE BINDING — OPA Agent
+# =============================================================================
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: opa-agent-binding
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+subjects:
+  - kind: ServiceAccount
+    name: opa-agent
+    namespace: data-center-commander
+roleRef:
+  kind: Role
+  name: opa-agent-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# =============================================================================
+# CONFIG MAP — Trivy Configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-config
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+data:
+  trivy-config.yaml: |
+    scan:
+      severity:
+        - CRITICAL
+        - HIGH
+        - MEDIUM
+        - LOW
+      scanners:
+        - vuln
+        - secret
+        - config
+        - license
+      timeout: 10m
+    policy:
+      policy-dir: /etc/trivy/policies
+      namespaces:
+        - data-center-commander
+        - security
+        - compliance
+    report:
+      format: json
+      output: /var/log/trivy/report.json
+
+---
+# =============================================================================
+# CONFIG MAP — OPA Configuration
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+data:
+  opa-config.yaml: |
+    server:
+      address: 0.0.0.0
+      port: 8181
+    policies:
+      container-security:
+        path: /etc/opa/policies/container-security.rego
+        package: container-security
+        enabled: true
+      autoscaling:
+        path: /etc/opa/policies/autoscaling.rego
+        package: autoscaling
+        enabled: true
+      soc:
+        path: /etc/opa/policies/soc.rego
+        package: soc
+        enabled: true
+
+---
+# CONFIG MAP — OPA Policies
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-policies
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+data:
+  container-security.rego: |
+    package container-security
+    default allow := false
+    allow if {
+        not has_critical_vulnerabilities
+        not has_high_vulnerabilities
+        not has_misconfigurations
+        not has_secrets
+    }
+    has_critical_vulnerabilities if { input.vulnerabilities.critical > 0 }
+    has_high_vulnerabilities if { input.vulnerabilities.high > 0 }
+    has_misconfigurations if { input.misconfigurations > 0 }
+    has_secrets if { input.secrets > 0 }
+    violations contains msg if {
+        has_critical_vulnerabilities
+        msg := sprintf("CRITICAL: Image has %d critical vulnerabilities", [input.vulnerabilities.critical])
+    }
+    violations contains msg if {
+        has_high_vulnerabilities
+        msg := sprintf("HIGH: Image has %d high vulnerabilities", [input.vulnerabilities.high])
+    }
+  autoscaling.rego: |
+    package autoscaling
+    default allow := false
+    allow if {
+        not has_insufficient_replicas
+        not has_missing_hpa
+        not has_missing_pdb
+    }
+    has_insufficient_replicas if { input.min_replicas < 2 }
+    has_missing_hpa if { not input.hpa_configured }
+    has_missing_pdb if { not input.pdb_configured }
+    violations contains msg if {
+        has_insufficient_replicas
+        msg := sprintf("HIGH: Minimum replicas (%d) is less than required (2)", [input.min_replicas])
+    }
+  soc.rego: |
+    package soc
+    default allow := true
+    alert_severity := "critical" if { input.event_type == "vulnerability"; input.severity == "CRITICAL" }
+    alert_severity := "high" if { input.event_type == "vulnerability"; input.severity == "HIGH" }
+    alert_severity := "medium" if { input.event_type == "vulnerability"; input.severity == "MEDIUM" }
+    alert_severity := "low" if { input.event_type == "vulnerability"; input.severity == "LOW" }
+
+---
+# =============================================================================
+# DEPLOYMENT — Trivy Scanner
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trivy-scanner
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trivy-scanner
+  template:
+    metadata:
+      labels:
+        app: trivy-scanner
+        component: security
+      annotations:
+        security.data-center-commander/scan: "enabled"
+    spec:
+      serviceAccountName: trivy-scanner
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: trivy-scanner
+          image: aquasec/trivy:0.48.0
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: trivy-config
+              mountPath: /etc/trivy
+              readOnly: true
+            - name: trivy-cache
+              mountPath: /tmp/trivy-cache
+            - name: trivy-reports
+              mountPath: /var/log/trivy
+          env:
+            - name: TRIVY_CACHE_DIR
+              value: /tmp/trivy-cache
+            - name: TRIVY_SEVERITY
+              value: CRITICAL,HIGH,MEDIUM,LOW
+            - name: TRIVY_SCANNERS
+              value: vuln,secret,config,license
+            - name: TRIVY_FORMAT
+              value: json
+            - name: TRIVY_OUTPUT
+              value: /var/log/trivy/report.json
+          livenessProbe:
+            exec:
+              command:
+                - trivy
+                - --version
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command:
+                - trivy
+                - --version
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: trivy-config
+          configMap:
+            name: trivy-config
+        - name: trivy-cache
+          emptyDir: {}
+        - name: trivy-reports
+          emptyDir: {}
+
+---
+# =============================================================================
+# DEPLOYMENT — OPA Agent
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa-agent
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opa-agent
+  template:
+    metadata:
+      labels:
+        app: opa-agent
+        component: security
+      annotations:
+        security.data-center-commander/policy: "enabled"
+    spec:
+      serviceAccountName: opa-agent
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opa-agent
+          image: openpolicyagent/opa:0.60.0
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          ports:
+            - containerPort: 8181
+              protocol: TCP
+              name: http
+          volumeMounts:
+            - name: opa-config
+              mountPath: /etc/opa
+              readOnly: true
+            - name: opa-policies
+              mountPath: /etc/opa/policies
+              readOnly: true
+          args:
+            - "run"
+            - "--server"
+            - "--addr=0.0.0.0:8181"
+            - "--diagnostic-addr=0.0.0.0:8182"
+            - "--config-file=/etc/opa/opa-config.yaml"
+            - "/etc/opa/policies/container-security.rego"
+            - "/etc/opa/policies/autoscaling.rego"
+            - "/etc/opa/policies/soc.rego"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8181
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8181
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: opa-config
+          configMap:
+            name: opa-config
+        - name: opa-policies
+          configMap:
+            name: opa-policies
+
+---
+# =============================================================================
+# SERVICE — Trivy Scanner
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: trivy-scanner
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+spec:
+  selector:
+    app: trivy-scanner
+  ports:
+    - port: 4954
+      targetPort: 4954
+      protocol: TCP
+      name: http
+  type: ClusterIP
+
+---
+# =============================================================================
+# SERVICE — OPA Agent
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-agent
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+spec:
+  selector:
+    app: opa-agent
+  ports:
+    - port: 8181
+      targetPort: 8181
+      protocol: TCP
+      name: http
+    - port: 8182
+      targetPort: 8182
+      protocol: TCP
+      name: diagnostics
+  type: ClusterIP
+
+---
+# =============================================================================
+# NETWORK POLICY — Trivy Scanner
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: trivy-scanner-netpol
+  namespace: data-center-commander
+  labels:
+    app: trivy-scanner
+    component: security
+spec:
+  podSelector:
+    matchLabels:
+      app: trivy-scanner
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: opa-agent
+      ports:
+        - protocol: TCP
+          port: 4954
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: opa-agent
+      ports:
+        - protocol: TCP
+          port: 8181
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# =============================================================================
+# NETWORK POLICY — OPA Agent
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opa-agent-netpol
+  namespace: data-center-commander
+  labels:
+    app: opa-agent
+    component: security
+spec:
+  podSelector:
+    matchLabels:
+      app: opa-agent
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: trivy-scanner
+        - podSelector:
+            matchLabels:
+              app: web-tier
+        - podSelector:
+            matchLabels:
+              app: api-tier
+        - podSelector:
+            matchLabels:
+              app: worker-tier
+      ports:
+        - protocol: TCP
+          port: 8181
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: trivy-scanner
+      ports:
+        - protocol: TCP
+          port: 4954
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# =============================================================================
+# POD SECURITY POLICY — Restricted
+# =============================================================================
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: restricted
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
+spec:
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+    - ALL
+  volumes:
+    - 'configMap'
+    - 'emptyDir'
+    - 'projected'
+    - 'secret'
+    - 'downwardAPI'
+    - 'persistentVolumeClaim'
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: 'MustRunAsNonRoot'
+  seLinux:
+    rule: 'RunAsAny'
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+      - min: 1
+        max: 65535
+  readOnlyRootFilesystem: true

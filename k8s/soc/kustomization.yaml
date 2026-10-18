@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: soc
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmaps.yaml
+  - 02-storage.yaml
+  - 03-wazuh.yaml
+  - 04-thehive-cortex.yaml
+  - 05-elasticsearch-postgres.yaml
+  - 06-services.yaml
+  - 07-ingress.yaml
+  - 08-hpa.yaml
+  - 09-pdb.yaml
+  - 10-rbac.yaml
+  - 11-network-policies.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: soc
+      app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: wazuh/wazuh-manager
+    newTag: "4.9.0"
+  - name: wazuh/wazuh-agent
+    newTag: "4.9.0"
+  - name: strangebee/thehive
+    newTag: "5.4.0"
+  - name: thehiveproject/cortex
+    newTag: "3.1.8"
+  - name: docker.elastic.co/elasticsearch/elasticsearch
+    newTag: "8.15.0"
+  - name: postgres
+    newTag: "16-alpine"
+  - name: prom/alertmanager
+    newTag: "v0.27.0"
+  - name: grafana/grafana
+    newTag: "11.2.0"
+  - name: fluent/fluentd
+    newTag: "v1.17-1"
+  - name: aquasec/trivy
+    newTag: "0.55.0"

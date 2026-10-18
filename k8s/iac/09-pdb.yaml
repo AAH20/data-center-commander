@@ -1,0 +1,83 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: elasticsearch
+  namespace: data-center-commander
+  labels:
+    app: elasticsearch
+    team: platform-engineering
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: logstash
+  namespace: data-center-commander
+  labels:
+    app: logstash
+    team: platform-engineering
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: logstash
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kibana
+  namespace: data-center-commander
+  labels:
+    app: kibana
+    team: platform-engineering
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: kibana
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: loki
+  namespace: data-center-commander
+  labels:
+    app: loki
+    team: platform-engineering
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: loki
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: grafana
+  namespace: data-center-commander
+  labels:
+    app: grafana
+    team: platform-engineering
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: grafana
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: log-processor
+  namespace: data-center-commander
+  labels:
+    app: log-processor
+    team: platform-engineering
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: log-processor

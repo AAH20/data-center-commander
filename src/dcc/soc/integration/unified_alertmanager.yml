@@ -1,0 +1,130 @@
+# =============================================================================
+# Data Center Commander — Unified Alertmanager Configuration
+# =============================================================================
+# Routes alerts from SOC, AutoScaling, and Container monitoring to
+# appropriate notification channels.
+# =============================================================================
+
+global:
+  smtp_smarthost: localhost:587
+  smtp_from: dcc-alerts@example.com
+  slack_api_url: ""
+  pagerduty_url: "https://events.pagerduty.com/v2/enqueue"
+
+# Group alerts by team and severity for batch notifications
+route:
+  group_by: ['alertname', 'team', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: default-receiver
+  routes:
+    # Critical alerts — immediate notification
+    - matchers:
+        - severity = "critical"
+      receiver: critical-alerts
+      group_wait: 0s
+      repeat_interval: 1h
+      continue: true
+
+    # SOC security alerts — dedicated channel
+    - matchers:
+        - team = "soc"
+      receiver: soc-team
+      group_wait: 10s
+      repeat_interval: 2h
+      continue: true
+
+    # Platform/infrastructure alerts
+    - matchers:
+        - team = "platform"
+      receiver: platform-team
+      group_wait: 30s
+      repeat_interval: 4h
+      continue: true
+
+    # Info-level alerts — lowest priority
+    - matchers:
+        - severity = "info"
+      receiver: info-alerts
+      group_wait: 5m
+      repeat_interval: 12h
+
+# Inhibition rules — prevent alert storms
+inhibit_rules:
+  # If a node is down, don't alert about containers on that node
+  - source_match:
+      severity: "critical"
+      alertname: "NodeDown"
+    target_match:
+      severity: "warning"
+    equal: ["instance"]
+
+  # If Prometheus target is down, don't alert about that target's metrics
+  - source_match:
+      alertname: "PrometheusTargetDown"
+    target_match_re:
+      alertname: "ContainerHighCPU|ContainerHighMemory|ContainerRestarting"
+    equal: ["instance"]
+
+  # If autoscaler is at max, don't alert about high CPU/memory for that service
+  - source_match:
+      alertname: "AutoscalerAtMaxCapacity"
+    target_match_re:
+      alertname: "AutoscalerHighCPU|AutoscalerHighMemory"
+    equal: ["service"]
+
+# Receivers — notification channel definitions
+receivers:
+  - name: default-receiver
+    slack_configs:
+      - channel: "#dcc-alerts"
+        send_resolved: true
+        title: '{{ template "slack.default.title" . }}'
+        text: '{{ template "slack.default.text" . }}'
+
+  - name: critical-alerts
+    slack_configs:
+      - channel: "#dcc-critical"
+        send_resolved: true
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.default.text" . }}'
+    pagerduty_configs:
+      - service_key: "{{ .CommonLabels.pagerduty_key }}"
+        severity: critical
+        description: '{{ .CommonAnnotations.summary }}'
+
+  - name: soc-team
+    slack_configs:
+      - channel: "#soc-security"
+        send_resolved: true
+        title: '🔒 SOC: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.default.text" . }}'
+    email_configs:
+      - to: soc-team@example.com
+        send_resolved: true
+        headers:
+          Subject: '[SOC] {{ .CommonAnnotations.summary }}'
+
+  - name: platform-team
+    slack_configs:
+      - channel: "#platform-alerts"
+        send_resolved: true
+        title: '⚙️ Platform: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.default.text" . }}'
+    email_configs:
+      - to: platform-team@example.com
+        send_resolved: true
+        headers:
+          Subject: '[Platform] {{ .CommonAnnotations.summary }}'
+
+  - name: info-alerts
+    slack_configs:
+      - channel: "#dcc-info"
+        send_resolved: true
+        title: 'ℹ️ Info: {{ .GroupLabels.alertname }}'
+        text: '{{ template "slack.default.text" . }}'
+
+# Templates for notification formatting
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'

@@ -1,0 +1,86 @@
+# =============================================================================
+# Data Center Commander — Alertmanager Configuration
+# =============================================================================
+
+global:
+  smtp_smarthost: ${SMTP_HOST:-localhost:587}
+  smtp_from: ${SMTP_FROM:-alerts@datacenter.local}
+  smtp_auth_username: ${SMTP_USER:-}
+  smtp_auth_password: ${SMTP_PASS:-}
+  slack_api_url: ${SLACK_WEBHOOK_URL:-}
+  pagerduty_url: ${PAGERDUTY_URL:-https://events.pagerduty.com/v2/enqueue}
+
+# Templates
+templates:
+  - "/etc/alertmanager/templates/*.tmpl"
+
+# Route configuration
+route:
+  group_by: ["alertname", "severity", "team"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: "default"
+  routes:
+    # Critical alerts — immediate notification
+    - matchers:
+        - severity="critical"
+      receiver: "critical"
+      group_wait: 10s
+      repeat_interval: 1h
+
+    # Security alerts — security team
+    - matchers:
+        - team="security"
+      receiver: "security-team"
+      group_wait: 30s
+      repeat_interval: 2h
+
+    # Platform alerts — platform team
+    - matchers:
+        - team="platform"
+      receiver: "platform-team"
+      group_wait: 30s
+      repeat_interval: 4h
+
+# Inhibit rules
+inhibit_rules:
+  - source_match:
+      severity: "critical"
+    target_match:
+      severity: "warning"
+    equal: ["alertname", "instance"]
+
+# Receivers
+receivers:
+  - name: "default"
+    slack_configs:
+      - channel: "#alerts"
+        send_resolved: true
+        title: "{{ .GroupLabels.alertname }}"
+        text: "{{ .CommonAnnotations.summary }}"
+
+  - name: "critical"
+    slack_configs:
+      - channel: "#critical-alerts"
+        send_resolved: true
+        title: "🚨 CRITICAL: {{ .GroupLabels.alertname }}"
+        text: "{{ .CommonAnnotations.description }}"
+    pagerduty_configs:
+      - routing_key: ${PAGERDUTY_KEY:-}
+        severity: critical
+        description: "{{ .GroupLabels.alertname }}"
+
+  - name: "security-team"
+    slack_configs:
+      - channel: "#security-alerts"
+        send_resolved: true
+        title: "🔒 Security: {{ .GroupLabels.alertname }}"
+        text: "{{ .CommonAnnotations.description }}"
+
+  - name: "platform-team"
+    slack_configs:
+      - channel: "#platform-alerts"
+        send_resolved: true
+        title: "⚙️ Platform: {{ .GroupLabels.alertname }}"
+        text: "{{ .CommonAnnotations.description }}"

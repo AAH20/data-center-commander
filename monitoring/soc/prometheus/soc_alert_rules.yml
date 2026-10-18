@@ -1,0 +1,400 @@
+groups:
+  # ─── SOC Security Alerts ───────────────────────────────────────────────
+  - name: soc_security_alerts
+    interval: 30s
+    rules:
+      # Container escape / privilege escalation
+      - alert: ContainerPrivilegeEscalation
+        expr: |
+          count by (namespace, pod, container) (
+            kube_pod_container_info{container!=""} unless on(namespace, pod, container)
+            (kube_pod_container_info * on(namespace, pod, container) group_left() kube_pod_container_status_running)
+          ) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Possible privilege escalation in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} in pod {{ $labels.pod }} may have escalated privileges."
+
+      # CrashLoopBackOff
+      - alert: ContainerCrashLoopBackOff
+        expr: |
+          rate(kube_pod_container_status_restarts_total[15m]) * 60 * 5 > 0
+          and on(namespace, pod, container)
+          (kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} == 1)
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "CrashLoopBackOff in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} is in CrashLoopBackOff state."
+
+      # OOMKilled
+      - alert: ContainerOOMKilled
+        expr: |
+          kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+        for: 1m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "OOMKilled in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} was OOMKilled."
+
+      # High container CPU throttling
+      - alert: ContainerCPUThrottlingHigh
+        expr: |
+          rate(container_cpu_cfs_throttled_periods_total[5m])
+          / rate(container_cpu_cfs_periods_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU throttling for {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} is being CPU throttled >50% of the time."
+
+      # Container image pull errors
+      - alert: ContainerImagePullBackOff
+        expr: |
+          kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Image pull failure in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} cannot pull its image."
+
+      # Unusual network egress (egress to non-whitelisted CIDR)
+      - alert: ContainerUnusualEgress
+        expr: |
+          sum by (namespace, pod) (
+            rate(container_network_transmit_bytes_total[5m])
+          ) > 104857600
+        for: 10m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Unusual egress from {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} is transmitting >100MB/s — possible data exfiltration."
+
+      # Sensitive host path mounted
+      - alert: SensitiveHostPathMounted
+        expr: |
+          count by (namespace, pod, container) (
+            kube_pod_container_info{container!=""}
+            * on(namespace, pod) group_left()
+            (count by (namespace, pod) (kube_hostpath_volume_info) > 0)
+          ) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Sensitive host path mounted in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} has sensitive host paths mounted."
+
+      # Pod running as root
+      - alert: PodRunningAsRoot
+        expr: |
+          count by (namespace, pod) (
+            kube_pod_security_context{runasnonroot="false"}
+          ) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Pod running as root: {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} is running as root user."
+
+      # Network policy violation (if calico/cilium metrics available)
+      - alert: NetworkPolicyViolation
+        expr: |
+          increase(network_policy_violations_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Network policy violation detected"
+          description: "{{ $value }} network policy violation(s) in the last 15 minutes."
+
+      # Falco / runtime security alerts (if falco-exporter is deployed)
+      - alert: FalcoSecurityAlert
+        expr: |
+          increase(falco_events_total{priority=~"Emergency|Alert|Critical"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Falco security alert: {{ $labels.rule }}"
+          description: "Falco detected {{ $value }} critical event(s) for rule {{ $labels.rule }}."
+
+      # Audit log anomalies
+      - alert: KubernetesAuditAnomaly
+        expr: |
+          increase(kubernetes_audit_events_total{verb=~"create|delete|patch|update", resource=~"secrets|serviceaccounts|clusterroles|clusterrolebindings"}[15m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Unusual Kubernetes API activity"
+          description: "Elevated API activity on sensitive resources (secrets, RBAC)."
+
+  # ─── AutoScaling Alerts ────────────────────────────────────────────────
+  - name: autoscaling_alerts
+    interval: 30s
+    rules:
+      # HPA at max capacity
+      - alert: HPAMaxedOut
+        expr: |
+          kube_horizontalpodautoscaler_status_current_replicas
+          == kube_horizontalpodautoscaler_spec_max_replicas
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} at max replicas"
+          description: "HPA {{ $labels.horizontalpodautoscaler }} in namespace {{ $labels.namespace }} is at max replicas ({{ $value }})."
+
+      # HPA unable to scale
+      - alert: HPAUnableToScale
+        expr: |
+          kube_horizontalpodautoscaler_status_condition{condition="ScalingActive", status="false"} == 1
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} unable to scale"
+          description: "HPA {{ $labels.horizontalpodautoscaler }} cannot scale — check metrics availability."
+
+      # HPA flapping (rapid scale up/down)
+      - alert: HPAFlapping
+        expr: |
+          stddev_over_time(kube_horizontalpodautoscaler_status_current_replicas[30m]) > 1
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} is flapping"
+          description: "HPA replica count is oscillating — consider adjusting stabilization windows."
+
+      # Cluster autoscaler unable to scale up
+      - alert: ClusterAutoscalerUnableToScale
+        expr: |
+          increase(cluster_autoscaler_unneeded_nodes_count[15m]) == 0
+          and increase(cluster_autoscaler_unschedulable_pods_count[15m]) > 0
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Cluster autoscaler cannot provision nodes"
+          description: "Unschedulable pods exist but cluster autoscaler cannot add nodes."
+
+      # Node group at capacity
+      - alert: NodeGroupNearCapacity
+        expr: |
+          (sum by (nodegroup) (kube_node_info)
+          / sum by (nodegroup) (kube_node_spec_unschedulable == 0)) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Node group {{ $labels.nodegroup }} near capacity"
+          description: "Node group {{ $labels.nodegroup }} is >90% utilized."
+
+      # Scale-down stuck
+      - alert: ScaleDownStuck
+        expr: |
+          kube_horizontalpodautoscaler_status_desired_replicas
+          < kube_horizontalpodautoscaler_status_current_replicas
+          and on(horizontalpodautoscaler, namespace)
+          (kube_horizontalpodautoscaler_status_condition{condition="AbleToScale", status="true"} == 1)
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Scale-down stuck for {{ $labels.horizontalpodautoscaler }}"
+          description: "HPA {{ $labels.horizontalpodautoscaler }} desired < current for 30m — possible PDB or finalizer blocking."
+
+  # ─── Container Health Alerts ───────────────────────────────────────────
+  - name: container_health_alerts
+    interval: 30s
+    rules:
+      # Pod not ready
+      - alert: PodNotReady
+        expr: |
+          kube_pod_status_ready{condition="true"} == 0
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pod not ready: {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} has been not-ready for >10 minutes."
+
+      # Pod phase stuck (Pending, Unknown)
+      - alert: PodStuckInPhase
+        expr: |
+          kube_pod_status_phase{phase=~"Pending|Unknown"} == 1
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} stuck in {{ $labels.phase }}"
+          description: "Pod has been in {{ $labels.phase }} phase for >15 minutes."
+
+      # Container ready but not passing readiness probe
+      - alert: ContainerReadinessProbeFailing
+        expr: |
+          kube_pod_container_status_ready{ready="false"} == 1
+          and on(namespace, pod, container)
+          (kube_pod_container_status_running == 1)
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Readiness probe failing for {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} is running but failing readiness probes."
+
+      # High container memory usage
+      - alert: ContainerHighMemoryUsage
+        expr: |
+          (container_memory_working_set_bytes{container!=""}
+          / container_spec_memory_limit_bytes{container!=""} > 0.85)
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} memory usage >85% of limit."
+
+      # Container disk I/O saturation
+      - alert: ContainerDiskIOSaturation
+        expr: |
+          rate(container_fs_reads_bytes_total[5m]) + rate(container_fs_writes_bytes_total[5m]) > 52428800
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High disk I/O in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} disk I/O >50MB/s."
+
+      # Zombie processes in container
+      - alert: ContainerZombieProcesses
+        expr: |
+          container_processes_state{state="zombie"} > 0
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Zombie processes in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} has {{ $value }} zombie process(es)."
+
+      # Container file descriptor exhaustion
+      - alert: ContainerFDLimitNear
+        expr: |
+          (container_file_descriptors_open / container_file_descriptors_max) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "FD limit near exhaustion in {{ $labels.namespace }}/{{ $labels.pod }}"
+          description: "Container {{ $labels.container }} is using >80% of file descriptors."
+
+  # ─── Node / Infrastructure Alerts ──────────────────────────────────────
+  - name: node_infrastructure_alerts
+    interval: 30s
+    rules:
+      # Node high CPU
+      - alert: NodeHighCPU
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Node {{ $labels.instance }} CPU >90%"
+          description: "Node {{ $labels.instance }} CPU usage has been >90% for 10 minutes."
+
+      # Node memory pressure
+      - alert: NodeMemoryPressure
+        expr: |
+          (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 < 5
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Node {{ $labels.instance }} memory pressure"
+          description: "Node {{ $labels.instance }} has <5% available memory."
+
+      # Node disk pressure
+      - alert: NodeDiskPressure
+        expr: |
+          (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Node {{ $labels.instance }} disk pressure"
+          description: "Node {{ $labels.instance }} has <10% disk available on {{ $labels.mountpoint }}."
+
+      # Node network saturation
+      - alert: NodeNetworkSaturation
+        expr: |
+          rate(node_network_receive_bytes_total{device!~"lo|docker.*|veth.*|br-.*"}[5m]) > 1073741824
+          or rate(node_network_transmit_bytes_total{device!~"lo|docker.*|veth.*|br-.*"}[5m]) > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Node {{ $labels.instance }} network saturation"
+          description: "Node {{ $labels.instance }} network throughput >1GB/s."
+
+      # Kubelet down
+      - alert: KubeletDown
+        expr: |
+          up{job="kubelet"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Kubelet down on {{ $labels.instance }}"
+          description: "Kubelet on {{ $labels.instance }} is unreachable."
+
+      # etcd leader changes
+      - alert: EtcdLeaderChanges
+        expr: |
+          increase(etcd_server_leader_changes_seen_total[1h]) > 3
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "etcd leader changes detected"
+          description: "etcd has seen {{ $value }} leader changes in the last hour."

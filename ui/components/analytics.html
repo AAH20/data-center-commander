@@ -1,0 +1,51 @@
+<div class="container">
+  <header class="card">
+    <h1>Data Science & Continuous BI</h1>
+    <p>Decision-grade KPIs, source quality, demand signals, cost performance and operational risk.</p>
+  </header>
+  <div class="grid" id="analytics-cards"></div>
+  <div class="grid" style="margin-top:1rem">
+    <article class="card">
+      <h2>KPI Quality</h2>
+      <div id="kpi-quality" class="empty">Loading...</div>
+    </article>
+    <article class="card">
+      <h2>Telemetry Quality</h2>
+      <div id="telemetry-quality" class="empty">Loading...</div>
+    </article>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.analytics = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/analytics');
+      const cards = container.querySelector('#analytics-cards');
+      const observed = data.kpi_quality.filter(q => q.observations > 0);
+      cards.innerHTML = [
+        [observed.length, 'KPI signals with observations'],
+        [data.kpi_quality.length, 'Active KPI definitions'],
+        [data.telemetry_quality.reduce((s,t) => s + t.samples, 0), 'Telemetry samples'],
+        [data.workflow_health.reduce((s,w) => s + w.items, 0), 'Workflow items'],
+      ].map(([v, l]) => `<article class="card"><div class="value">${v}</div><div class="label">${l}</div></article>`).join('');
+
+      container.querySelector('#kpi-quality').innerHTML = data.kpi_quality.map(q => `
+        <div style="display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--color-border)">
+          <span>${DCC.utils.escapeHtml(q.name)}</span>
+          <span>${q.observations} obs · ${Math.round((q.mean_coverage||0)*100)}% coverage</span>
+        </div>
+      `).join('');
+
+      container.querySelector('#telemetry-quality').innerHTML = data.telemetry_quality.map(t => `
+        <div style="display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--color-border)">
+          <span>${DCC.utils.escapeHtml(t.quality_status)}</span>
+          <span>${t.samples} samples</span>
+        </div>
+      `).join('');
+    } catch (e) {
+      container.querySelector('#analytics-cards').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

@@ -1,0 +1,400 @@
+---
+# Wazuh Manager Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-manager-config
+  namespace: soc
+  labels:
+    app: wazuh-manager
+data:
+  ossec.conf: |
+    <ossec_config>
+      <global>
+        <jsonout_output>yes</jsonout_output>
+        <alerts_log>yes</alerts_log>
+        <logall>no</logall>
+        <logall_json>no</logall_json>
+        <email_notification>no</email_notification>
+        <smtp_server>smtp.example.com</smtp_server>
+        <email_from>ossec@example.com</email_from>
+        <email_to>alerts@example.com</email_to>
+        <email_maxperhour>12</email_maxperhour>
+        <email_log_source>alerts.log</email_log_source>
+        <queue_size>131072</queue_size>
+        <threads>4</threads>
+      </global>
+      <alerts>
+        <log_alert_level>3</log_alert_level>
+        <email_alert_level>12</email_alert_level>
+      </alerts>
+      <logging>
+        <log_level>info</log_level>
+      </logging>
+      <remote>
+        <connection>secure</connection>
+        <port>1514</port>
+        <protocol>tcp</protocol>
+        <queue_size>131072</queue_size>
+      </remote>
+      <rootcheck>
+        <disabled>no</disabled>
+        <check_files>yes</check_files>
+        <check_trojans>yes</check_trojans>
+        <check_dev>yes</check_dev>
+        <check_sys>yes</check_sys>
+        <check_pids>yes</check_pids>
+        <check_ports>yes</check_ports>
+        <check_if>yes</check_if>
+        <frequency>43200</frequency>
+        <rootkit_files>/var/ossec/etc/shared/rootkit_files.txt</rootkit_files>
+        <rootkit_trojans>/var/ossec/etc/shared/rootkit_trojans.txt</rootkit_trojans>
+        <system_audit>/var/ossec/etc/shared/system_audit_rcl.txt</system_audit>
+        <skip_nfs>yes</skip_nfs>
+      </rootcheck>
+      <wodle name="open-scap">
+        <disabled>yes</disabled>
+        <timeout>1800</timeout>
+        <interval>1d</interval>
+        <scan-on-start>yes</scan-on-start>
+      </wodle>
+      <wodle name="cis-cat">
+        <disabled>yes</disabled>
+        <timeout>1800</timeout>
+        <interval>1d</interval>
+        <scan-on-start>yes</scan-on-start>
+      </wodle>
+      <wodle name="syscollector">
+        <disabled>no</disabled>
+        <interval>1h</interval>
+        <scan_on_start>yes</scan_on_start>
+        <hardware>yes</hardware>
+        <os>yes</os>
+        <network>yes</network>
+        <packages>yes</packages>
+        <ports all="no">yes</ports>
+        <processes>yes</processes>
+      </wodle>
+      <wodle name="vulnerability-detector">
+        <disabled>no</disabled>
+        <interval>5m</interval>
+        <min_full_scan_interval>6h</min_full_scan_interval>
+        <run_on_start>yes</run_on_start>
+        <provider name="canonical">
+          <enabled>yes</enabled>
+          <os>jammy</os>
+          <os>focal</os>
+          <os>bionic</os>
+          <update_interval>1h</update_interval>
+        </provider>
+        <provider name="nvd">
+          <enabled>yes</enabled>
+          <update_from_year>2010</update_from_year>
+          <update_interval>1h</update_interval>
+        </provider>
+      </wodle>
+      <wodle name="command">
+        <disabled>no</disabled>
+        <tag>example-command</tag>
+        <command>/usr/bin/ls -la /</command>
+        <interval>300</interval>
+        <ignore_output>no</ignore_output>
+        <run_on_start>yes</run_on_start>
+        <timeout>60</timeout>
+      </wodle>
+      <wodle name="docker-listener">
+        <disabled>no</disabled>
+        <attempts>5</attempts>
+        <run_on_start>yes</run_on_start>
+        <interval>10</interval>
+      </wodle>
+    </ossec_config>
+---
+# TheHive Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thehive-config
+  namespace: soc
+  labels:
+    app: thehive
+data:
+  application.conf: |
+    # TheHive configuration
+    play.http.secret.key = "changeme-secret-key-min-32-chars-long!!"
+    datasource {
+      driver = org.postgresql.Driver
+      url = "jdbc:postgresql://postgres:5432/thehive"
+      username = thehive
+      password = thehive
+    }
+    # Search configuration
+    search {
+      index = thehive
+      uri = "http://elasticsearch:9200"
+    }
+    # Cortex configuration
+    cortex {
+      servers = [
+        {
+          name = "local"
+          url = "http://cortex:9001"
+          key = "changeme-cortex-api-key"
+        }
+      ]
+    }
+    # MISP configuration
+    misp {
+      servers = []
+    }
+    # Response configuration
+    response {
+      interval = 10
+    }
+---
+# Cortex Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cortex-config
+  namespace: soc
+  labels:
+    app: cortex
+data:
+  application.conf: |
+    # Cortex configuration
+    play.http.secret.key = "changeme-cortex-secret-key-32-chars!!"
+    datasource {
+      driver = org.postgresql.Driver
+      url = "jdbc:postgresql://postgres:5432/cortex"
+      username = cortex
+      password = cortex
+    }
+    # Analyzer configuration
+    analyzer {
+      path = "/opt/cortex/analyzers"
+    }
+    # Responder configuration
+    responder {
+      path = "/opt/cortex/responders"
+    }
+---
+# Alertmanager Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: soc
+  labels:
+    app: alertmanager
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alertmanager@soc.local'
+      smtp_auth_username: ''
+      smtp_auth_password: ''
+      slack_api_url: ''
+      pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+      opsgenie_api_key: ''
+      wechat_api_url: 'https://qyapi.weixin.qq.com/cgi-bin/'
+      wechat_api_secret: ''
+      wechat_api_corp_id: ''
+      victorops_api_key: ''
+      victorops_api_url: 'https://alert.victorops.com/integrations/generic/20131114/alert/'
+      resolve_timeout: 5m
+
+    templates:
+      - '/etc/alertmanager/templates/*.tmpl'
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: 'default-receiver'
+      routes:
+        - matchers:
+            - severity = "critical"
+          receiver: 'critical-receiver'
+          group_wait: 10s
+          repeat_interval: 5m
+        - matchers:
+            - severity = "warning"
+          receiver: 'warning-receiver'
+          group_wait: 30s
+          repeat_interval: 1h
+        - matchers:
+            - severity = "info"
+          receiver: 'info-receiver'
+          group_wait: 1m
+          repeat_interval: 4h
+
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'cluster', 'service']
+      - source_match:
+          severity: 'warning'
+        target_match:
+          severity: 'info'
+        equal: ['alertname', 'cluster', 'service']
+
+    receivers:
+      - name: 'default-receiver'
+        email_configs:
+          - to: 'soc-team@example.com'
+            send_resolved: true
+            headers:
+              Subject: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+      - name: 'critical-receiver'
+        email_configs:
+          - to: 'soc-critical@example.com'
+            send_resolved: true
+            headers:
+              Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+        slack_configs:
+          - channel: '#soc-critical'
+            send_resolved: true
+            title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+      - name: 'warning-receiver'
+        email_configs:
+          - to: 'soc-warnings@example.com'
+            send_resolved: true
+            headers:
+              Subject: '[WARNING] {{ .GroupLabels.alertname }}'
+      - name: 'info-receiver'
+        email_configs:
+          - to: 'soc-info@example.com'
+            send_resolved: true
+            headers:
+              Subject: '[INFO] {{ .GroupLabels.alertname }}'
+---
+# SOC Dashboard Provisioning
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soc-dashboard-provisioning
+  namespace: soc
+  labels:
+    app: soc-dashboard
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Elasticsearch-SOC
+        type: elasticsearch
+        access: proxy
+        url: http://elasticsearch:9200
+        editable: true
+        database: "wazuh-alerts-*"
+        jsonData:
+          timeField: "@timestamp"
+          esVersion: "8.0.0"
+          logMessageField: "full_log"
+          logLevelField: "rule.level"
+      - name: TheHive
+        type: marcusolsson-json-datasource
+        access: proxy
+        url: http://thehive:9000/api
+        editable: true
+        jsonData:
+          httpHeaderName: "Authorization"
+          httpHeaderValue: "Bearer changeme-thehive-api-key"
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: soc
+        orgId: 1
+        folder: "SOC"
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/soc
+---
+# Fluentd SOC Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-soc-config
+  namespace: soc
+  labels:
+    app: fluentd-soc
+data:
+  fluent.conf: |
+    <source>
+      @type forward
+      port 24224
+      bind 0.0.0.0
+    </source>
+    <source>
+      @type tail
+      path /var/log/soc/*.log
+      pos_file /var/log/fluentd/soc.pos
+      tag soc.*
+      format json
+      time_key timestamp
+      time_format %Y-%m-%dT%H:%M:%S.%NZ
+    </source>
+    <filter soc.**>
+      @type record_transformer
+      enable_ruby true
+      <record>
+        environment "production"
+        cluster "primary"
+        source "soc-stack"
+      </record>
+    </filter>
+    <match soc.**>
+      @type elasticsearch
+      host elasticsearch
+      port 9200
+      logstash_format true
+      logstash_prefix soc
+      include_tag_key true
+      type_name _doc
+      flush_interval 10s
+      retry_max_interval 30
+      retry_forever true
+    </match>
+    <match fluent.**>
+      @type null
+    </match>
+---
+# Trivy Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trivy-config
+  namespace: soc
+  labels:
+    app: trivy
+data:
+  trivy.yaml: |
+    scan:
+      security-checks:
+        - vuln
+        - secret
+        - config
+      severity:
+        - CRITICAL
+        - HIGH
+        - MEDIUM
+        - LOW
+      ignore-unfixed: false
+      offline-scan: false
+      skip-dirs:
+        - /var/lib
+        - /usr/share
+    cache:
+      dir: /tmp/trivy-cache
+    db:
+      download-only: false
+      skip-update: false
+    report:
+      format: json
+      output: /reports/trivy-report.json

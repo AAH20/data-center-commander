@@ -1,0 +1,3417 @@
+# OPA/Gatekeeper Policies — Data Center Commander SOC
+# Version: 1.0.0
+
+# =============================================================================
+# POLICY: Require read-only root filesystem
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sReadOnlyRootFilesystem
+metadata:
+  name: readonly-rootfs
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+  parameters: {}
+
+---
+# =============================================================================
+# POLICY: Require non-root user
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sAllowedUsers
+metadata:
+  name: non-root-user
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    runAsUser:
+      rule: MustRunAsNonRoot
+
+---
+# =============================================================================
+# POLICY: Require resource limits
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredResources
+metadata:
+  name: require-resources
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    limits:
+      - cpu
+      - memory
+    requests:
+      - cpu
+      - memory
+
+---
+# =============================================================================
+# POLICY: Require security context
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPPrivilegeContainer
+metadata:
+  name: no-privileged-containers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    privileged: false
+
+---
+# =============================================================================
+# POLICY: Require seccomp profile
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPSeccomp
+metadata:
+  name: require-seccomp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedProfiles:
+      - RuntimeDefault
+      - Localhost
+    localhostProfile: "*"
+
+---
+# =============================================================================
+# POLICY: Require AppArmor profile
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPAppArmor
+metadata:
+  name: require-apparmor
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedProfiles:
+      - runtime/default
+      - localhost/*
+
+---
+# =============================================================================
+# POLICY: Require SELinux options
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPSELinux
+metadata:
+  name: require-selinux
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedSELinuxOptions:
+      - level: "s0"
+        role: "system_r"
+        type: "container_t"
+        user: "system_u"
+
+---
+# =============================================================================
+# POLICY: Require image digest
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredImageDigest
+metadata:
+  name: require-image-digest
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedRegistries:
+      - docker.io/data-center-commander/
+      - ghcr.io/data-center-commander/
+      - registry.data-center-commander.local/
+
+---
+# =============================================================================
+# POLICY: Require image signature
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sVerifiedImage
+metadata:
+  name: require-image-signature
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedRegistries:
+      - docker.io/data-center-commander/
+      - ghcr.io/data-center-commander/
+      - registry.data-center-commander.local/
+
+---
+# =============================================================================
+# POLICY: Require SBOM
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSBOM
+metadata:
+  name: require-sbom
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedRegistries:
+      - docker.io/data-center-commander/
+      - ghcr.io/data-center-commander/
+      - registry.data-center-commander.local/
+
+---
+# =============================================================================
+# POLICY: Require vulnerability scan
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sVulnerabilityScan
+metadata:
+  name: require-vuln-scan
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    maxCritical: 0
+    maxHigh: 0
+    maxMedium: 5
+    maxLow: 10
+
+---
+# =============================================================================
+# POLICY: Require network policy
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredNetworkPolicy
+metadata:
+  name: require-network-policy
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requiredLabels:
+      - app
+
+---
+# =============================================================================
+# POLICY: Require pod security policy
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sPSPPodSecurityPolicy
+metadata:
+  name: require-psp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    allowedCapabilities: []
+    allowedHostPaths: []
+    allowedHostPorts: []
+    allowedVolumes: []
+
+---
+# =============================================================================
+# POLICY: Require RBAC
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredRBAC
+metadata:
+  name: require-rbac
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccount: true
+
+---
+# =============================================================================
+# POLICY: Require audit logging
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredAuditLogging
+metadata:
+  name: require-audit-logging
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    auditLogPath: /var/log/audit/audit.log
+
+---
+# =============================================================================
+# POLICY: Require encryption at rest
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredEncryptionAtRest
+metadata:
+  name: require-encryption-at-rest
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["PersistentVolumeClaim"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    encryptionRequired: true
+
+---
+# =============================================================================
+# POLICY: Require encryption in transit
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredEncryptionInTransit
+metadata:
+  name: require-encryption-in-transit
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Service"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    tlsRequired: true
+
+---
+# =============================================================================
+# POLICY: Require key rotation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredKeyRotation
+metadata:
+  name: require-key-rotation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Secret"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    maxAgeDays: 90
+
+---
+# =============================================================================
+# POLICY: Require secret encryption
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSecretEncryption
+metadata:
+  name: require-secret-encryption
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Secret"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    encryptionRequired: true
+
+---
+# =============================================================================
+# POLICY: Require WAF
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredWAF
+metadata:
+  name: require-waf
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Ingress"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    wafRequired: true
+
+---
+# =============================================================================
+# POLICY: Require rate limiting
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredRateLimit
+metadata:
+  name: require-rate-limit
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Ingress"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    rateLimit: "100/minute"
+
+---
+# =============================================================================
+# POLICY: Require health check
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredHealthCheck
+metadata:
+  name: require-health-check
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireLivenessProbe: true
+    requireReadinessProbe: true
+
+---
+# =============================================================================
+# POLICY: Require resource quotas
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredResourceQuotas
+metadata:
+  name: require-resource-quotas
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireQuota: true
+
+---
+# =============================================================================
+# POLICY: Require limit ranges
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLimitRanges
+metadata:
+  name: require-limit-ranges
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Namespace"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireLimitRange: true
+
+---
+# =============================================================================
+# POLICY: Require pod disruption budget
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredPodDisruptionBudget
+metadata:
+  name: require-pdb
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    minAvailable: 1
+
+---
+# =============================================================================
+# POLICY: Require HPA
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredHPA
+metadata:
+  name: require-hpa
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireHPA: true
+
+---
+# =============================================================================
+# POLICY: Require VPA
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredVPA
+metadata:
+  name: require-vpa
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireVPA: true
+
+---
+# =============================================================================
+# POLICY: Require priority class
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredPriorityClass
+metadata:
+  name: require-priority-class
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requirePriorityClass: true
+
+---
+# =============================================================================
+# POLICY: Require affinity rules
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredAffinity
+metadata:
+  name: require-affinity
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireAntiAffinity: true
+
+---
+# =============================================================================
+# POLICY: Require topology spread constraints
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredTopologySpread
+metadata:
+  name: require-topology-spread
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireTopologySpread: true
+
+---
+# =============================================================================
+# POLICY: Require runtime class
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredRuntimeClass
+metadata:
+  name: require-runtime-class
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireRuntimeClass: true
+
+---
+# =============================================================================
+# POLICY: Require image provenance
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredImageProvenance
+metadata:
+  name: require-image-provenance
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireProvenance: true
+
+---
+# =============================================================================
+# POLICY: Require monitoring
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredMonitoring
+metadata:
+  name: require-monitoring
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireMonitoring: true
+
+---
+# =============================================================================
+# POLICY: Require logging
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLogging
+metadata:
+  name: require-logging
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireLogging: true
+
+---
+# =============================================================================
+# POLICY: Require tracing
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredTracing
+metadata:
+  name: require-tracing
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireTracing: true
+
+---
+# =============================================================================
+# POLICY: Require service mesh
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceMesh
+metadata:
+  name: require-service-mesh
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceMesh: true
+
+---
+# =============================================================================
+# POLICY: Require cert manager
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredCertManager
+metadata:
+  name: require-cert-manager
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Ingress"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireCertManager: true
+
+---
+# =============================================================================
+# POLICY: Require ingress controller
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredIngressController
+metadata:
+  name: require-ingress-controller
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Ingress"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireIngressController: true
+
+---
+# =============================================================================
+# POLICY: Require circuit breaker
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredCircuitBreaker
+metadata:
+  name: require-circuit-breaker
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireCircuitBreaker: true
+
+---
+# =============================================================================
+# POLICY: Require retry policy
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredRetryPolicy
+metadata:
+  name: require-retry-policy
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireRetryPolicy: true
+
+---
+# =============================================================================
+# POLICY: Require timeout configuration
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredTimeout
+metadata:
+  name: require-timeout
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireTimeout: true
+
+---
+# =============================================================================
+# POLICY: Require init containers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredInitContainers
+metadata:
+  name: require-init-containers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireInitContainers: true
+
+---
+# =============================================================================
+# POLICY: Require sidecar containers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSidecarContainers
+metadata:
+  name: require-sidecar-containers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireSidecarContainers: true
+
+---
+# =============================================================================
+# POLICY: Require external secrets
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredExternalSecrets
+metadata:
+  name: require-external-secrets
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireExternalSecrets: true
+
+---
+# =============================================================================
+# POLICY: Require mutating webhook
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredMutatingWebhook
+metadata:
+  name: require-mutating-webhook
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireMutatingWebhook: true
+
+---
+# =============================================================================
+# POLICY: Require validating webhook
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredValidatingWebhook
+metadata:
+  name: require-validating-webhook
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireValidatingWebhook: true
+
+---
+# =============================================================================
+# POLICY: Require audit policy
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredAuditPolicy
+metadata:
+  name: require-audit-policy
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireAuditPolicy: true
+
+---
+# =============================================================================
+# POLICY: Require DDoS protection
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredDDoSProtection
+metadata:
+  name: require-ddos-protection
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Ingress"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireDDoSProtection: true
+
+---
+# =============================================================================
+# POLICY: Require graceful shutdown
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredGracefulShutdown
+metadata:
+  name: require-graceful-shutdown
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireGracefulShutdown: true
+
+---
+# =============================================================================
+# POLICY: Require preStop hook
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredPreStopHook
+metadata:
+  name: require-prestop-hook
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requirePreStopHook: true
+
+---
+# =============================================================================
+# POLICY: Require termination grace period
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredTerminationGracePeriod
+metadata:
+  name: require-termination-grace-period
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireTerminationGracePeriod: true
+
+---
+# =============================================================================
+# POLICY: Require pod lifecycle hooks
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredPodLifecycleHooks
+metadata:
+  name: require-pod-lifecycle-hooks
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requirePodLifecycleHooks: true
+
+---
+# =============================================================================
+# POLICY: Require external DNS
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredExternalDNS
+metadata:
+  name: require-external-dns
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Ingress"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireExternalDNS: true
+
+---
+# =============================================================================
+# POLICY: Require aggregation rules
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredAggregationRules
+metadata:
+  name: require-aggregation-rules
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireAggregationRules: true
+
+---
+# =============================================================================
+# POLICY: Require RBAC review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredRBACReview
+metadata:
+  name: require-rbac-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireRBACReview: true
+
+---
+# =============================================================================
+# POLICY: Require access review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredAccessReview
+metadata:
+  name: require-access-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireAccessReview: true
+
+---
+# =============================================================================
+# POLICY: Require subject access review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSubjectAccessReview
+metadata:
+  name: require-subject-access-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireSubjectAccessReview: true
+
+---
+# =============================================================================
+# POLICY: Require self subject access review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSelfSubjectAccessReview
+metadata:
+  name: require-self-subject-access-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireSelfSubjectAccessReview: true
+
+---
+# =============================================================================
+# POLICY: Require self subject rules review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSelfSubjectRulesReview
+metadata:
+  name: require-self-subject-rules-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireSelfSubjectRulesReview: true
+
+---
+# =============================================================================
+# POLICY: Require subject rules review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSubjectRulesReview
+metadata:
+  name: require-subject-rules-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireSubjectRulesReview: true
+
+---
+# =============================================================================
+# POLICY: Require token request
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredTokenRequest
+metadata:
+  name: require-token-request
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireTokenRequest: true
+
+---
+# =============================================================================
+# POLICY: Require token review
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredTokenReview
+metadata:
+  name: require-token-review
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireTokenReview: true
+
+---
+# =============================================================================
+# POLICY: Require bound token
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredBoundToken
+metadata:
+  name: require-bound-token
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireBoundToken: true
+
+---
+# =============================================================================
+# POLICY: Require expiration
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredExpiration
+metadata:
+  name: require-expiration
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireExpiration: true
+
+---
+# =============================================================================
+# POLICY: Require audience
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredAudience
+metadata:
+  name: require-audience
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireAudience: true
+
+---
+# =============================================================================
+# POLICY: Require path
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredPath
+metadata:
+  name: require-path
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requirePath: true
+
+---
+# =============================================================================
+# POLICY: Require expiration seconds
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredExpirationSeconds
+metadata:
+  name: require-expiration-seconds
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireExpirationSeconds: true
+
+---
+# =============================================================================
+# POLICY: Require bound object
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredBoundObject
+metadata:
+  name: require-bound-object
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireBoundObject: true
+
+---
+# =============================================================================
+# POLICY: Require secret ref
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredSecretRef
+metadata:
+  name: require-secret-ref
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireSecretRef: true
+
+---
+# =============================================================================
+# POLICY: Require key ref
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredKeyRef
+metadata:
+  name: require-key-ref
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireKeyRef: true
+
+---
+# =============================================================================
+# POLICY: Require CA bundle
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredCABundle
+metadata:
+  name: require-ca-bundle
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireCABundle: true
+
+---
+# =============================================================================
+# POLICY: Require service account token
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountToken
+metadata:
+  name: require-service-account-token
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountToken: true
+
+---
+# =============================================================================
+# POLICY: Require service account name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountName
+metadata:
+  name: require-service-account-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountName: true
+
+---
+# =============================================================================
+# POLICY: Require service account image pull secrets
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountImagePullSecrets
+metadata:
+  name: require-service-account-image-pull-secrets
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountImagePullSecrets: true
+
+---
+# =============================================================================
+# POLICY: Require service account automount
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountAutomount
+metadata:
+  name: require-service-account-automount
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountAutomount: true
+
+---
+# =============================================================================
+# POLICY: Require service account labels
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountLabels
+metadata:
+  name: require-service-account-labels
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountLabels: true
+
+---
+# =============================================================================
+# POLICY: Require service account annotations
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountAnnotations
+metadata:
+  name: require-service-account-annotations
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountAnnotations: true
+
+---
+# =============================================================================
+# POLICY: Require service account creation timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountCreationTimestamp
+metadata:
+  name: require-service-account-creation-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountCreationTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account deletion timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountDeletionTimestamp
+metadata:
+  name: require-service-account-deletion-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountDeletionTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account finalizers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountFinalizers
+metadata:
+  name: require-service-account-finalizers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountFinalizers: true
+
+---
+# =============================================================================
+# POLICY: Require service account owner references
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountOwnerReferences
+metadata:
+  name: require-service-account-owner-references
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountOwnerReferences: true
+
+---
+# =============================================================================
+# POLICY: Require service account managed fields
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountManagedFields
+metadata:
+  name: require-service-account-managed-fields
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountManagedFields: true
+
+---
+# =============================================================================
+# POLICY: Require service account generate name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountGenerateName
+metadata:
+  name: require-service-account-generate-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountGenerateName: true
+
+---
+# =============================================================================
+# POLICY: Require service account resource version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountResourceVersion
+metadata:
+  name: require-service-account-resource-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountResourceVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account UID
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountUID
+metadata:
+  name: require-service-account-uid
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountUID: true
+
+---
+# =============================================================================
+# POLICY: Require service account generation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountGeneration
+metadata:
+  name: require-service-account-generation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountGeneration: true
+
+---
+# =============================================================================
+# POLICY: Require service account self link
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountSelfLink
+metadata:
+  name: require-service-account-self-link
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountSelfLink: true
+
+---
+# =============================================================================
+# POLICY: Require service account spec
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountSpec
+metadata:
+  name: require-service-account-spec
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountSpec: true
+
+---
+# =============================================================================
+# POLICY: Require service account status
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountStatus
+metadata:
+  name: require-service-account-status
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountStatus: true
+
+---
+# =============================================================================
+# POLICY: Require service account type
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountType
+metadata:
+  name: require-service-account-type
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountType: true
+
+---
+# =============================================================================
+# POLICY: Require service account secrets
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountSecrets
+metadata:
+  name: require-service-account-secrets
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountSecrets: true
+
+---
+# =============================================================================
+# POLICY: Require service account automount service account token
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountAutomountServiceAccountToken
+metadata:
+  name: require-service-account-automount-service-account-token
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountAutomountServiceAccountToken: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretName
+metadata:
+  name: require-service-account-token-secret-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret namespace
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretNamespace
+metadata:
+  name: require-service-account-token-secret-namespace
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretNamespace: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret UID
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretUID
+metadata:
+  name: require-service-account-token-secret-uid
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretUID: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret resource version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretResourceVersion
+metadata:
+  name: require-service-account-token-secret-resource-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretResourceVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret generation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretGeneration
+metadata:
+  name: require-service-account-token-secret-generation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretGeneration: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret self link
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretSelfLink
+metadata:
+  name: require-service-account-token-secret-self-link
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretSelfLink: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret data
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretData
+metadata:
+  name: require-service-account-token-secret-data
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretData: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret string data
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretStringData
+metadata:
+  name: require-service-account-token-secret-string-data
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretStringData: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret type
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretType
+metadata:
+  name: require-service-account-token-secret-type
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretType: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret immutable
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretImmutable
+metadata:
+  name: require-service-account-token-secret-immutable
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretImmutable: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret creation timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretCreationTimestamp
+metadata:
+  name: require-service-account-token-secret-creation-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretCreationTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret deletion timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretDeletionTimestamp
+metadata:
+  name: require-service-account-token-secret-deletion-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretDeletionTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret finalizers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretFinalizers
+metadata:
+  name: require-service-account-token-secret-finalizers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretFinalizers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret owner references
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretOwnerReferences
+metadata:
+  name: require-service-account-token-secret-owner-references
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretOwnerReferences: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret managed fields
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretManagedFields
+metadata:
+  name: require-service-account-token-secret-managed-fields
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretManagedFields: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret generate name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretGenerateName
+metadata:
+  name: require-service-account-token-secret-generate-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretGenerateName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret labels
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretLabels
+metadata:
+  name: require-service-account-token-secret-labels
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretLabels: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret annotations
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretAnnotations
+metadata:
+  name: require-service-account-token-secret-annotations
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretAnnotations: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret API version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretAPIVersion
+metadata:
+  name: require-service-account-token-secret-api-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretAPIVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret kind
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretKind
+metadata:
+  name: require-service-account-token-secret-kind
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretKind: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadata
+metadata:
+  name: require-service-account-token-secret-metadata
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadata: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret spec
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretSpec
+metadata:
+  name: require-service-account-token-secret-spec
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretSpec: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret status
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretStatus
+metadata:
+  name: require-service-account-token-secret-status
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretStatus: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret subresource
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretSubresource
+metadata:
+  name: require-service-account-token-secret-subresource
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretSubresource: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret verbs
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretVerbs
+metadata:
+  name: require-service-account-token-secret-verbs
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretVerbs: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret groups
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretGroups
+metadata:
+  name: require-service-account-token-secret-groups
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretGroups: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret users
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretUsers
+metadata:
+  name: require-service-account-token-secret-users
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretUsers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret service accounts
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretServiceAccounts
+metadata:
+  name: require-service-account-token-secret-service-accounts
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretServiceAccounts: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret nodes
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretNodes
+metadata:
+  name: require-service-account-token-secret-nodes
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretNodes: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret component statuses
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretComponentStatuses
+metadata:
+  name: require-service-account-token-secret-component-statuses
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretComponentStatuses: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret conditions
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretConditions
+metadata:
+  name: require-service-account-token-secret-conditions
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretConditions: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret allocated resources
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretAllocatedResources
+metadata:
+  name: require-service-account-token-secret-allocated-resources
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretAllocatedResources: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret capacity
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretCapacity
+metadata:
+  name: require-service-account-token-secret-capacity
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretCapacity: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret phase
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretPhase
+metadata:
+  name: require-service-account-token-secret-phase
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretPhase: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret message
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMessage
+metadata:
+  name: require-service-account-token-secret-message
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMessage: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret reason
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretReason
+metadata:
+  name: require-service-account-token-secret-reason
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretReason: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret last transition time
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretLastTransitionTime
+metadata:
+  name: require-service-account-token-secret-last-transition-time
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretLastTransitionTime: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret observed generation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretObservedGeneration
+metadata:
+  name: require-service-account-token-secret-observed-generation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretObservedGeneration: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret type meta
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretTypeMeta
+metadata:
+  name: require-service-account-token-secret-type-meta
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretTypeMeta: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret list meta
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretListMeta
+metadata:
+  name: require-service-account-token-secret-list-meta
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretListMeta: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata list meta
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataListMeta
+metadata:
+  name: require-service-account-token-secret-metadata-list-meta
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataListMeta: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFields
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFields: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata owner references
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataOwnerReferences
+metadata:
+  name: require-service-account-token-secret-metadata-owner-references
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataOwnerReferences: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata finalizers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataFinalizers
+metadata:
+  name: require-service-account-token-secret-metadata-finalizers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataFinalizers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata creation timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataCreationTimestamp
+metadata:
+  name: require-service-account-token-secret-metadata-creation-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataCreationTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata deletion timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataDeletionTimestamp
+metadata:
+  name: require-service-account-token-secret-metadata-deletion-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataDeletionTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata deletion grace period seconds
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataDeletionGracePeriodSeconds
+metadata:
+  name: require-service-account-token-secret-metadata-deletion-grace-period-seconds
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataDeletionGracePeriodSeconds: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata generate name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataGenerateName
+metadata:
+  name: require-service-account-token-secret-metadata-generate-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataGenerateName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata generation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataGeneration
+metadata:
+  name: require-service-account-token-secret-metadata-generation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataGeneration: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata labels
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataLabels
+metadata:
+  name: require-service-account-token-secret-metadata-labels
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataLabels: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata annotations
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataAnnotations
+metadata:
+  name: require-service-account-token-secret-metadata-annotations
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataAnnotations: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata resource version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataResourceVersion
+metadata:
+  name: require-service-account-token-secret-metadata-resource-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataResourceVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata self link
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataSelfLink
+metadata:
+  name: require-service-account-token-secret-metadata-self-link
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataSelfLink: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata UID
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataUID
+metadata:
+  name: require-service-account-token-secret-metadata-uid
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataUID: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataName
+metadata:
+  name: require-service-account-token-secret-metadata-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata namespace
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataNamespace
+metadata:
+  name: require-service-account-token-secret-metadata-namespace
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataNamespace: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata cluster name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataClusterName
+metadata:
+  name: require-service-account-token-secret-metadata-cluster-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataClusterName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata initializers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataInitializers
+metadata:
+  name: require-service-account-token-secret-metadata-initializers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataInitializers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata apply configuration
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataApplyConfiguration
+metadata:
+  name: require-service-account-token-secret-metadata-apply-configuration
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataApplyConfiguration: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata server side apply
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataServerSideApply
+metadata:
+  name: require-service-account-token-secret-metadata-server-side-apply
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataServerSideApply: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields manager
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsManager
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-manager
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsManager: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields operation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsOperation
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-operation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsOperation: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields API version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsAPIVersion
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-api-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsAPIVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields time
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsTime
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-time
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsTime: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields fields type
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsFieldsType
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-fields-type
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsFieldsType: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields fields v1
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsFieldsV1
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-fields-v1
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsFieldsV1: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields subresource
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsSubresource
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-subresource
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsSubresource: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields owner references
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsOwnerReferences
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-owner-references
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsOwnerReferences: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields finalizers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsFinalizers
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-finalizers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsFinalizers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields creation timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsCreationTimestamp
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-creation-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsCreationTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields deletion timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsDeletionTimestamp
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-deletion-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsDeletionTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields deletion grace period seconds
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsDeletionGracePeriodSeconds
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-deletion-grace-period-seconds
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsDeletionGracePeriodSeconds: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields generate name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsGenerateName
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-generate-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsGenerateName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields generation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsGeneration
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-generation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsGeneration: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields labels
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsLabels
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-labels
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsLabels: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields annotations
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsAnnotations
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-annotations
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsAnnotations: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields resource version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsResourceVersion
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-resource-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsResourceVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields self link
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsSelfLink
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-self-link
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsSelfLink: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields UID
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsUID
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-uid
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsUID: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsName
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields namespace
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsNamespace
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-namespace
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsNamespace: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields cluster name
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsClusterName
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-cluster-name
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsClusterName: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields initializers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsInitializers
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-initializers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsInitializers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields apply configuration
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsApplyConfiguration
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-apply-configuration
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsApplyConfiguration: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields server side apply
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsServerSideApply
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-server-side-apply
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsServerSideApply: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields manager
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsManager
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-manager
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsManager: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields operation
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsOperation
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-operation
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsOperation: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields API version
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsAPIVersion
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-api-version
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsAPIVersion: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields time
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsTime
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-time
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsTime: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields fields type
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsFieldsType
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-fields-type
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsFieldsType: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields fields v1
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsFieldsV1
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-fields-v1
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsFieldsV1: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields subresource
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsSubresource
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-subresource
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsSubresource: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields owner references
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsOwnerReferences
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-owner-references
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsOwnerReferences: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields finalizers
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsFinalizers
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-finalizers
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsFinalizers: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields creation timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsCreationTimestamp
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-creation-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsCreationTimestamp: true
+
+---
+# =============================================================================
+# POLICY: Require service account token secret metadata managed fields deletion timestamp
+# =============================================================================
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredServiceAccountTokenSecretMetadataManagedFieldsDeletionTimestamp
+metadata:
+  name: require-service-account-token-secret-metadata-managed-fields-deletion-timestamp
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    excludedNamespaces:
+      - kube-system
+  parameters:
+    requireServiceAccountTokenSecretMetadataManagedFieldsDeletionTimestamp: true

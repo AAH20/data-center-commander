@@ -1,0 +1,46 @@
+# =============================================================================
+# Example tfvars — 1 node, 24-hour Capacity Block
+# =============================================================================
+# Copy to terraform.tfvars and fill the reservation window. Both date ranges
+# are REQUIRED: the offering lookup is a search over a time window, not an
+# instant, and AWS will reject a window starting less than ~48h out.
+
+region     = "us-east-1"
+environment = "prod"
+
+name_prefix  = "dcc-h200"
+cost_center  = "agentic-ai-platform"
+workload_class = "agentic-rl-training"
+
+# --- Compute -----------------------------------------------------------------
+# p5e.48xlarge  = 8x H200, 1128 GB HBM3, 192 vCPU, 2 TiB RAM  -> $47.76/hr
+# p5en.48xlarge = same GPUs, PCIe Gen5 + EFAv3, faster EBS     -> $54.92/hr
+instance_type  = "p5e.48xlarge"
+instance_count = 1
+
+# --- Capacity Block window ---------------------------------------------------
+# Must be RFC3339 UTC and at least 48 hours in the future.
+# 1 node x 24h at $47.76/hr = $1,146.24 up front. NON-REFUNDABLE.
+capacity_duration_hours        = 24
+reservation_start_date_range   = "2026-10-20T00:00:00Z"
+reservation_end_date_range     = "2026-10-22T00:00:00Z"
+
+# --- Networking --------------------------------------------------------------
+# 32 = AWS maximum-bandwidth layout (1 ENA + 32 EFA-only interfaces).
+# Drop to 4 for a cheaper/simpler bring-up; NCCL still works, at reduced fabric.
+network_card_count = 32
+allowed_ssh_cidrs  = ["203.0.113.10/32"] # replace; never 0.0.0.0/0
+
+# --- Storage -----------------------------------------------------------------
+enable_fsx_lustre              = true
+lustre_storage_capacity_gib    = 12000
+lustre_deployment_type         = "SCRATCH_2"
+
+# --- Encryption --------------------------------------------------------------
+# Empty string falls back to AWS-managed keys, which cannot be scoped per
+# tenant. Supply a CMK for any workload touching regulated data.
+kms_key_arn = ""
+
+# --- Safety ------------------------------------------------------------------
+# Leave true. A Capacity Block cannot be cancelled; destroy only forgets it.
+prevent_capacity_block_destroy = true

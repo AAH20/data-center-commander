@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "id": "DC_NET_001",
+      "category": "networking",
+      "title": "Security group must not allow unrestricted ingress on administrative ports",
+      "severity": "CRITICAL",
+      "summary": "RDP (3389) and SSH (22) must not be exposed to 0.0.0.0/0.",
+      "description": "Administrative protocols reachable from the public internet are the dominant initial-access vector for data-center infrastructure. Restrict source CIDRs to known management ranges.",
+      "remediation": "Replace 0.0.0.0/0 with a specific CIDR for the management network.",
+      "resource_types": ["aws_security_group", "aws_security_group_rule"],
+      "checks": [
+        {
+          "condition": "ingress.cidr_blocks contains 0.0.0.0/0 AND ingress.from_port in [22, 3389]",
+          "verdict": "fail"
+        }
+      ]
+    },
+    {
+      "id": "DC_NET_002",
+      "category": "networking",
+      "title": "Network segmentation must be explicit",
+      "severity": "HIGH",
+      "summary": "Workloads must declare a network segment; public placement requires justification.",
+      "description": "Every resource must carry a network segment label so the default-deny NetworkPolicy model can be enforced and audited.",
+      "remediation": "Set network.segment to private, dmz, or public deliberately.",
+      "resource_types": ["aws_instance", "aws_db_instance"],
+      "checks": [
+        {
+          "condition": "tags.network_segment is set",
+          "verdict": "fail when absent"
+        }
+      ]
+    }
+  ]
+}

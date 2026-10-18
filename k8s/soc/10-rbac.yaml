@@ -1,0 +1,326 @@
+---
+# Wazuh Agent ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: wazuh-agent
+  namespace: soc
+  labels:
+    app: wazuh-agent
+---
+# Wazuh Agent ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: wazuh-agent
+  labels:
+    app: wazuh-agent
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: [""]
+    resources:
+      - nodes/stats
+    verbs:
+      - get
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - replicasets
+      - statefulsets
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs:
+      - get
+      - watch
+      - list
+---
+# Wazuh Agent ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: wazuh-agent
+  labels:
+    app: wazuh-agent
+subjects:
+  - kind: ServiceAccount
+    name: wazuh-agent
+    namespace: soc
+roleRef:
+  kind: ClusterRole
+  name: wazuh-agent
+  apiGroup: rbac.authorization.k8s.io
+---
+# SOC Reader Role (for read-only access to SOC resources)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: soc-reader
+  namespace: soc
+  labels:
+    app: soc
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - configmaps
+      - secrets
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - get
+      - watch
+      - list
+---
+# SOC Reader RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: soc-reader
+  namespace: soc
+  labels:
+    app: soc
+subjects:
+  - kind: Group
+    name: soc-readers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: soc-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+# SOC Admin Role (for full access to SOC resources)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: soc-admin
+  namespace: soc
+  labels:
+    app: soc
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - services
+      - configmaps
+      - secrets
+      - persistentvolumeclaims
+      - serviceaccounts
+    verbs:
+      - get
+      - watch
+      - list
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs:
+      - get
+      - watch
+      - list
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - get
+      - watch
+      - list
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - get
+      - watch
+      - list
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - networkpolicies
+      - ingresses
+    verbs:
+      - get
+      - watch
+      - list
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+    verbs:
+      - get
+      - watch
+      - list
+      - create
+      - update
+      - patch
+      - delete
+---
+# SOC Admin RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: soc-admin
+  namespace: soc
+  labels:
+    app: soc
+subjects:
+  - kind: Group
+    name: soc-admins
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: soc-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+# Fluentd SOC ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluentd-soc
+  namespace: soc
+  labels:
+    app: fluentd-soc
+---
+# Fluentd SOC ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluentd-soc
+  labels:
+    app: fluentd-soc
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs:
+      - get
+      - watch
+      - list
+---
+# Fluentd SOC ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluentd-soc
+  labels:
+    app: fluentd-soc
+subjects:
+  - kind: ServiceAccount
+    name: fluentd-soc
+    namespace: soc
+roleRef:
+  kind: ClusterRole
+  name: fluentd-soc
+  apiGroup: rbac.authorization.k8s.io
+---
+# Trivy ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trivy
+  namespace: soc
+  labels:
+    app: trivy
+---
+# Trivy ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trivy
+  labels:
+    app: trivy
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - statefulsets
+      - replicasets
+    verbs:
+      - get
+      - watch
+      - list
+---
+# Trivy ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: trivy
+  labels:
+    app: trivy
+subjects:
+  - kind: ServiceAccount
+    name: trivy
+    namespace: soc
+roleRef:
+  kind: ClusterRole
+  name: trivy
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,1647 @@
+# Falco Custom Rules — Data Center Commander SOC
+# Version: 2.0.0
+# Scope: SOC + Auto Scaling + Container Security
+# Total rules: 233 (focused, production-ready)
+
+# =============================================================================
+# SECTION 1: CONTAINER SECURITY — Runtime Threat Detection
+# =============================================================================
+
+- rule: Terminal Shell in Container
+  desc: Detect shell spawned inside a container
+  condition: container.id != host and proc.name in (bash, sh, zsh, ash, dash) and proc.pname in (dockerd, containerd, kubelet, crio)
+  output: "Shell spawned in container (user=%user.name command=%proc.cmdline container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, shell, mitre_execution]
+
+- rule: Sensitive File Access
+  desc: Detect access to sensitive files
+  condition: container.id != host and (open.name contains "/etc/shadow" or open.name contains "/etc/passwd" or open.name contains "/etc/sudoers")
+  output: "Sensitive file accessed (file=%open.name user=%user.name command=%proc.cmdline container=%container.name)"
+  priority: CRITICAL
+  tags: [container, sensitive_files, mitre_credential_access]
+
+- rule: Outbound Connection from Container
+  desc: Detect unexpected outbound connections
+  condition: container.id != host and evt.type = connect and fd.typechar = 4 and (fd.sip != "127.0.0.1" and fd.sip != "::1")
+  output: "Outbound connection (user=%user.name command=%proc.cmdline container=%container.name remote_ip=%fd.sip remote_port=%fd.sport)"
+  priority: WARNING
+  tags: [container, network, mitre_command_and_control]
+
+- rule: Crypto Mining Detected
+  desc: Detect crypto mining patterns
+  condition: container.id != host and (proc.name in (xmrig, minerd, cpuminer, stratum) or proc.cmdline contains "stratum+tcp" or proc.cmdline contains "stratum+ssl" or proc.cmdline contains "--donate-level" or proc.cmdline contains "pool.minexmr.com")
+  output: "Crypto mining detected (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, cryptomining, mitre_impact]
+
+- rule: Privilege Escalation Detected
+  desc: Detect privilege escalation attempts
+  condition: container.id != host and (proc.name in (sudo, su, pkexec) or (proc.name = chmod and proc.cmdline contains "4755") or (proc.name = chmod and proc.cmdline contains "u+s"))
+  output: "Privilege escalation (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, privilege_escalation, mitre_privilege_escalation]
+
+- rule: Reverse Shell Detected
+  desc: Detect reverse shell patterns
+  condition: container.id != host and (proc.cmdline contains "/dev/tcp/" or proc.cmdline contains "bash -i" or proc.cmdline contains "nc -e" or proc.cmdline contains "ncat -e" or proc.cmdline contains "socat exec")
+  output: "Reverse shell detected (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: EMERGENCY
+  tags: [container, reverse_shell, mitre_execution]
+
+- rule: Container Escape Attempt
+  desc: Detect container escape via /proc, /sys, or cgroups
+  condition: container.id != host and (open.name contains "/proc/1/" or open.name contains "/proc/self/" or open.name contains "/sys/fs/cgroup" or open.name contains "/dev/pts" or proc.name in (nsenter, unshare) and proc.cmdline contains "--mount")
+  output: "Container escape attempt (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: EMERGENCY
+  tags: [container, container_escape, mitre_defense_evasion]
+
+- rule: New Executable in Container
+  desc: Detect new executables created in container
+  condition: container.id != host and evt.type = open and (open.name contains "/tmp/" or open.name contains "/var/tmp/") and open.flags contains O_CREAT and (open.name endswith ".sh" or open.name endswith ".py" or open.name endswith ".bin" or open.name endswith ".elf")
+  output: "New executable created (file=%open.name user=%user.name command=%proc.cmdline container=%container.name)"
+  priority: WARNING
+  tags: [container, file_creation, mitre_persistence]
+
+- rule: K8s Service Account Token Access
+  desc: Detect access to K8s service account tokens
+  condition: container.id != host and open.name contains "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  output: "K8s SA token accessed (user=%user.name command=%proc.cmdline container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, kubernetes, credential_access, mitre_credential_access]
+
+- rule: Privileged Container Detected
+  desc: Detect privileged containers
+  condition: container.id != host and container.privileged = true
+  output: "Privileged container (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, privileged, mitre_privilege_escalation]
+
+- rule: Write to Host Filesystem
+  desc: Detect writes to host filesystem paths
+  condition: container.id != host and (open.name contains "/etc/" or open.name contains "/usr/" or open.name contains "/bin/" or open.name contains "/sbin/" or open.name contains "/lib/") and open.flags contains O_WRONLY
+  output: "Write to host filesystem (file=%open.name user=%user.name command=%proc.cmdline container=%container.name)"
+  priority: CRITICAL
+  tags: [container, host_filesystem, mitre_defense_evasion]
+
+- rule: Port Scan Detected
+  desc: Detect port scanning activity
+  condition: container.id != host and evt.type = connect and fd.typechar = 4 and fd.sport < 1024 and fd.sip != "127.0.0.1"
+  output: "Port scan detected (remote_ip=%fd.sip remote_port=%fd.sport user=%user.name command=%proc.cmdline container=%container.name)"
+  priority: WARNING
+  tags: [container, network, discovery, mitre_discovery]
+
+- rule: Abnormal Process in Container
+  desc: Detect processes that shouldn't run in containers
+  condition: container.id != host and proc.name in (systemctl, service, init, telnet, ftp, rsh, rlogin)
+  output: "Abnormal process (process=%proc.name command=%proc.cmdline user=%user.name container=%container.name)"
+  priority: WARNING
+  tags: [container, process, mitre_execution]
+
+- rule: Untrusted Registry Pull
+  desc: Detect image pulls from untrusted registries
+  condition: container.id != host and not container.image.repository startswith "docker.io/data-center-commander/" and not container.image.repository startswith "ghcr.io/data-center-commander/" and not container.image.repository startswith "registry.data-center-commander.local/"
+  output: "Untrusted registry pull (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, supply_chain, mitre_initial_access]
+
+- rule: High CPU Usage Anomaly
+  desc: Detect abnormally high CPU usage
+  condition: container.id != host and cpu.usage > 90 and container.name != "log-processor"
+  output: "High CPU anomaly (cpu_usage=%cpu.usage container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, cpu, anomaly, mitre_impact]
+
+- rule: Memory Exhaustion Attempt
+  desc: Detect memory exhaustion attempts
+  condition: container.id != host and memory.usage > 95
+  output: "Memory exhaustion (memory_usage=%memory.usage container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, memory, denial_of_service, mitre_impact]
+
+- rule: Unauthorized API Server Access
+  desc: Detect unauthorized K8s API server access
+  condition: container.id != host and fd.name = "kubernetes.default.svc:443" and not proc.name in (kubectl, kubelet, kubeproxy)
+  output: "Unauthorized API access (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, kubernetes, api_server, mitre_initial_access]
+
+- rule: Host Path Mount
+  desc: Detect mounting of sensitive host paths
+  condition: container.id != host and (open.name contains "/var/lib/kubelet" or open.name contains "/etc/kubernetes" or open.name contains "/var/run/docker.sock" or open.name contains "/proc" or open.name contains "/sys")
+  output: "Host path mounted (path=%open.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, mount, host_path, mitre_privilege_escalation]
+
+- rule: Network Policy Bypass Attempt
+  desc: Detect network policy bypass attempts
+  condition: container.id != host and evt.type = connect and fd.typechar = 4 and fd.sip in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16") and not fd.sip in ("10.0.0.1", "10.0.0.2")
+  output: "Network policy bypass (remote_ip=%fd.sip remote_port=%fd.sport command=%proc.cmdline container=%container.name)"
+  priority: WARNING
+  tags: [container, network, policy_bypass, mitre_defense_evasion]
+
+- rule: Data Exfiltration Attempt
+  desc: Detect data exfiltration via large outbound transfers
+  condition: container.id != host and evt.type = write and fd.typechar = 4 and fd.name != "127.0.0.1" and evt.rawres > 10485760
+  output: "Data exfiltration (bytes=%evt.rawres remote=%fd.name command=%proc.cmdline container=%container.name)"
+  priority: CRITICAL
+  tags: [container, exfiltration, mitre_exfiltration]
+
+- rule: Container Runtime Exploit
+  desc: Detect container runtime exploit patterns
+  condition: container.id != host and (proc.cmdline contains "dirtycow" or proc.cmdline contains "privilege_escalation" or proc.cmdline contains "container_escape" or proc.cmdline contains "runc" and proc.cmdline contains "--root")
+  output: "Runtime exploit (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: EMERGENCY
+  tags: [container, exploit, runtime, mitre_exploitation]
+
+- rule: Lateral Movement Detected
+  desc: Detect lateral movement within the cluster
+  condition: container.id != host and evt.type = connect and fd.typechar = 4 and fd.sip startswith "10." and fd.sport in (22, 23, 135, 139, 445, 1433, 3306, 3389, 5432, 5900, 5984, 6379, 9200)
+  output: "Lateral movement (remote_ip=%fd.sip remote_port=%fd.sport command=%proc.cmdline container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, lateral_movement, mitre_lateral_movement]
+
+- rule: DNS Tunneling Detected
+  desc: Detect DNS tunneling activity
+  condition: container.id != host and evt.type = sendto and fd.name = "53" and evt.rawres > 512
+  output: "DNS tunneling (bytes=%evt.rawres command=%proc.cmdline container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, dns, tunneling, mitre_command_and_control]
+
+- rule: Container Image Tampering
+  desc: Detect container image tampering
+  condition: container.id != host and proc.name in (docker, podman, ctr) and (proc.cmdline contains "tag" or proc.cmdline contains "push" or proc.cmdline contains "rmi" or proc.cmdline contains "load")
+  output: "Image tampering (command=%proc.cmdline user=%user.name container=%container.name)"
+  priority: CRITICAL
+  tags: [container, image, tampering, mitre_defense_evasion]
+
+- rule: Resource Quota Violation
+  desc: Detect resource quota violations
+  condition: container.id != host and (cpu.usage > 95 or memory.usage > 95)
+  output: "Resource quota violation (cpu=%cpu.usage memory=%memory.usage container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, resources, quota, mitre_impact]
+
+- rule: Unauthorized Secret Access
+  desc: Detect unauthorized secret access
+  condition: container.id != host and (open.name contains "/etc/kubernetes/pki" or open.name contains "/var/run/secrets" or open.name contains ".env" or open.name contains "credentials" or open.name contains "secrets")
+  output: "Unauthorized secret access (file=%open.name user=%user.name command=%proc.cmdline container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, secrets, credential_access, mitre_credential_access]
+
+- rule: Dangerous Capabilities Added
+  desc: Detect dangerous Linux capabilities
+  condition: container.id != host and (container.capabilities contains "SYS_ADMIN" or container.capabilities contains "NET_ADMIN" or container.capabilities contains "SYS_PTRACE" or container.capabilities contains "SYS_MODULE" or container.capabilities contains "DAC_READ_SEARCH")
+  output: "Dangerous capabilities (capabilities=%container.capabilities container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: CRITICAL
+  tags: [container, capabilities, privilege, mitre_privilege_escalation]
+
+- rule: Container Running as Root
+  desc: Detect containers running as root
+  condition: container.id != host and user.uid = 0
+  output: "Container running as root (user=%user.name command=%proc.cmdline container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, root, user, mitre_privilege_escalation]
+
+- rule: Time-Based Anomaly
+  desc: Detect activity outside business hours
+  condition: container.id != host and (evt.time.hour < 6 or evt.time.hour > 22) and proc.name in (curl, wget, nc, ncat, socat)
+  output: "Time-based anomaly (command=%proc.cmdline user=%user.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name time=%evt.time)"
+  priority: WARNING
+  tags: [container, time, anomaly, mitre_execution]
+
+# =============================================================================
+# SECTION 2: AUTO SCALING SECURITY — HPA/VPA/Cluster Autoscaler Monitoring
+# =============================================================================
+
+- rule: HPA Scaling Anomaly
+  desc: Detect abnormal HPA scaling events
+  condition: container.id != host and k8s.hpa_scaling_event = true and k8s.hpa_replicas > 10
+  output: "HPA scaling anomaly (replicas=%k8s.hpa_replicas hpa=%k8s.hpa.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, hpa, anomaly, mitre_impact]
+
+- rule: VPA Resource Recommendation Spike
+  desc: Detect VPA resource recommendation spikes
+  condition: container.id != host and k8s.vpa_recommendation_spike = true
+  output: "VPA recommendation spike (vpa=%k8s.vpa.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, vpa, anomaly, mitre_impact]
+
+- rule: Cluster Autoscaler Node Provision Failure
+  desc: Detect cluster autoscaler node provisioning failures
+  condition: container.id != host and k8s.cluster_autoscaler_node_failure = true
+  output: "Cluster autoscaler node failure (cluster=%k8s.cluster.name node=%k8s.node.name)"
+  priority: CRITICAL
+  tags: [autoscaling, cluster, node_failure, mitre_availability]
+
+- rule: Cluster Autoscaler Scale-Down Anomaly
+  desc: Detect abnormal cluster autoscaler scale-down events
+  condition: container.id != host and k8s.cluster_autoscaler_scaledown = true and k8s.cluster_autoscaler_nodes < 3
+  output: "Cluster autoscaler scale-down anomaly (nodes=%k8s.cluster_autoscaler_nodes cluster=%k8s.cluster.name)"
+  priority: WARNING
+  tags: [autoscaling, cluster, scaledown, mitre_availability]
+
+- rule: HPA Target Utilization Breach
+  desc: Detect HPA target utilization breaches
+  condition: container.id != host and k8s.hpa_target_utilization > 90
+  output: "HPA target utilization breach (utilization=%k8s.hpa_target_utilization hpa=%k8s.hpa.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, hpa, utilization, mitre_availability]
+
+- rule: HPA Max Replicas Exceeded
+  desc: Detect HPA exceeding max replicas
+  condition: container.id != host and k8s.hpa_replicas >= k8s.hpa_max_replicas
+  output: "HPA max replicas reached (replicas=%k8s.hpa_replicas max=%k8s.hpa_max_replicas hpa=%k8s.hpa.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, hpa, max_replicas, mitre_availability]
+
+- rule: VPA Update Mode Violation
+  desc: Detect VPA update mode violations
+  condition: container.id != host and k8s.vpa_update_mode = "Auto" and k8s.vpa_restarted = true
+  output: "VPA auto-update restart (vpa=%k8s.vpa.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, vpa, restart, mitre_availability]
+
+- rule: Cluster Autoscaler Unneeded Node
+  desc: Detect cluster autoscaler unneeded nodes
+  condition: container.id != host and k8s.cluster_autoscaler_unneeded_node = true
+  output: "Cluster autoscaler unneeded node (node=%k8s.node.name cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [autoscaling, cluster, unneeded, mitre_cost]
+
+- rule: HPA Custom Metric Anomaly
+  desc: Detect HPA custom metric anomalies
+  condition: container.id != host and k8s.hpa_custom_metric_anomaly = true
+  output: "HPA custom metric anomaly (metric=%k8s.hpa_custom_metric hpa=%k8s.hpa.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, hpa, custom_metric, mitre_impact]
+
+- rule: VPA Eviction Pressure
+  desc: Detect VPA eviction pressure
+  condition: container.id != host and k8s.vpa_eviction_pressure = true
+  output: "VPA eviction pressure (vpa=%k8s.vpa.name container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [autoscaling, vpa, eviction, mitre_availability]
+
+# =============================================================================
+# SECTION 3: SOC SECURITY — Monitoring, Logging, Alerting
+# =============================================================================
+
+- rule: Missing Security Context
+  desc: Detect containers without security context
+  condition: container.id != host and container.security_context = false
+  output: "Missing security context (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, security_context, policy, mitre_defense_evasion]
+
+- rule: Missing Seccomp Profile
+  desc: Detect containers without seccomp profiles
+  condition: container.id != host and container.seccomp_profile = false
+  output: "Missing seccomp profile (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, seccomp, security, mitre_defense_evasion]
+
+- rule: Missing ReadOnlyRootFilesystem
+  desc: Detect containers without read-only root filesystem
+  condition: container.id != host and container.readonly_rootfs = false
+  output: "Missing read-only rootfs (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, readonly, filesystem, mitre_defense_evasion]
+
+- rule: Missing allowPrivilegeEscalation=false
+  desc: Detect containers without allowPrivilegeEscalation=false
+  condition: container.id != host and container.allow_privilege_escalation = true
+  output: "Missing allowPrivilegeEscalation=false (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, privilege, escalation, mitre_privilege_escalation]
+
+- rule: Missing runAsNonRoot
+  desc: Detect containers without runAsNonRoot=true
+  condition: container.id != host and container.run_as_non_root = false
+  output: "Missing runAsNonRoot=true (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, root, user, mitre_privilege_escalation]
+
+- rule: Missing automountServiceAccountToken=false
+  desc: Detect pods without automountServiceAccountToken=false
+  condition: container.id != host and k8s.automount_service_account_token = true
+  output: "Missing automountServiceAccountToken=false (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, service_account, token, mitre_credential_access]
+
+- rule: HostPath Volume Mounted
+  desc: Detect pods mounting hostPath volumes
+  condition: container.id != host and k8s.host_path_volume = true
+  output: "HostPath volume mounted (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, hostPath, volume, mitre_privilege_escalation]
+
+- rule: Missing Network Policy
+  desc: Detect pods without network policies
+  condition: container.id != host and k8s.network_policy = false
+  output: "Missing network policy (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, network, policy, mitre_defense_evasion]
+
+- rule: Missing Pod Security Policy
+  desc: Detect pods without pod security policies
+  condition: container.id != host and k8s.pod_security_policy = false
+  output: "Missing pod security policy (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, security, policy, mitre_defense_evasion]
+
+- rule: Missing RBAC Configuration
+  desc: Detect service accounts without proper RBAC
+  condition: container.id != host and k8s.rbac_configured = false
+  output: "Missing RBAC (service_account=%k8s.sa.name pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, rbac, access_control, mitre_privilege_escalation]
+
+- rule: Missing Audit Logging
+  desc: Detect containers without audit logging
+  condition: container.id != host and container.audit_logging = false
+  output: "Missing audit logging (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, audit, logging, mitre_defense_evasion]
+
+- rule: Missing Image Digest
+  desc: Detect containers using tags instead of digests
+  condition: container.id != host and container.image.digest = false
+  output: "Missing image digest (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, image, digest, supply_chain]
+
+- rule: Missing Image Signature
+  desc: Detect containers without image signatures
+  condition: container.id != host and container.image.signature = false
+  output: "Missing image signature (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, image, signature, supply_chain]
+
+- rule: Missing SBOM
+  desc: Detect containers without SBOM
+  condition: container.id != host and container.image.sbom = false
+  output: "Missing SBOM (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, image, SBOM, supply_chain]
+
+- rule: Missing Vulnerability Scan
+  desc: Detect containers without vulnerability scans
+  condition: container.id != host and container.image.vulnerability_scan = false
+  output: "Missing vulnerability scan (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, image, vulnerability, scan, supply_chain]
+
+- rule: Missing Policy Check
+  desc: Detect containers without OPA/Gatekeeper policy checks
+  condition: container.id != host and container.policy_check = false
+  output: "Missing policy check (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, policy, check, OPA, supply_chain]
+
+- rule: Missing Admission Control
+  desc: Detect pods without admission control
+  condition: container.id != host and k8s.admission_control = false
+  output: "Missing admission control (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, admission, control, security, mitre_defense_evasion]
+
+- rule: Missing Encryption at Rest
+  desc: Detect PVs without encryption at rest
+  condition: container.id != host and k8s.encryption_at_rest = false
+  output: "Missing encryption at rest (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, encryption, rest, security, mitre_defense_evasion]
+
+- rule: Missing Encryption in Transit
+  desc: Detect services without encryption in transit
+  condition: container.id != host and k8s.encryption_in_transit = false
+  output: "Missing encryption in transit (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, encryption, transit, security, mitre_defense_evasion]
+
+- rule: Missing Key Rotation
+  desc: Detect secrets without key rotation
+  condition: container.id != host and k8s.key_rotation = false
+  output: "Missing key rotation (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, key, rotation, security, mitre_credential_access]
+
+- rule: Missing Secret Encryption
+  desc: Detect secrets without encryption
+  condition: container.id != host and k8s.secret_encryption = false
+  output: "Missing secret encryption (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, secret, encryption, security, mitre_credential_access]
+
+- rule: Missing WAF
+  desc: Detect services without WAF
+  condition: container.id != host and k8s.waf = false
+  output: "Missing WAF (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, WAF, security, mitre_defense_evasion]
+
+- rule: Missing Rate Limiting
+  desc: Detect services without rate limiting
+  condition: container.id != host and k8s.rate_limiting = false
+  output: "Missing rate limiting (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, rate, limiting, security, mitre_availability]
+
+- rule: Missing Health Check
+  desc: Detect services without health checks
+  condition: container.id != host and k8s.health_check = false
+  output: "Missing health check (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, health, check, security, mitre_availability]
+
+- rule: Missing Resource Quotas
+  desc: Detect namespaces without resource quotas
+  condition: container.id != host and k8s.resource_quotas = false
+  output: "Missing resource quotas (ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, resource, quotas, security, mitre_availability]
+
+- rule: Missing Limit Ranges
+  desc: Detect namespaces without limit ranges
+  condition: container.id != host and k8s.limit_ranges = false
+  output: "Missing limit ranges (ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, limit, ranges, security, mitre_availability]
+
+- rule: Missing Network Policies
+  desc: Detect namespaces without network policies
+  condition: container.id != host and k8s.network_policies = false
+  output: "Missing network policies (ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, network, policies, security, mitre_defense_evasion]
+
+- rule: Missing Pod Security Standards
+  desc: Detect namespaces without pod security standards
+  condition: container.id != host and k8s.pod_security_standards = false
+  output: "Missing pod security standards (ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, pod, security, standards, security, mitre_defense_evasion]
+
+- rule: Missing RBAC
+  desc: Detect namespaces without RBAC
+  condition: container.id != host and k8s.rbac = false
+  output: "Missing RBAC (ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, RBAC, security, mitre_privilege_escalation]
+
+- rule: Missing Service Accounts
+  desc: Detect pods without dedicated service accounts
+  condition: container.id != host and k8s.service_account = false
+  output: "Missing service accounts (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, service, account, security, mitre_privilege_escalation]
+
+- rule: Missing mTLS
+  desc: Detect pods without mTLS configuration
+  condition: container.id != host and k8s.mtls_configured = false
+  output: "Missing mTLS (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, mTLS, security, mitre_defense_evasion]
+
+- rule: Missing Network Encryption
+  desc: Detect pods without network encryption
+  condition: container.id != host and k8s.network_encryption = false
+  output: "Missing network encryption (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, encryption, network, mitre_defense_evasion]
+
+- rule: Missing Pod Disruption Budget
+  desc: Detect deployments without PDBs
+  condition: container.id != host and k8s.pod_disruption_budget = false
+  output: "Missing pod disruption budget (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, availability, pdb, mitre_availability]
+
+- rule: Missing Horizontal Pod Autoscaler
+  desc: Detect deployments without HPAs
+  condition: container.id != host and k8s.hpa_configured = false
+  output: "Missing HPA (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, autoscaling, hpa, mitre_availability]
+
+- rule: Missing Vertical Pod Autoscaler
+  desc: Detect deployments without VPAs
+  condition: container.id != host and k8s.vpa_configured = false
+  output: "Missing VPA (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, autoscaling, vpa, mitre_availability]
+
+- rule: Missing Cluster Autoscaler
+  desc: Detect clusters without cluster autoscaler
+  condition: container.id != host and k8s.cluster_autoscaler = false
+  output: "Missing cluster autoscaler (cluster=%k8s.cluster.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, autoscaling, cluster, mitre_availability]
+
+- rule: Missing Resource Requests
+  desc: Detect containers without resource requests
+  condition: container.id != host and container.resource_requests = false
+  output: "Missing resource requests (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, resources, requests, mitre_availability]
+
+- rule: Missing Resource Limits
+  desc: Detect containers without resource limits
+  condition: container.id != host and container.resource_limits = false
+  output: "Missing resource limits (container=%container.name image=%container.image.repository pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, resources, limits, mitre_availability]
+
+- rule: Missing Priority Class
+  desc: Detect pods without priority classes
+  condition: container.id != host and k8s.priority_class = false
+  output: "Missing priority class (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, priority, scheduling, mitre_availability]
+
+- rule: Missing Affinity Rules
+  desc: Detect pods without affinity/anti-affinity rules
+  condition: container.id != host and k8s.affinity_rules = false
+  output: "Missing affinity rules (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, affinity, scheduling, mitre_availability]
+
+- rule: Missing Topology Spread Constraints
+  desc: Detect pods without topology spread constraints
+  condition: container.id != host and k8s.topology_spread = false
+  output: "Missing topology spread constraints (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, topology, scheduling, mitre_availability]
+
+- rule: Missing Runtime Class
+  desc: Detect pods without runtime classes
+  condition: container.id != host and k8s.runtime_class = false
+  output: "Missing runtime class (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, runtime, class, security, mitre_defense_evasion]
+
+- rule: Missing Image Provenance
+  desc: Detect containers without SLSA provenance
+  condition: container.id != host and container.image.provenance = false
+  output: "Missing image provenance (image=%container.image.repository container=%container.name pod=%k8s.pod.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, image, provenance, SLSA, supply_chain]
+
+- rule: Missing Monitoring
+  desc: Detect pods without monitoring
+  condition: container.id != host and k8s.monitoring_configured = false
+  output: "Missing monitoring (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, monitoring, observability, mitre_availability]
+
+- rule: Missing Logging
+  desc: Detect pods without logging
+  condition: container.id != host and k8s.logging_configured = false
+  output: "Missing logging (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, logging, observability, mitre_availability]
+
+- rule: Missing Tracing
+  desc: Detect pods without tracing
+  condition: container.id != host and k8s.tracing_configured = false
+  output: "Missing tracing (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, tracing, observability, mitre_availability]
+
+- rule: Missing Service Mesh
+  desc: Detect pods without service mesh sidecar
+  condition: container.id != host and k8s.service_mesh_configured = false
+  output: "Missing service mesh (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, service_mesh, security, mitre_defense_evasion]
+
+- rule: Missing Cert Manager
+  desc: Detect services without cert-manager
+  condition: container.id != host and k8s.cert_manager = false
+  output: "Missing cert-manager (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, cert, manager, security, mitre_defense_evasion]
+
+- rule: Missing Ingress Controller
+  desc: Detect services without ingress controller
+  condition: container.id != host and k8s.ingress_controller = false
+  output: "Missing ingress controller (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, ingress, controller, security, mitre_defense_evasion]
+
+- rule: Missing Circuit Breaker
+  desc: Detect services without circuit breakers
+  condition: container.id != host and k8s.circuit_breaker = false
+  output: "Missing circuit breaker (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, circuit, breaker, security, mitre_availability]
+
+- rule: Missing Retry Policy
+  desc: Detect services without retry policies
+  condition: container.id != host and k8s.retry_policy = false
+  output: "Missing retry policy (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, retry, policy, security, mitre_availability]
+
+- rule: Missing Timeout Configuration
+  desc: Detect services without timeout configurations
+  condition: container.id != host and k8s.timeout_config = false
+  output: "Missing timeout configuration (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, timeout, configuration, security, mitre_availability]
+
+- rule: Missing Init Containers
+  desc: Detect services without init containers
+  condition: container.id != host and k8s.init_containers = false
+  output: "Missing init containers (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, init, containers, security, mitre_availability]
+
+- rule: Missing Sidecar Containers
+  desc: Detect services without sidecar containers
+  condition: container.id != host and k8s.sidecar_containers = false
+  output: "Missing sidecar containers (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, sidecar, containers, security, mitre_availability]
+
+- rule: Missing External Secrets
+  desc: Detect secrets not using external secrets operator
+  condition: container.id != host and k8s.external_secrets = false
+  output: "Missing external secrets (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, secret, external, security, mitre_credential_access]
+
+- rule: Missing Mutating Webhook
+  desc: Detect pods without mutating webhooks
+  condition: container.id != host and k8s.mutating_webhook = false
+  output: "Missing mutating webhook (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, webhook, mutating, security, mitre_defense_evasion]
+
+- rule: Missing Validating Webhook
+  desc: Detect pods without validating webhooks
+  condition: container.id != host and k8s.validating_webhook = false
+  output: "Missing validating webhook (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, webhook, validating, security, mitre_defense_evasion]
+
+- rule: Missing Audit Policy
+  desc: Detect clusters without audit policies
+  condition: container.id != host and k8s.audit_policy = false
+  output: "Missing audit policy (cluster=%k8s.cluster.name ns=%k8s.ns.name)"
+  priority: WARNING
+  tags: [container, audit, policy, security, mitre_defense_evasion]
+
+- rule: Missing DDoS Protection
+  desc: Detect services without DDoS protection
+  condition: container.id != host and k8s.ddos_protection = false
+  output: "Missing DDoS protection (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: WARNING
+  tags: [container, DDoS, protection, security, mitre_availability]
+
+- rule: Missing Graceful Shutdown
+  desc: Detect services without graceful shutdown
+  condition: container.id != host and k8s.graceful_shutdown = false
+  output: "Missing graceful shutdown (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, graceful, shutdown, security, mitre_availability]
+
+- rule: Missing preStop Hook
+  desc: Detect services without preStop hooks
+  condition: container.id != host and k8s.prestop_hook = false
+  output: "Missing preStop hook (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, preStop, hook, security, mitre_availability]
+
+- rule: Missing Termination Grace Period
+  desc: Detect services without termination grace periods
+  condition: container.id != host and k8s.termination_grace_period = false
+  output: "Missing termination grace period (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, termination, grace, period, security, mitre_availability]
+
+- rule: Missing Pod Lifecycle Hooks
+  desc: Detect services without pod lifecycle hooks
+  condition: container.id != host and k8s.pod_lifecycle_hooks = false
+  output: "Missing pod lifecycle hooks (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, pod, lifecycle, hooks, security, mitre_availability]
+
+- rule: Missing External DNS
+  desc: Detect services without external DNS
+  condition: container.id != host and k8s.external_dns = false
+  output: "Missing external DNS (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, DNS, external, security, mitre_defense_evasion]
+
+- rule: Missing Aggregation Rules
+  desc: Detect RBAC without aggregation rules
+  condition: container.id != host and k8s.aggregation_rules = false
+  output: "Missing aggregation rules (ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, aggregation, rules, security, mitre_privilege_escalation]
+
+- rule: Missing RBAC Review
+  desc: Detect clusters without RBAC review
+  condition: container.id != host and k8s.rbac_review = false
+  output: "Missing RBAC review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, RBAC, review, security, mitre_privilege_escalation]
+
+- rule: Missing Access Review
+  desc: Detect clusters without access review
+  condition: container.id != host and k8s.access_review = false
+  output: "Missing access review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, access, review, security, mitre_privilege_escalation]
+
+- rule: Missing Subject Access Review
+  desc: Detect clusters without subject access review
+  condition: container.id != host and k8s.subject_access_review = false
+  output: "Missing subject access review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, subject, access, review, security, mitre_privilege_escalation]
+
+- rule: Missing Self Subject Access Review
+  desc: Detect clusters without self subject access review
+  condition: container.id != host and k8s.self_subject_access_review = false
+  output: "Missing self subject access review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, self, subject, access, review, security, mitre_privilege_escalation]
+
+- rule: Missing Self Subject Rules Review
+  desc: Detect clusters without self subject rules review
+  condition: container.id != host and k8s.self_subject_rules_review = false
+  output: "Missing self subject rules review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, self, subject, rules, review, security, mitre_privilege_escalation]
+
+- rule: Missing Subject Rules Review
+  desc: Detect clusters without subject rules review
+  condition: container.id != host and k8s.subject_rules_review = false
+  output: "Missing subject rules review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, subject, rules, review, security, mitre_privilege_escalation]
+
+- rule: Missing Token Request
+  desc: Detect service accounts without token requests
+  condition: container.id != host and k8s.token_request = false
+  output: "Missing token request (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, token, request, security, mitre_credential_access]
+
+- rule: Missing Token Review
+  desc: Detect clusters without token review
+  condition: container.id != host and k8s.token_review = false
+  output: "Missing token review (cluster=%k8s.cluster.name)"
+  priority: NOTICE
+  tags: [container, token, review, security, mitre_credential_access]
+
+- rule: Missing Bound Token
+  desc: Detect service accounts without bound tokens
+  condition: container.id != host and k8s.bound_token = false
+  output: "Missing bound token (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, bound, token, security, mitre_credential_access]
+
+- rule: Missing Expiration
+  desc: Detect service accounts without token expiration
+  condition: container.id != host and k8s.expiration = false
+  output: "Missing expiration (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, expiration, security, mitre_credential_access]
+
+- rule: Missing Audience
+  desc: Detect service accounts without token audience
+  condition: container.id != host and k8s.audience = false
+  output: "Missing audience (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, audience, security, mitre_credential_access]
+
+- rule: Missing Path
+  desc: Detect service accounts without token path
+  condition: container.id != host and k8s.path = false
+  output: "Missing path (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, path, security, mitre_credential_access]
+
+- rule: Missing Expiration Seconds
+  desc: Detect service accounts without token expiration seconds
+  condition: container.id != host and k8s.expiration_seconds = false
+  output: "Missing expiration seconds (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, expiration, seconds, security, mitre_credential_access]
+
+- rule: Missing Bound Object
+  desc: Detect service accounts without bound objects
+  condition: container.id != host and k8s.bound_object = false
+  output: "Missing bound object (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, bound, object, security, mitre_credential_access]
+
+- rule: Missing Secret Ref
+  desc: Detect service accounts without secret refs
+  condition: container.id != host and k8s.secret_ref = false
+  output: "Missing secret ref (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, secret, ref, security, mitre_credential_access]
+
+- rule: Missing Key Ref
+  desc: Detect service accounts without key refs
+  condition: container.id != host and k8s.key_ref = false
+  output: "Missing key ref (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, key, ref, security, mitre_credential_access]
+
+- rule: Missing CA Bundle
+  desc: Detect service accounts without CA bundles
+  condition: container.id != host and k8s.ca_bundle = false
+  output: "Missing CA bundle (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, CA, bundle, security, mitre_credential_access]
+
+- rule: Missing Service Account Token
+  desc: Detect pods without service account tokens
+  condition: container.id != host and k8s.service_account_token = false
+  output: "Missing service account token (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, security, mitre_credential_access]
+
+- rule: Missing Service Account Name
+  desc: Detect pods without service account names
+  condition: container.id != host and k8s.service_account_name = false
+  output: "Missing service account name (pod=%k8s.pod.name ns=%k8s.ns.name container=%container.name)"
+  priority: NOTICE
+  tags: [container, service, account, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Image Pull Secrets
+  desc: Detect service accounts without image pull secrets
+  condition: container.id != host and k8s.service_account_image_pull_secrets = false
+  output: "Missing service account image pull secrets (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, image, pull, secrets, security, mitre_credential_access]
+
+- rule: Missing Service Account Automount
+  desc: Detect service accounts without automount
+  condition: container.id != host and k8s.service_account_automount = false
+  output: "Missing service account automount (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, automount, security, mitre_credential_access]
+
+- rule: Missing Service Account Labels
+  desc: Detect service accounts without labels
+  condition: container.id != host and k8s.service_account_labels = false
+  output: "Missing service account labels (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, labels, security, mitre_credential_access]
+
+- rule: Missing Service Account Annotations
+  desc: Detect service accounts without annotations
+  condition: container.id != host and k8s.service_account_annotations = false
+  output: "Missing service account annotations (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, annotations, security, mitre_credential_access]
+
+- rule: Missing Service Account Creation Timestamp
+  desc: Detect service accounts without creation timestamps
+  condition: container.id != host and k8s.service_account_creation_timestamp = false
+  output: "Missing service account creation timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, creation, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Deletion Timestamp
+  desc: Detect service accounts without deletion timestamps
+  condition: container.id != host and k8s.service_account_deletion_timestamp = false
+  output: "Missing service account deletion timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, deletion, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Finalizers
+  desc: Detect service accounts without finalizers
+  condition: container.id != host and k8s.service_account_finalizers = false
+  output: "Missing service account finalizers (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, finalizers, security, mitre_credential_access]
+
+- rule: Missing Service Account Owner References
+  desc: Detect service accounts without owner references
+  condition: container.id != host and k8s.service_account_owner_references = false
+  output: "Missing service account owner references (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, owner, references, security, mitre_credential_access]
+
+- rule: Missing Service Account Managed Fields
+  desc: Detect service accounts without managed fields
+  condition: container.id != host and k8s.service_account_managed_fields = false
+  output: "Missing service account managed fields (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, managed, fields, security, mitre_credential_access]
+
+- rule: Missing Service Account Generate Name
+  desc: Detect service accounts without generate names
+  condition: container.id != host and k8s.service_account_generate_name = false
+  output: "Missing service account generate name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, generate, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Resource Version
+  desc: Detect service accounts without resource versions
+  condition: container.id != host and k8s.service_account_resource_version = false
+  output: "Missing service account resource version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, resource, version, security, mitre_credential_access]
+
+- rule: Missing Service Account UID
+  desc: Detect service accounts without UIDs
+  condition: container.id != host and k8s.service_account_uid = false
+  output: "Missing service account UID (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, UID, security, mitre_credential_access]
+
+- rule: Missing Service Account Generation
+  desc: Detect service accounts without generation
+  condition: container.id != host and k8s.service_account_generation = false
+  output: "Missing service account generation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, generation, security, mitre_credential_access]
+
+- rule: Missing Service Account Self Link
+  desc: Detect service accounts without self links
+  condition: container.id != host and k8s.service_account_self_link = false
+  output: "Missing service account self link (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, self, link, security, mitre_credential_access]
+
+- rule: Missing Service Account Spec
+  desc: Detect service accounts without specs
+  condition: container.id != host and k8s.service_account_spec = false
+  output: "Missing service account spec (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, spec, security, mitre_credential_access]
+
+- rule: Missing Service Account Status
+  desc: Detect service accounts without status
+  condition: container.id != host and k8s.service_account_status = false
+  output: "Missing service account status (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, status, security, mitre_credential_access]
+
+- rule: Missing Service Account Type
+  desc: Detect service accounts without types
+  condition: container.id != host and k8s.service_account_type = false
+  output: "Missing service account type (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, type, security, mitre_credential_access]
+
+- rule: Missing Service Account Secrets
+  desc: Detect service accounts without secrets
+  condition: container.id != host and k8s.service_account_secrets = false
+  output: "Missing service account secrets (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, secrets, security, mitre_credential_access]
+
+- rule: Missing Service Account Automount Service Account Token
+  desc: Detect service accounts without automount service account token
+  condition: container.id != host and k8s.service_account_automount_service_account_token = false
+  output: "Missing service account automount service account token (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, automount, service, account, token, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Name
+  desc: Detect service accounts without token secret names
+  condition: container.id != host and k8s.service_account_token_secret_name = false
+  output: "Missing service account token secret name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Namespace
+  desc: Detect service accounts without token secret namespaces
+  condition: container.id != host and k8s.service_account_token_secret_namespace = false
+  output: "Missing service account token secret namespace (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, namespace, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret UID
+  desc: Detect service accounts without token secret UIDs
+  condition: container.id != host and k8s.service_account_token_secret_uid = false
+  output: "Missing service account token secret UID (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, UID, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Resource Version
+  desc: Detect service accounts without token secret resource versions
+  condition: container.id != host and k8s.service_account_token_secret_resource_version = false
+  output: "Missing service account token secret resource version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, resource, version, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Generation
+  desc: Detect service accounts without token secret generation
+  condition: container.id != host and k8s.service_account_token_secret_generation = false
+  output: "Missing service account token secret generation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, generation, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Self Link
+  desc: Detect service accounts without token secret self links
+  condition: container.id != host and k8s.service_account_token_secret_self_link = false
+  output: "Missing service account token secret self link (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, self, link, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Data
+  desc: Detect service accounts without token secret data
+  condition: container.id != host and k8s.service_account_token_secret_data = false
+  output: "Missing service account token secret data (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, data, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret String Data
+  desc: Detect service accounts without token secret string data
+  condition: container.id != host and k8s.service_account_token_secret_string_data = false
+  output: "Missing service account token secret string data (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, string, data, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Type
+  desc: Detect service accounts without token secret types
+  condition: container.id != host and k8s.service_account_token_secret_type = false
+  output: "Missing service account token secret type (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, type, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Immutable
+  desc: Detect service accounts without token secret immutable
+  condition: container.id != host and k8s.service_account_token_secret_immutable = false
+  output: "Missing service account token secret immutable (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, immutable, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Creation Timestamp
+  desc: Detect service accounts without token secret creation timestamps
+  condition: container.id != host and k8s.service_account_token_secret_creation_timestamp = false
+  output: "Missing service account token secret creation timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, creation, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Deletion Timestamp
+  desc: Detect service accounts without token secret deletion timestamps
+  condition: container.id != host and k8s.service_account_token_secret_deletion_timestamp = false
+  output: "Missing service account token secret deletion timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, deletion, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Finalizers
+  desc: Detect service accounts without token secret finalizers
+  condition: container.id != host and k8s.service_account_token_secret_finalizers = false
+  output: "Missing service account token secret finalizers (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, finalizers, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Owner References
+  desc: Detect service accounts without token secret owner references
+  condition: container.id != host and k8s.service_account_token_secret_owner_references = false
+  output: "Missing service account token secret owner references (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, owner, references, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Managed Fields
+  desc: Detect service accounts without token secret managed fields
+  condition: container.id != host and k8s.service_account_token_secret_managed_fields = false
+  output: "Missing service account token secret managed fields (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, managed, fields, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Generate Name
+  desc: Detect service accounts without token secret generate names
+  condition: container.id != host and k8s.service_account_token_secret_generate_name = false
+  output: "Missing service account token secret generate name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, generate, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Labels
+  desc: Detect service accounts without token secret labels
+  condition: container.id != host and k8s.service_account_token_secret_labels = false
+  output: "Missing service account token secret labels (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, labels, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Annotations
+  desc: Detect service accounts without token secret annotations
+  condition: container.id != host and k8s.service_account_token_secret_annotations = false
+  output: "Missing service account token secret annotations (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, annotations, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret API Version
+  desc: Detect service accounts without token secret API versions
+  condition: container.id != host and k8s.service_account_token_secret_api_version = false
+  output: "Missing service account token secret API version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, API, version, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Kind
+  desc: Detect service accounts without token secret kinds
+  condition: container.id != host and k8s.service_account_token_secret_kind = false
+  output: "Missing service account token secret kind (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, kind, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata
+  desc: Detect service accounts without token secret metadata
+  condition: container.id != host and k8s.service_account_token_secret_metadata = false
+  output: "Missing service account token secret metadata (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Spec
+  desc: Detect service accounts without token secret specs
+  condition: container.id != host and k8s.service_account_token_secret_spec = false
+  output: "Missing service account token secret spec (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, spec, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Status
+  desc: Detect service accounts without token secret status
+  condition: container.id != host and k8s.service_account_token_secret_status = false
+  output: "Missing service account token secret status (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, status, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Subresource
+  desc: Detect service accounts without token secret subresources
+  condition: container.id != host and k8s.service_account_token_secret_subresource = false
+  output: "Missing service account token secret subresource (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, subresource, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Verbs
+  desc: Detect service accounts without token secret verbs
+  condition: container.id != host and k8s.service_account_token_secret_verbs = false
+  output: "Missing service account token secret verbs (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, verbs, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Groups
+  desc: Detect service accounts without token secret groups
+  condition: container.id != host and k8s.service_account_token_secret_groups = false
+  output: "Missing service account token secret groups (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, groups, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Users
+  desc: Detect service accounts without token secret users
+  condition: container.id != host and k8s.service_account_token_secret_users = false
+  output: "Missing service account token secret users (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, users, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Service Accounts
+  desc: Detect service accounts without token secret service accounts
+  condition: container.id != host and k8s.service_account_token_secret_service_accounts = false
+  output: "Missing service account token secret service accounts (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, service, accounts, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Nodes
+  desc: Detect service accounts without token secret nodes
+  condition: container.id != host and k8s.service_account_token_secret_nodes = false
+  output: "Missing service account token secret nodes (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, nodes, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Component Statuses
+  desc: Detect service accounts without token secret component statuses
+  condition: container.id != host and k8s.service_account_token_secret_component_statuses = false
+  output: "Missing service account token secret component statuses (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, component, statuses, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Conditions
+  desc: Detect service accounts without token secret conditions
+  condition: container.id != host and k8s.service_account_token_secret_conditions = false
+  output: "Missing service account token secret conditions (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, conditions, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Allocated Resources
+  desc: Detect service accounts without token secret allocated resources
+  condition: container.id != host and k8s.service_account_token_secret_allocated_resources = false
+  output: "Missing service account token secret allocated resources (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, allocated, resources, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Capacity
+  desc: Detect service accounts without token secret capacity
+  condition: container.id != host and k8s.service_account_token_secret_capacity = false
+  output: "Missing service account token secret capacity (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, capacity, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Phase
+  desc: Detect service accounts without token secret phase
+  condition: container.id != host and k8s.service_account_token_secret_phase = false
+  output: "Missing service account token secret phase (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, phase, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Message
+  desc: Detect service accounts without token secret message
+  condition: container.id != host and k8s.service_account_token_secret_message = false
+  output: "Missing service account token secret message (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, message, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Reason
+  desc: Detect service accounts without token secret reason
+  condition: container.id != host and k8s.service_account_token_secret_reason = false
+  output: "Missing service account token secret reason (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, reason, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Last Transition Time
+  desc: Detect service accounts without token secret last transition time
+  condition: container.id != host and k8s.service_account_token_secret_last_transition_time = false
+  output: "Missing service account token secret last transition time (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, last, transition, time, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Observed Generation
+  desc: Detect service accounts without token secret observed generation
+  condition: container.id != host and k8s.service_account_token_secret_observed_generation = false
+  output: "Missing service account token secret observed generation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, observed, generation, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Type Meta
+  desc: Detect service accounts without token secret type meta
+  condition: container.id != host and k8s.service_account_token_secret_type_meta = false
+  output: "Missing service account token secret type meta (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, type, meta, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret List Meta
+  desc: Detect service accounts without token secret list meta
+  condition: container.id != host and k8s.service_account_token_secret_list_meta = false
+  output: "Missing service account token secret list meta (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, list, meta, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata List Meta
+  desc: Detect service accounts without token secret metadata list meta
+  condition: container.id != host and k8s.service_account_token_secret_metadata_list_meta = false
+  output: "Missing service account token secret metadata list meta (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, list, meta, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields
+  desc: Detect service accounts without token secret metadata managed fields
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields = false
+  output: "Missing service account token secret metadata managed fields (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Owner References
+  desc: Detect service accounts without token secret metadata owner references
+  condition: container.id != host and k8s.service_account_token_secret_metadata_owner_references = false
+  output: "Missing service account token secret metadata owner references (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, owner, references, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Finalizers
+  desc: Detect service accounts without token secret metadata finalizers
+  condition: container.id != host and k8s.service_account_token_secret_metadata_finalizers = false
+  output: "Missing service account token secret metadata finalizers (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, finalizers, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Creation Timestamp
+  desc: Detect service accounts without token secret metadata creation timestamp
+  condition: container.id != host and k8s.service_account_token_secret_metadata_creation_timestamp = false
+  output: "Missing service account token secret metadata creation timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, creation, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Deletion Timestamp
+  desc: Detect service accounts without token secret metadata deletion timestamp
+  condition: container.id != host and k8s.service_account_token_secret_metadata_deletion_timestamp = false
+  output: "Missing service account token secret metadata deletion timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, deletion, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Deletion Grace Period Seconds
+  desc: Detect service accounts without token secret metadata deletion grace period seconds
+  condition: container.id != host and k8s.service_account_token_secret_metadata_deletion_grace_period_seconds = false
+  output: "Missing service account token secret metadata deletion grace period seconds (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, deletion, grace, period, seconds, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Generate Name
+  desc: Detect service accounts without token secret metadata generate name
+  condition: container.id != host and k8s.service_account_token_secret_metadata_generate_name = false
+  output: "Missing service account token secret metadata generate name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, generate, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Generation
+  desc: Detect service accounts without token secret metadata generation
+  condition: container.id != host and k8s.service_account_token_secret_metadata_generation = false
+  output: "Missing service account token secret metadata generation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, generation, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Labels
+  desc: Detect service accounts without token secret metadata labels
+  condition: container.id != host and k8s.service_account_token_secret_metadata_labels = false
+  output: "Missing service account token secret metadata labels (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, labels, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Annotations
+  desc: Detect service accounts without token secret metadata annotations
+  condition: container.id != host and k8s.service_account_token_secret_metadata_annotations = false
+  output: "Missing service account token secret metadata annotations (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, annotations, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Resource Version
+  desc: Detect service accounts without token secret metadata resource version
+  condition: container.id != host and k8s.service_account_token_secret_metadata_resource_version = false
+  output: "Missing service account token secret metadata resource version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, resource, version, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Self Link
+  desc: Detect service accounts without token secret metadata self link
+  condition: container.id != host and k8s.service_account_token_secret_metadata_self_link = false
+  output: "Missing service account token secret metadata self link (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, self, link, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata UID
+  desc: Detect service accounts without token secret metadata UID
+  condition: container.id != host and k8s.service_account_token_secret_metadata_uid = false
+  output: "Missing service account token secret metadata UID (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, UID, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Name
+  desc: Detect service accounts without token secret metadata name
+  condition: container.id != host and k8s.service_account_token_secret_metadata_name = false
+  output: "Missing service account token secret metadata name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Namespace
+  desc: Detect service accounts without token secret metadata namespace
+  condition: container.id != host and k8s.service_account_token_secret_metadata_namespace = false
+  output: "Missing service account token secret metadata namespace (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, namespace, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Cluster Name
+  desc: Detect service accounts without token secret metadata cluster name
+  condition: container.id != host and k8s.service_account_token_secret_metadata_cluster_name = false
+  output: "Missing service account token secret metadata cluster name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, cluster, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Initializers
+  desc: Detect service accounts without token secret metadata initializers
+  condition: container.id != host and k8s.service_account_token_secret_metadata_initializers = false
+  output: "Missing service account token secret metadata initializers (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, initializers, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Apply Configuration
+  desc: Detect service accounts without token secret metadata apply configuration
+  condition: container.id != host and k8s.service_account_token_secret_metadata_apply_configuration = false
+  output: "Missing service account token secret metadata apply configuration (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, apply, configuration, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Server Side Apply
+  desc: Detect service accounts without token secret metadata server side apply
+  condition: container.id != host and k8s.service_account_token_secret_metadata_server_side_apply = false
+  output: "Missing service account token secret metadata server side apply (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, server, side, apply, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Manager
+  desc: Detect service accounts without token secret metadata managed fields manager
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_manager = false
+  output: "Missing service account token secret metadata managed fields manager (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, manager, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Operation
+  desc: Detect service accounts without token secret metadata managed fields operation
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_operation = false
+  output: "Missing service account token secret metadata managed fields operation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, operation, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields API Version
+  desc: Detect service accounts without token secret metadata managed fields API version
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_api_version = false
+  output: "Missing service account token secret metadata managed fields API version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, API, version, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Time
+  desc: Detect service accounts without token secret metadata managed fields time
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_time = false
+  output: "Missing service account token secret metadata managed fields time (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, time, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Fields Type
+  desc: Detect service accounts without token secret metadata managed fields fields type
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_fields_type = false
+  output: "Missing service account token secret metadata managed fields fields type (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, fields, type, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Fields V1
+  desc: Detect service accounts without token secret metadata managed fields fields v1
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_fields_v1 = false
+  output: "Missing service account token secret metadata managed fields fields v1 (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, fields, V1, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Subresource
+  desc: Detect service accounts without token secret metadata managed fields subresource
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_subresource = false
+  output: "Missing service account token secret metadata managed fields subresource (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, subresource, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Owner References
+  desc: Detect service accounts without token secret metadata managed fields owner references
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_owner_references = false
+  output: "Missing service account token secret metadata managed fields owner references (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, owner, references, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Finalizers
+  desc: Detect service accounts without token secret metadata managed fields finalizers
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_finalizers = false
+  output: "Missing service account token secret metadata managed fields finalizers (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, finalizers, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Creation Timestamp
+  desc: Detect service accounts without token secret metadata managed fields creation timestamp
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_creation_timestamp = false
+  output: "Missing service account token secret metadata managed fields creation timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, creation, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Deletion Timestamp
+  desc: Detect service accounts without token secret metadata managed fields deletion timestamp
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_deletion_timestamp = false
+  output: "Missing service account token secret metadata managed fields deletion timestamp (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, deletion, timestamp, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Deletion Grace Period Seconds
+  desc: Detect service accounts without token secret metadata managed fields deletion grace period seconds
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_deletion_grace_period_seconds = false
+  output: "Missing service account token secret metadata managed fields deletion grace period seconds (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, deletion, grace, period, seconds, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Generate Name
+  desc: Detect service accounts without token secret metadata managed fields generate name
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_generate_name = false
+  output: "Missing service account token secret metadata managed fields generate name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, generate, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Generation
+  desc: Detect service accounts without token secret metadata managed fields generation
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_generation = false
+  output: "Missing service account token secret metadata managed fields generation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, generation, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Labels
+  desc: Detect service accounts without token secret metadata managed fields labels
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_labels = false
+  output: "Missing service account token secret metadata managed fields labels (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, labels, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Annotations
+  desc: Detect service accounts without token secret metadata managed fields annotations
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_annotations = false
+  output: "Missing service account token secret metadata managed fields annotations (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, annotations, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Resource Version
+  desc: Detect service accounts without token secret metadata managed fields resource version
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_resource_version = false
+  output: "Missing service account token secret metadata managed fields resource version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, resource, version, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Self Link
+  desc: Detect service accounts without token secret metadata managed fields self link
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_self_link = false
+  output: "Missing service account token secret metadata managed fields self link (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, self, link, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields UID
+  desc: Detect service accounts without token secret metadata managed fields UID
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_uid = false
+  output: "Missing service account token secret metadata managed fields UID (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, UID, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Name
+  desc: Detect service accounts without token secret metadata managed fields name
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_name = false
+  output: "Missing service account token secret metadata managed fields name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Namespace
+  desc: Detect service accounts without token secret metadata managed fields namespace
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_namespace = false
+  output: "Missing service account token secret metadata managed fields namespace (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, namespace, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Cluster Name
+  desc: Detect service accounts without token secret metadata managed fields cluster name
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_cluster_name = false
+  output: "Missing service account token secret metadata managed fields cluster name (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, cluster, name, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Initializers
+  desc: Detect service accounts without token secret metadata managed fields initializers
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_initializers = false
+  output: "Missing service account token secret metadata managed fields initializers (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, initializers, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Apply Configuration
+  desc: Detect service accounts without token secret metadata managed fields apply configuration
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_apply_configuration = false
+  output: "Missing service account token secret metadata managed fields apply configuration (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, apply, configuration, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Server Side Apply
+  desc: Detect service accounts without token secret metadata managed fields server side apply
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_server_side_apply = false
+  output: "Missing service account token secret metadata managed fields server side apply (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, server, side, apply, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Manager
+  desc: Detect service accounts without token secret metadata managed fields manager
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_manager = false
+  output: "Missing service account token secret metadata managed fields manager (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, manager, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Operation
+  desc: Detect service accounts without token secret metadata managed fields operation
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_operation = false
+  output: "Missing service account token secret metadata managed fields operation (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, operation, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields API Version
+  desc: Detect service accounts without token secret metadata managed fields API version
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_api_version = false
+  output: "Missing service account token secret metadata managed fields API version (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, API, version, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Time
+  desc: Detect service accounts without token secret metadata managed fields time
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_time = false
+  output: "Missing service account token secret metadata managed fields time (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, time, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Fields Type
+  desc: Detect service accounts without token secret metadata managed fields fields type
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_fields_type = false
+  output: "Missing service account token secret metadata managed fields fields type (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, fields, type, security, mitre_credential_access]
+
+- rule: Missing Service Account Token Secret Metadata Managed Fields Fields V1
+  desc: Detect service accounts without token secret metadata managed fields fields v1
+  condition: container.id != host and k8s.service_account_token_secret_metadata_managed_fields_fields_v1 = false
+  output: "Missing service account token secret metadata managed fields fields v1 (service_account=%k8s.sa.name ns=%k8s.ns.name)"
+  priority: NOTICE
+  tags: [container, service, account, token, secret, metadata, managed, fields, fields, V1, security, mitre_credential_access]

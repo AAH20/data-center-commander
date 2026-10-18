@@ -1,0 +1,112 @@
+# OpenTelemetry Collector configuration for Data Center Commander
+# Receives traces from apps, exports to Jaeger + Tempo, feeds SOC pipeline
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  jaeger:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:14250
+      thrift_http:
+        endpoint: 0.0.0.0:14268
+  zipkin:
+    endpoint: 0.0.0.0:9411
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+  resource:
+    attributes:
+      - key: environment
+        value: production
+        action: upsert
+      - key: cluster
+        value: data-center-commander
+        action: upsert
+      - key: soc.tier
+        value: critical
+        action: upsert
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 100000
+    expected_new_traces_per_sec: 1000
+    policies:
+      - name: errors-policy
+        type: status_code
+        status_code:
+          status_codes: [ERROR]
+      - name: latency-policy
+        type: latency
+        latency:
+          threshold_ms: 500
+      - name: probabilistic-policy
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 10
+  metricstransform:
+    transforms:
+      - include: span.duration
+        match_type: regexp
+        action: update
+        operations:
+          - action: add_label
+            new_label: soc.severity
+            new_value: warning
+
+exporters:
+  jaeger:
+    endpoint: jaeger-collector:14250
+    tls:
+      insecure: true
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  prometheusremotewrite:
+    endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+  logging:
+    loglevel: debug
+  # SOC: export security-relevant spans to SIEM webhook
+  webhook/soc:
+    endpoint: http://soc-processor:8080/v1/traces
+    headers:
+      X-SOC-Source: otel-collector
+      X-SOC-Tier: critical
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, jaeger, zipkin]
+      processors: [memory_limiter, resource, tail_sampling, batch]
+      exporters: [jaeger, otlp/tempo, webhook/soc, logging]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, metricstransform, batch]
+      exporters: [prometheusremotewrite]
+  extensions: [health_check, pprof, zpages]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+  zpages:
+    endpoint: 0.0.0.0:55679

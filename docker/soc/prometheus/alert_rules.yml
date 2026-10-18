@@ -1,0 +1,154 @@
+# =============================================================================
+# Data Center Commander — Prometheus Alert Rules
+# =============================================================================
+
+groups:
+  # ===========================================================================
+  # Container & Host Alerts
+  # ===========================================================================
+  - name: container_alerts
+    rules:
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} CPU usage is high"
+          description: "Container {{ $labels.name }} CPU usage is above 80% for more than 5 minutes."
+
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} memory usage is high"
+          description: "Container {{ $labels.name }} memory usage is above 85% for more than 5 minutes."
+
+      - alert: ContainerDown
+        expr: up{job="cadvisor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} is down"
+          description: "Container {{ $labels.name }} has been down for more than 1 minute."
+
+      - alert: ContainerRestarting
+        expr: rate(container_start_time_seconds[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} is restarting frequently"
+          description: "Container {{ $labels.name }} has restarted in the last 10 minutes."
+
+  # ===========================================================================
+  # Security Alerts
+  # ===========================================================================
+  - name: security_alerts
+    rules:
+      - alert: HighSeverityVulnerability
+        expr: trivy_vulnerabilities{severity="CRITICAL"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "Critical vulnerabilities detected"
+          description: "{{ $value }} critical vulnerabilities found in scanned images."
+
+      - alert: FalcoSecurityEvent
+        expr: increase(falco_events_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High number of security events"
+          description: "Falco detected {{ $value }} security events in the last 5 minutes."
+
+      - alert: PrivilegedContainer
+        expr: container_privileged == 1
+        for: 1m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Privileged container detected"
+          description: "Container {{ $labels.name }} is running in privileged mode."
+
+  # ===========================================================================
+  # Autoscaler Alerts
+  # ===========================================================================
+  - name: autoscaler_alerts
+    rules:
+      - alert: AutoscalerAtMaxCapacity
+        expr: autoscaler_current_replicas >= autoscaler_max_replicas
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Autoscaler at maximum capacity"
+          description: "Service {{ $labels.service }} has reached maximum replica count ({{ $value }})."
+
+      - alert: AutoscalerScaleUp
+        expr: increase(autoscaler_scale_events_total{direction="up"}[10m]) > 3
+        for: 1m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Frequent scale-up events"
+          description: "Service {{ $labels.service }} has scaled up {{ $value }} times in 10 minutes."
+
+      - alert: AutoscalerScaleDown
+        expr: increase(autoscaler_scale_events_total{direction="down"}[10m]) > 3
+        for: 1m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Frequent scale-down events"
+          description: "Service {{ $labels.service }} has scaled down {{ $value }} times in 10 minutes."
+
+  # ===========================================================================
+  # Infrastructure Alerts
+  # ===========================================================================
+  - name: infrastructure_alerts
+    rules:
+      - alert: HighDiskUsage
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk usage is above 90% on {{ $labels.instance }} mount {{ $labels.mountpoint }}."
+
+      - alert: HighNetworkTraffic
+        expr: rate(node_network_receive_bytes_total[5m]) > 1e9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High network traffic on {{ $labels.instance }}"
+          description: "Network receive rate is above 1GB/s on {{ $labels.instance }}."
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Prometheus target {{ $labels.job }} is down"
+          description: "Target {{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."

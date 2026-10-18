@@ -1,0 +1,112 @@
+---
+# Wazuh Manager Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wazuh-manager-data
+  namespace: soc
+  labels:
+    app: wazuh-manager
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+---
+# Wazuh Agent Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wazuh-agent-data
+  namespace: soc
+  labels:
+    app: wazuh-agent
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+---
+# TheHive Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: thehive-data
+  namespace: soc
+  labels:
+    app: thehive
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+# Cortex Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cortex-data
+  namespace: soc
+  labels:
+    app: cortex
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+# PostgreSQL Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: soc
+  labels:
+    app: postgres
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+---
+# Elasticsearch SOC Data PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-soc-data
+  namespace: soc
+  labels:
+    app: elasticsearch-soc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+# SOC Reports PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: soc-reports
+  namespace: soc
+  labels:
+    app: soc-reports
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard

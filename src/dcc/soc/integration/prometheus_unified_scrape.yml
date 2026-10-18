@@ -1,0 +1,126 @@
+# =============================================================================
+# Data Center Commander — Unified Prometheus Scrape Configuration
+# =============================================================================
+# Scrape targets for SOC, AutoScaling, and Container monitoring.
+# Merge into your existing prometheus.yml under the scrape_configs key.
+# =============================================================================
+
+scrape_configs:
+  # ===========================================================================
+  # Core Monitoring
+  # ===========================================================================
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["localhost:9100"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+)(?::\d+)?'
+        replacement: '${1}'
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["localhost:8080"]
+
+  # ===========================================================================
+  # Autoscaler Metrics
+  # ===========================================================================
+  - job_name: autoscaler
+    static_configs:
+      - targets: ["autoscaler:9102"]
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'autoscaler'
+
+  # ===========================================================================
+  # Container Runtime Metrics
+  # ===========================================================================
+  - job_name: docker
+    static_configs:
+      - targets: ["localhost:9323"]
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: kube-state-metrics
+    static_configs:
+      - targets: ["kube-state-metrics:8080"]
+    scrape_interval: 30s
+
+  # ===========================================================================
+  # SOC Security Metrics
+  # ===========================================================================
+  - job_name: trivy-exporter
+    static_configs:
+      - targets: ["trivy:4954"]
+    metrics_path: /metrics
+    scrape_interval: 300s
+    scrape_timeout: 30s
+
+  - job_name: falco-exporter
+    static_configs:
+      - targets: ["falco-exporter:9370"]
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  - job_name: checkov-exporter
+    static_configs:
+      - targets: ["checkov-exporter:8081"]
+    metrics_path: /metrics
+    scrape_interval: 600s
+    scrape_timeout: 60s
+
+  # ===========================================================================
+  # HPA / Kubernetes Autoscaling
+  # ===========================================================================
+  - job_name: hpa-metrics
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - data-center-commander
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_label_app]
+        regex: metrics-server
+        action: keep
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        regex: https
+        action: keep
+
+  # ===========================================================================
+  # OpenTelemetry Collector Metrics
+  # ===========================================================================
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8888"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: jaeger
+    static_configs:
+      - targets: ["jaeger:14269"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  - job_name: tempo
+    static_configs:
+      - targets: ["tempo:3200"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  # ===========================================================================
+  # SOC Scanner (On-Demand)
+  # ===========================================================================
+  - job_name: soc-scanner
+    static_configs:
+      - targets: ["soc-scanner:9103"]
+    metrics_path: /metrics
+    scrape_interval: 600s
+    scrape_timeout: 60s

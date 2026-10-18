@@ -1,0 +1,1876 @@
+# =============================================================================
+# Network Policies — SOC + Auto Scaling + Container Security Integration
+# Data Center Commander
+# Version: 1.0.0
+#
+# This file provides network policies integrating:
+#   - SOC (Security Operations Center) components
+#   - Auto Scaling (HPA, VPA, Cluster Autoscaler)
+#   - Container Security (Falco, OPA/Gatekeeper, Trivy)
+#
+# Namespaces covered: soc, kube-system (metrics-server), data-center-commander
+# =============================================================================
+
+---
+# =============================================================================
+# DEFAULT DENY — SOC namespace
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soc-default-deny-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soc-default-deny-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# =============================================================================
+# DEFAULT DENY — data-center-commander namespace
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dcc-default-deny-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dcc-default-deny-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# =============================================================================
+# DNS — Allow all pods to reach kube-dns
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-soc
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-dcc
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# =============================================================================
+# SOC COMPONENTS — Wazuh Manager
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wazuh-manager-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: wazuh-manager
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-manager
+  policyTypes:
+    - Ingress
+  ingress:
+    # Wazuh agents
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wazuh-agent
+      ports:
+        - protocol: TCP
+          port: 1514
+        - protocol: TCP
+          port: 1515
+    # SOC Dashboard
+    - from:
+        - podSelector:
+            matchLabels:
+              app: soc-dashboard
+      ports:
+        - protocol: TCP
+          port: 55000
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 55000
+        - protocol: UDP
+          port: 514
+        - protocol: TCP
+          port: 514
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wazuh-manager-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: wazuh-manager
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-manager
+  policyTypes:
+    - Egress
+  egress:
+    # To Elasticsearch SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+    # To Fluentd SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: fluentd-soc
+      ports:
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+
+---
+# =============================================================================
+# SOC COMPONENTS — Wazuh Agent (DaemonSet)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-wazuh-agent-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: wazuh-agent
+spec:
+  podSelector:
+    matchLabels:
+      app: wazuh-agent
+  policyTypes:
+    - Egress
+  egress:
+    # To Wazuh Manager
+    - to:
+        - podSelector:
+            matchLabels:
+              app: wazuh-manager
+      ports:
+        - protocol: TCP
+          port: 1514
+        - protocol: TCP
+          port: 1515
+
+---
+# =============================================================================
+# SOC COMPONENTS — TheHive
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-thehive-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: thehive
+spec:
+  podSelector:
+    matchLabels:
+      app: thehive
+  policyTypes:
+    - Ingress
+  ingress:
+    # SOC Dashboard
+    - from:
+        - podSelector:
+            matchLabels:
+              app: soc-dashboard
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Cortex
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cortex
+      ports:
+        - protocol: TCP
+          port: 9000
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 9000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-thehive-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: thehive
+spec:
+  podSelector:
+    matchLabels:
+      app: thehive
+  policyTypes:
+    - Egress
+  egress:
+    # To PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # To Elasticsearch SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+    # To Cortex
+    - to:
+        - podSelector:
+            matchLabels:
+              app: cortex
+      ports:
+        - protocol: TCP
+          port: 9001
+
+---
+# =============================================================================
+# SOC COMPONENTS — Cortex
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cortex-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: cortex
+spec:
+  podSelector:
+    matchLabels:
+      app: cortex
+  policyTypes:
+    - Ingress
+  ingress:
+    # TheHive
+    - from:
+        - podSelector:
+            matchLabels:
+              app: thehive
+      ports:
+        - protocol: TCP
+          port: 9001
+    # SOC Dashboard
+    - from:
+        - podSelector:
+            matchLabels:
+              app: soc-dashboard
+      ports:
+        - protocol: TCP
+          port: 9001
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 9001
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cortex-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: cortex
+spec:
+  podSelector:
+    matchLabels:
+      app: cortex
+  policyTypes:
+    - Egress
+  egress:
+    # To PostgreSQL
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    # To Elasticsearch SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+# =============================================================================
+# SOC COMPONENTS — Elasticsearch SOC
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-elasticsearch-soc-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: elasticsearch-soc
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch-soc
+  policyTypes:
+    - Ingress
+  ingress:
+    # Wazuh Manager
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wazuh-manager
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 9300
+    # TheHive
+    - from:
+        - podSelector:
+            matchLabels:
+              app: thehive
+      ports:
+        - protocol: TCP
+          port: 9200
+    # Cortex
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cortex
+      ports:
+        - protocol: TCP
+          port: 9200
+    # SOC Dashboard
+    - from:
+        - podSelector:
+            matchLabels:
+              app: soc-dashboard
+      ports:
+        - protocol: TCP
+          port: 9200
+    # Fluentd SOC
+    - from:
+        - podSelector:
+            matchLabels:
+              app: fluentd-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+    # Trivy
+    - from:
+        - podSelector:
+            matchLabels:
+              app: trivy
+      ports:
+        - protocol: TCP
+          port: 9200
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-elasticsearch-soc-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: elasticsearch-soc
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch-soc
+  policyTypes:
+    - Egress
+  egress:
+    # Cluster-internal communication
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9300
+
+---
+# =============================================================================
+# SOC COMPONENTS — PostgreSQL
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Ingress
+  ingress:
+    # TheHive
+    - from:
+        - podSelector:
+            matchLabels:
+              app: thehive
+      ports:
+        - protocol: TCP
+          port: 5432
+    # Cortex
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cortex
+      ports:
+        - protocol: TCP
+          port: 5432
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-postgres-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+    - Egress
+  egress: []
+
+---
+# =============================================================================
+# SOC COMPONENTS — Alertmanager
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alertmanager-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: alertmanager
+spec:
+  podSelector:
+    matchLabels:
+      app: alertmanager
+  policyTypes:
+    - Ingress
+  ingress:
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 9093
+        - protocol: TCP
+          port: 9094
+    # SOC Dashboard
+    - from:
+        - podSelector:
+            matchLabels:
+              app: soc-dashboard
+      ports:
+        - protocol: TCP
+          port: 9093
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-alertmanager-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: alertmanager
+spec:
+  podSelector:
+    matchLabels:
+      app: alertmanager
+  policyTypes:
+    - Egress
+  egress: []
+
+---
+# =============================================================================
+# SOC COMPONENTS — SOC Dashboard (Grafana)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-soc-dashboard-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: soc-dashboard
+spec:
+  podSelector:
+    matchLabels:
+      app: soc-dashboard
+  policyTypes:
+    - Ingress
+  ingress:
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-soc-dashboard-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: soc-dashboard
+spec:
+  podSelector:
+    matchLabels:
+      app: soc-dashboard
+  policyTypes:
+    - Egress
+  egress:
+    # To Elasticsearch SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+    # To TheHive
+    - to:
+        - podSelector:
+            matchLabels:
+              app: thehive
+      ports:
+        - protocol: TCP
+          port: 9000
+    # To Cortex
+    - to:
+        - podSelector:
+            matchLabels:
+              app: cortex
+      ports:
+        - protocol: TCP
+          port: 9001
+    # To Alertmanager
+    - to:
+        - podSelector:
+            matchLabels:
+              app: alertmanager
+      ports:
+        - protocol: TCP
+          port: 9093
+
+---
+# =============================================================================
+# SOC COMPONENTS — Fluentd SOC (DaemonSet)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fluentd-soc-ingress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: fluentd-soc
+spec:
+  podSelector:
+    matchLabels:
+      app: fluentd-soc
+  policyTypes:
+    - Ingress
+  ingress:
+    # Wazuh Manager
+    - from:
+        - podSelector:
+            matchLabels:
+              app: wazuh-manager
+      ports:
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+    # TheHive
+    - from:
+        - podSelector:
+            matchLabels:
+              app: thehive
+      ports:
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+    # Cortex
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cortex
+      ports:
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fluentd-soc-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: fluentd-soc
+spec:
+  podSelector:
+    matchLabels:
+      app: fluentd-soc
+  policyTypes:
+    - Egress
+  egress:
+    # To Elasticsearch SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+# =============================================================================
+# SOC COMPONENTS — Trivy
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-trivy-egress
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: trivy
+spec:
+  podSelector:
+    matchLabels:
+      app: trivy
+  policyTypes:
+    - Egress
+  egress:
+    # To Elasticsearch SOC
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch-soc
+      ports:
+        - protocol: TCP
+          port: 9200
+    # To kube-dns
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# =============================================================================
+# AUTO SCALING — Metrics Server (kube-system)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-server-ingress
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: metrics-server
+spec:
+  podSelector:
+    matchLabels:
+      k8s-app: metrics-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # HPA controller
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: horizontal-pod-autoscaler
+      ports:
+        - protocol: TCP
+          port: 443
+    # VPA controller
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vertical-pod-autoscaler
+      ports:
+        - protocol: TCP
+          port: 443
+    # Cluster autoscaler
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cluster-autoscaler
+      ports:
+        - protocol: TCP
+          port: 443
+    # SOC components (for custom metrics)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: soc
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics-server-egress
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: metrics-server
+spec:
+  podSelector:
+    matchLabels:
+      k8s-app: metrics-server
+  policyTypes:
+    - Egress
+  egress:
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+---
+# =============================================================================
+# AUTO SCALING — HPA Controller (kube-system)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-hpa-controller-egress
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: hpa
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: horizontal-pod-autoscaler
+  policyTypes:
+    - Egress
+  egress:
+    # To metrics-server
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: metrics-server
+      ports:
+        - protocol: TCP
+          port: 443
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+---
+# =============================================================================
+# AUTO SCALING — VPA Controller (kube-system)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vpa-controller-egress
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: vpa
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vertical-pod-autoscaler
+  policyTypes:
+    - Egress
+  egress:
+    # To metrics-server
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: metrics-server
+      ports:
+        - protocol: TCP
+          port: 443
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+---
+# =============================================================================
+# AUTO SCALING — Cluster Autoscaler (kube-system)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cluster-autoscaler-egress
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: cluster-autoscaler
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cluster-autoscaler
+  policyTypes:
+    - Egress
+  egress:
+    # To metrics-server
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: metrics-server
+      ports:
+        - protocol: TCP
+          port: 443
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # To cloud provider API (external)
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# =============================================================================
+# CONTAINER SECURITY — Falco (falco namespace)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-falco-ingress
+  namespace: falco
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: falco
+spec:
+  podSelector:
+    matchLabels:
+      app: falco
+  policyTypes:
+    - Ingress
+  ingress:
+    # SOC Dashboard
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: soc
+      ports:
+        - protocol: TCP
+          port: 8765
+        - protocol: TCP
+          port: 9090
+    # Ingress controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 9090
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-falco-egress
+  namespace: falco
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: falco
+spec:
+  podSelector:
+    matchLabels:
+      app: falco
+  policyTypes:
+    - Egress
+  egress:
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # To Elasticsearch SOC
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: soc
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+# =============================================================================
+# CONTAINER SECURITY — OPA/Gatekeeper (gatekeeper-system namespace)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gatekeeper-ingress
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: gatekeeper
+spec:
+  podSelector:
+    matchLabels:
+      app: gatekeeper-controller-manager
+  policyTypes:
+    - Ingress
+  ingress:
+    # Webhook server
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 8443
+    # Metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8888
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gatekeeper-egress
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: gatekeeper
+spec:
+  podSelector:
+    matchLabels:
+      app: gatekeeper-controller-manager
+  policyTypes:
+    - Egress
+  egress:
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+
+---
+# =============================================================================
+# CONTAINER SECURITY — Trivy Operator (trivy-system namespace)
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-trivy-operator-egress
+  namespace: trivy-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: trivy-operator
+spec:
+  podSelector:
+    matchLabels:
+      app: trivy-operator
+  policyTypes:
+    - Egress
+  egress:
+    # To kube-apiserver
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    # To kube-dns
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# =============================================================================
+# CROSS-NAMESPACE — SOC to Auto Scaling
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-soc-to-autoscaling
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # To metrics-server
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: metrics-server
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# =============================================================================
+# CROSS-NAMESPACE — SOC to Container Security
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-soc-to-container-security
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # To Falco
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: falco
+      ports:
+        - protocol: TCP
+          port: 8765
+        - protocol: TCP
+          port: 9090
+    # To Gatekeeper
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gatekeeper-system
+      ports:
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 8888
+
+---
+# =============================================================================
+# CROSS-NAMESPACE — Container Security to SOC
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-container-security-to-soc
+  namespace: falco
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # To SOC namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: soc
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+
+---
+# =============================================================================
+# CROSS-NAMESPACE — Auto Scaling to SOC
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-autoscaling-to-soc
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: horizontal-pod-autoscaler
+  policyTypes:
+    - Egress
+  egress:
+    # To SOC namespace (for custom metrics)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: soc
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 3000
+
+---
+# =============================================================================
+# INGRESS CONTROLLER — Allow external traffic to SOC services
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-soc
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # From ingress-nginx namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 1514
+        - protocol: TCP
+          port: 1515
+        - protocol: TCP
+          port: 55000
+        - protocol: UDP
+          port: 514
+        - protocol: TCP
+          port: 514
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 9093
+        - protocol: TCP
+          port: 9094
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+        - protocol: TCP
+          port: 4954
+
+---
+# =============================================================================
+# MONITORING — Allow monitoring namespace to scrape SOC metrics
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-to-soc
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # From monitoring namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9093
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 8765
+        - protocol: TCP
+          port: 8888
+
+---
+# =============================================================================
+# DATA-CENTER-COMMANDER NAMESPACE — Logging/Monitoring stack
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-elasticsearch-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: logstash
+        - podSelector:
+            matchLabels:
+              app: kibana
+        - podSelector:
+            matchLabels:
+              app: log-processor
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 9300
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-elasticsearch-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9300
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-logstash-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: logstash
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: filebeat
+        - podSelector:
+            matchLabels:
+              app: fluentd
+      ports:
+        - protocol: TCP
+          port: 5044
+        - protocol: TCP
+          port: 5000
+        - protocol: UDP
+          port: 5000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-logstash-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: logstash
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-kibana-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: kibana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 5601
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-kibana-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: kibana
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-grafana-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: grafana
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-grafana-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: grafana
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: loki
+      ports:
+        - protocol: TCP
+          port: 3100
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-loki-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: loki
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: promtail
+        - podSelector:
+            matchLabels:
+              app: grafana
+        - podSelector:
+            matchLabels:
+              app: log-processor
+      ports:
+        - protocol: TCP
+          port: 3100
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-promtail-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: promtail
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: loki
+      ports:
+        - protocol: TCP
+          port: 3100
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-fluentd-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: fluentd
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: filebeat
+      ports:
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-fluentd-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: fluentd
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-filebeat-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: filebeat
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: logstash
+      ports:
+        - protocol: TCP
+          port: 5044
+    - to:
+        - podSelector:
+            matchLabels:
+              app: fluentd
+      ports:
+        - protocol: TCP
+          port: 24224
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-log-processor-ingress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: log-processor
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: fluentd
+      ports:
+        - protocol: TCP
+          port: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-log-processor-egress
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: log-processor
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: elasticsearch
+      ports:
+        - protocol: TCP
+          port: 9200
+    - to:
+        - podSelector:
+            matchLabels:
+              app: loki
+      ports:
+        - protocol: TCP
+          port: 3100
+
+---
+# =============================================================================
+# CROSS-NAMESPACE — DCC to SOC
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dcc-to-soc
+  namespace: data-center-commander
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # To SOC namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: soc
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9001
+        - protocol: TCP
+          port: 24224
+        - protocol: UDP
+          port: 24224
+
+---
+# =============================================================================
+# CROSS-NAMESPACE — SOC to DCC
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-soc-to-dcc
+  namespace: soc
+  labels:
+    app.kubernetes.io/part-of: soc
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # To data-center-commander namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data-center-commander
+      ports:
+        - protocol: TCP
+          port: 9200
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 3100
+        - protocol: TCP
+          port: 5601
+        - protocol: TCP
+          port: 8080

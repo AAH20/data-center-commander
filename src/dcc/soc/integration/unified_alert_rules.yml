@@ -1,0 +1,270 @@
+# =============================================================================
+# Data Center Commander — Unified SOC + AutoScaling + Container Alert Rules
+# =============================================================================
+# Monitoring and alerting only — no automated remediation actions.
+# =============================================================================
+
+groups:
+  # ===========================================================================
+  # SOC Security Alerts
+  # ===========================================================================
+  - name: soc_security_alerts
+    interval: 30s
+    rules:
+      - alert: CriticalVulnerabilitiesDetected
+        expr: trivy_vulnerabilities{severity="CRITICAL"} > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Critical vulnerabilities detected in {{ $labels.image }}"
+          description: "{{ $value }} critical vulnerabilities found in container image {{ $labels.image }}."
+
+      - alert: HighVulnerabilitiesDetected
+        expr: trivy_vulnerabilities{severity="HIGH"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "High number of HIGH vulnerabilities in {{ $labels.image }}"
+          description: "{{ $value }} high-severity vulnerabilities found in container image {{ $labels.image }}."
+
+      - alert: FalcoSecurityEventSpike
+        expr: increase(falco_events_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Falco detected {{ $value }} security events in 5 minutes"
+          description: "Falco runtime threat detection fired {{ $value }} events in the last 5 minutes."
+
+      - alert: PrivilegedContainerRunning
+        expr: container_privileged == 1
+        for: 1m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Privileged container detected: {{ $labels.name }}"
+          description: "Container {{ $labels.name }} is running in privileged mode."
+
+      - alert: ContainerEscapeAttempt
+        expr: increase(falco_events_total{rule="Container Escape Attempt"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Container escape attempt detected"
+          description: "Falco detected a container escape attempt in the last 5 minutes."
+
+      - alert: ReverseShellDetected
+        expr: increase(falco_events_total{rule="Reverse Shell"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Reverse shell detected"
+          description: "Falco detected a reverse shell attempt in the last 5 minutes."
+
+      - alert: CryptocurrencyMiningDetected
+        expr: increase(falco_events_total{rule="Cryptocurrency Mining"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Cryptocurrency mining detected"
+          description: "Falco detected cryptocurrency mining activity in the last 5 minutes."
+
+      - alert: SensitiveFileAccess
+        expr: increase(falco_events_total{rule="Sensitive File Access"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Sensitive file access detected"
+          description: "Falco detected {{ $value }} sensitive file access events in the last 5 minutes."
+
+  # ===========================================================================
+  # AutoScaling Alerts
+  # ===========================================================================
+  - name: autoscaling_alerts
+    interval: 30s
+    rules:
+      - alert: AutoscalerAtMaxCapacity
+        expr: autoscaler_current_replicas >= autoscaler_max_replicas
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Autoscaler at max capacity for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has reached maximum replica count ({{ $value }}) for more than 5 minutes."
+
+      - alert: AutoscalerScaleUpStorm
+        expr: increase(autoscaler_scale_events_total{direction="up"}[10m]) > 3
+        for: 1m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Frequent scale-up events for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has scaled up {{ $value }} times in 10 minutes."
+
+      - alert: AutoscalerScaleDownStorm
+        expr: increase(autoscaler_scale_events_total{direction="down"}[10m]) > 3
+        for: 1m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "Frequent scale-down events for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has scaled down {{ $value }} times in 10 minutes."
+
+      - alert: AutoscalerHighCPU
+        expr: autoscaler_cpu_usage_percent > 75
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} CPU usage is above 75% for more than 5 minutes."
+
+      - alert: AutoscalerHighMemory
+        expr: autoscaler_memory_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} memory usage is above 80% for more than 5 minutes."
+
+      - alert: HPAMaxedOut
+        expr: kube_horizontalpodautoscaler_status_current_replicas == kube_horizontalpodautoscaler_spec_max_replicas
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} is at max replicas"
+          description: "HPA has been at max replicas for more than 5 minutes."
+
+      - alert: HPAScaleDownStuck
+        expr: kube_horizontalpodautoscaler_status_desired_replicas < kube_horizontalpodautoscaler_status_current_replicas
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} scale-down stuck"
+          description: "HPA desired replicas less than current for more than 10 minutes."
+
+  # ===========================================================================
+  # Container Health Alerts
+  # ===========================================================================
+  - name: container_health_alerts
+    interval: 30s
+    rules:
+      - alert: ContainerHighCPU
+        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} CPU usage is high"
+          description: "Container {{ $labels.name }} CPU usage is above 80% for more than 5 minutes."
+
+      - alert: ContainerHighMemory
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} memory usage is high"
+          description: "Container {{ $labels.name }} memory usage is above 85% for more than 5 minutes."
+
+      - alert: ContainerDown
+        expr: up{job="cadvisor"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} is down"
+          description: "Container {{ $labels.name }} has been down for more than 1 minute."
+
+      - alert: ContainerRestarting
+        expr: rate(container_start_time_seconds[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} is restarting frequently"
+          description: "Container {{ $labels.name }} has restarted in the last 10 minutes."
+
+      - alert: ContainerMemoryNearLimit
+        expr: container_memory_usage_bytes / container_spec_memory_limit_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Container {{ $labels.name }} memory near limit"
+          description: "Container {{ $labels.name }} memory usage is above 95% for more than 2 minutes."
+
+  # ===========================================================================
+  # Infrastructure Alerts
+  # ===========================================================================
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      - alert: HighDiskUsage
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High disk usage on {{ $labels.instance }}"
+          description: "Disk usage is above 90% on {{ $labels.instance }} mount {{ $labels.mountpoint }}."
+
+      - alert: HighNetworkTraffic
+        expr: rate(node_network_receive_bytes_total[5m]) > 1e9
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High network traffic on {{ $labels.instance }}"
+          description: "Network receive rate is above 1GB/s on {{ $labels.instance }}."
+
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Prometheus target {{ $labels.job }} is down"
+          description: "Target {{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+      - alert: NodeHighLoad
+        expr: node_load1 / count by (instance) (node_cpu_seconds_total{mode="idle"}) > 2
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High load on {{ $labels.instance }}"
+          description: "1-minute load average is more than 2x CPU count on {{ $labels.instance }} for more than 5 minutes."

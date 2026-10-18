@@ -1,0 +1,195 @@
+groups:
+  - name: soc-tracing-alerts
+    interval: 30s
+    rules:
+      # Trace pipeline health
+      - alert: OTelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "OTel Collector is down"
+          description: "OTel Collector has been down for more than 1 minute."
+
+      - alert: JaegerDown
+        expr: up{job="jaeger"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Jaeger is down"
+          description: "Jaeger tracing backend has been down for more than 1 minute."
+
+      - alert: TempoDown
+        expr: up{job="tempo"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Tempo is down"
+          description: "Tempo tracing backend has been down for more than 1 minute."
+
+      # Trace volume anomalies
+      - alert: TraceVolumeSpike
+        expr: |
+          (
+            sum(rate(traces_span_count[5m]))
+            >
+            2 * avg_over_time(sum(rate(traces_span_count[5m]))[1h:5m])
+          )
+        for: 2m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Trace volume spike detected"
+          description: "Trace volume has doubled compared to the 1-hour average."
+
+      - alert: TraceVolumeDrop
+        expr: |
+          (
+            sum(rate(traces_span_count[5m]))
+            <
+            0.1 * avg_over_time(sum(rate(traces_span_count[5m]))[1h:5m])
+          )
+        for: 5m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Trace volume drop detected"
+          description: "Trace volume has dropped to less than 10% of the 1-hour average."
+
+      # Error rate alerts
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(traces_span_errors{status_code="ERROR"}[5m]))
+            /
+            sum(rate(traces_span_count[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "High error rate in traces"
+          description: "Error rate is above 5% for more than 2 minutes."
+
+      # Latency alerts
+      - alert: HighP99Latency
+        expr: |
+          histogram_quantile(0.99, sum(rate(traces_latency_bucket[5m])) by (le, service))
+          > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "High P99 latency for {{ $labels.service }}"
+          description: "P99 latency for {{ $labels.service }} is above 1000ms."
+
+      # SOC threat alerts
+      - alert: HighThreatScore
+        expr: |
+          sum(rate(traces_span_count{soc_threat_score="high"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "High threat score detected in traces"
+          description: "Spans with high threat score detected in the last minute."
+
+      - alert: SQLInjectionAttempt
+        expr: |
+          sum(rate(traces_span_count{soc_threats=~".*sql_injection.*"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "SQL injection attempt detected"
+          description: "Potential SQL injection pattern detected in trace spans."
+
+      - alert: XSSAttempt
+        expr: |
+          sum(rate(traces_span_count{soc_threats=~".*xss.*"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "XSS attempt detected"
+          description: "Potential XSS pattern detected in trace spans."
+
+      - alert: PathTraversalAttempt
+        expr: |
+          sum(rate(traces_span_count{soc_threats=~".*path_traversal.*"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: soc
+        annotations:
+          summary: "Path traversal attempt detected"
+          description: "Potential path traversal pattern detected in trace spans."
+
+      # AutoScaling alerts
+      - alert: HPAMaxedOut
+        expr: |
+          kube_horizontalpodautoscaler_status_current_replicas
+          ==
+          kube_horizontalpodautoscaler_spec_max_replicas
+        for: 5m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} is at max replicas"
+          description: "HPA has been at max replicas for more than 5 minutes."
+
+      - alert: HPAScaleDownStuck
+        expr: |
+          kube_horizontalpodautoscaler_status_desired_replicas
+          <
+          kube_horizontalpodautoscaler_status_current_replicas
+        for: 10m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "HPA {{ $labels.horizontalpodautoscaler }} scale-down stuck"
+          description: "HPA desired replicas less than current for more than 10 minutes."
+
+      # Container tracing alerts
+      - alert: ContainerAgentDown
+        expr: |
+          kube_daemonset_status_number_ready{daemonset="otel-container-agent"}
+          <
+          kube_daemonset_status_desired_number_scheduled{daemonset="otel-container-agent"}
+        for: 5m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Container tracing agent not ready on some nodes"
+          description: "otel-container-agent DaemonSet has unready pods for more than 5 minutes."
+
+      - alert: ContainerTraceGap
+        expr: |
+          (
+            sum(rate(traces_span_count{container_id=~".+"}[5m]))
+            <
+            0.5 * sum(rate(traces_span_count[5m]))
+          )
+        for: 10m
+        labels:
+          severity: warning
+          team: soc
+        annotations:
+          summary: "Container trace gap detected"
+          description: "Less than 50% of traces have container IDs for more than 10 minutes."

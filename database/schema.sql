@@ -267,8 +267,8 @@ BEGIN
  SELECT po.quantity_unit,po.normalized_unit_price,po.geography,po.valid_from,po.valid_to,po.quality_status,
         cb.currency AS book_currency,cb.status AS book_status,cb.valid_from AS book_from,cb.valid_to AS book_to,
         ep.currency AS estimate_currency,ep.geography AS estimate_geography,ep.price_as_of
- INTO p FROM price_observations po JOIN cost_books cb ON cb.tenant_id=po.tenant_id AND cb.id=po.cost_book_id
- JOIN estimate_projects ep ON ep.tenant_id=NEW.tenant_id AND ep.id=NEW.estimate_id
+ INTO p FROM dcc.price_observations po JOIN dcc.cost_books cb ON cb.tenant_id=po.tenant_id AND cb.id=po.cost_book_id
+ JOIN dcc.estimate_projects ep ON ep.tenant_id=NEW.tenant_id AND ep.id=NEW.estimate_id
  WHERE po.tenant_id=NEW.tenant_id AND po.id=NEW.price_observation_id;
  IF NOT FOUND THEN RAISE EXCEPTION 'price observation is not in the estimate tenant'; END IF;
  IF p.quality_status<>'approved' OR p.book_status<>'approved' THEN RAISE EXCEPTION 'estimate price and cost book must be approved'; END IF;

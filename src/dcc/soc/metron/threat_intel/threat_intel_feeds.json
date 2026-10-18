@@ -1,0 +1,134 @@
+{
+  "feeds": [
+    {
+      "id": "metron-ti-001",
+      "name": "Emerging Threats IP Blocklist",
+      "description": "Known malicious IP addresses from Emerging Threats",
+      "url": "https://rules.emergingthreats.net/blockrules/compromised-ips.txt",
+      "type": "ip_blocklist",
+      "format": "plain_text",
+      "update_interval_hours": 24,
+      "confidence": "high",
+      "category": "compromised_hosts"
+    },
+    {
+      "id": "metron-ti-002",
+      "name": "AbuseIPDB Blacklist",
+      "description": "IP addresses reported for abuse",
+      "url": "https://api.abuseipdb.com/api/v2/blacklist",
+      "type": "ip_blocklist",
+      "format": "json",
+      "update_interval_hours": 24,
+      "confidence": "medium",
+      "category": "abuse"
+    },
+    {
+      "id": "metron-ti-003",
+      "name": "PhishTank Domain Feed",
+      "description": "Known phishing domains",
+      "url": "https://data.phishtank.com/data/online-valid.json",
+      "type": "domain_blocklist",
+      "format": "json",
+      "update_interval_hours": 24,
+      "confidence": "high",
+      "category": "phishing"
+    },
+    {
+      "id": "metron-ti-004",
+      "name": "Malware Domain List",
+      "description": "Domains associated with malware distribution",
+      "url": "https://www.malwaredomainlist.com/hostslist/hosts.txt",
+      "type": "domain_blocklist",
+      "format": "hosts_file",
+      "update_interval_hours": 24,
+      "confidence": "high",
+      "category": "malware"
+    },
+    {
+      "id": "metron-ti-005",
+      "name": "SSL Blacklist (SSLBL)",
+      "description": "Malicious SSL certificates and JA3 hashes",
+      "url": "https://sslbl.abuse.ch/blacklist/ja3_fingerprints.csv",
+      "type": "ja3_fingerprint",
+      "format": "csv",
+      "update_interval_hours": 24,
+      "confidence": "high",
+      "category": "malware_c2"
+    },
+    {
+      "id": "metron-ti-006",
+      "name": "URLhaus Abuse Feed",
+      "description": "Malware distribution URLs",
+      "url": "https://urlhaus.abuse.ch/downloads/csv/",
+      "type": "url_blocklist",
+      "format": "csv",
+      "update_interval_hours": 24,
+      "confidence": "high",
+      "category": "malware_distribution"
+    },
+    {
+      "id": "metron-ti-007",
+      "name": "Tor Exit Nodes",
+      "description": "Current Tor exit node IP addresses",
+      "url": "https://check.torproject.org/torbulkexitlist",
+      "type": "ip_blocklist",
+      "format": "plain_text",
+      "update_interval_hours": 1,
+      "confidence": "high",
+      "category": "anonymization"
+    },
+    {
+      "id": "metron-ti-008",
+      "name": "Botfish IP Feed",
+      "description": "Suspicious IP addresses from Censys",
+      "url": "https://cinsscore.com/list/ci-badguys.txt",
+      "type": "ip_blocklist",
+      "format": "plain_text",
+      "update_interval_hours": 24,
+      "confidence": "medium",
+      "category": "suspicious_activity"
+    }
+  ],
+  "enrichment": {
+    "geoip": {
+      "enabled": true,
+      "database_path": "/usr/share/GeoIP/GeoLite2-City.mmdb",
+      "fields": ["country", "city", "asn", "latitude", "longitude"]
+    },
+    "reverse_dns": {
+      "enabled": true,
+      "timeout_seconds": 5
+    },
+    "whois": {
+      "enabled": true,
+      "cache_ttl_hours": 24
+    },
+    "passive_dns": {
+      "enabled": true,
+      "provider": "circl.lu",
+      "cache_ttl_hours": 12
+    }
+  },
+  "matching": {
+    "ip_match": {
+      "enabled": true,
+      "fields": ["srcaddr", "dstaddr", "source_ip", "destination_ip"],
+      "action": "tag_and_alert"
+    },
+    "domain_match": {
+      "enabled": true,
+      "fields": ["request", "referer", "uri_stem"],
+      "action": "tag_and_alert"
+    },
+    "ja3_match": {
+      "enabled": true,
+      "fields": ["tls_ja3"],
+      "action": "tag_and_alert"
+    },
+    "url_match": {
+      "enabled": true,
+      "fields": ["request", "referer"],
+      "action": "tag_and_alert"
+    }
+  }
+}

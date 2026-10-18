@@ -1,0 +1,41 @@
+<div class="container">
+  <header class="card">
+    <h1>Facility Command Picture</h1>
+    <p>One view across site power, cooling, water, compute, service demand, operational risk, and evidence.</p>
+  </header>
+  <div class="grid" id="overview-kpis"></div>
+  <div class="grid" style="margin-top:1rem">
+    <article class="card">
+      <h2>Energy-to-Compute Quality</h2>
+      <div id="quality-state" class="empty">Loading...</div>
+    </article>
+    <article class="card">
+      <h2>Lifecycle Attention</h2>
+      <div id="workflow-state" class="empty">Loading...</div>
+    </article>
+  </div>
+</div>
+<script>
+DCC.components = DCC.components || {};
+DCC.components.overview = {
+  async mount(container) {
+    try {
+      const data = await DCC.utils.fetchJSON('/v2/overview');
+      const kpis = container.querySelector('#overview-kpis');
+      kpis.innerHTML = data.kpis.map(k => `
+        <article class="card">
+          <div class="label">${DCC.utils.escapeHtml(k.name)}</div>
+          <div class="value">${DCC.utils.formatNumber(k.value_numeric, k.unit)}</div>
+          <div class="label">${DCC.utils.escapeHtml(k.quality_status)} · ${Math.round((k.coverage||0)*100)}% coverage</div>
+        </article>
+      `).join('');
+      container.querySelector('#quality-state').innerHTML = data.synthetic
+        ? '<strong>SYNTHETIC DEMO DATA · NOT LIVE</strong>'
+        : '<strong>Read model loaded</strong>';
+      container.querySelector('#workflow-state').innerHTML = `${data.open_workflows} open workflows`;
+    } catch (e) {
+      container.querySelector('#quality-state').innerHTML = `<div class="error">${DCC.utils.escapeHtml(e.message)}</div>`;
+    }
+  }
+};
+</script>

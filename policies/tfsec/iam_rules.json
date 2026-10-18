@@ -1,0 +1,36 @@
+{
+  "rules": [
+    {
+      "id": "DC_IAM_001",
+      "category": "iam",
+      "title": "Wildcard IAM policies are prohibited",
+      "severity": "CRITICAL",
+      "summary": "Policies must not grant Action:* on Resource:*.",
+      "description": "Wildcard grants defeat least privilege and make audit trails meaningless: any compromise inherits full account authority.",
+      "remediation": "Scope actions and resources to the specific service and ARN required.",
+      "resource_types": ["aws_iam_policy", "aws_iam_role_policy"],
+      "checks": [
+        {
+          "condition": "policy contains Action:* AND Resource:*",
+          "verdict": "fail"
+        }
+      ]
+    },
+    {
+      "id": "DC_IAM_002",
+      "category": "iam",
+      "title": "Privileged roles must require MFA",
+      "severity": "HIGH",
+      "summary": "Admin and operator roles must enforce multi-factor authentication.",
+      "description": "Single-factor credentials on privileged roles are the most common path to unauthorized change in shared infrastructure.",
+      "remediation": "Attach an MFA condition to the role trust policy.",
+      "resource_types": ["aws_iam_role"],
+      "checks": [
+        {
+          "condition": "access.mfa is true when access.privilege is 'admin' or 'operator'",
+          "verdict": "fail"
+        }
+      ]
+    }
+  ]
+}

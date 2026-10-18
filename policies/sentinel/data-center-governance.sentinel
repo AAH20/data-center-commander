@@ -1,0 +1,101 @@
+# Data Center Commander — Sentinel governance policy
+#
+# Enforces the project's non-negotiable infrastructure contracts at plan time.
+# Kept intentionally small and explicit: every rule maps to a documented
+# product contract in docs/ARCHITECTURE.md so an operator can cite it.
+
+import "tfplan/v2" as tfplan
+
+# ---------------------------------------------------------------------------
+# Mandatory accountability tags
+# ---------------------------------------------------------------------------
+
+mandatory_tags = ["owner", "Environment", "team"]
+
+resource_tags = func(resource) {
+	return resource.applied.tags else {}
+
+	# `else {}` keeps untagged resources in scope so the rule below reports
+	# them, rather than silently passing a resource that declares no tags.
+}
+
+tagged_resources = filter tfplan.resource_changes as _, rc {
+	rc.type is not "no-op" and
+		rc.change.actions contains "create"
+}
+
+deny_missing_tags = rule {
+	all tagged_resources as _, rc {
+		all mandatory_tags as tag {
+			tag in keys(resource_tags(rc.change))
+		}
+	}
+}
+
+# ---------------------------------------------------------------------------
+# Encryption at rest
+# ---------------------------------------------------------------------------
+
+encryption_attributes = {
+	"aws_db_instance": "storage_encrypted",
+	"aws_ebs_volume": "encrypted",
+}
+
+encryptable_resources = filter tfplan.resource_changes as _, rc {
+	rc.type in keys(encryption_attributes) and
+		rc.change.actions contains "create"
+}
+
+deny_unencrypted_storage = rule {
+	all encryptable_resources as _, rc {
+		rc.change.after[encryption_attributes[rc.type]] is true
+	}
+}
+
+# ---------------------------------------------------------------------------
+# No public administrative ingress
+# ---------------------------------------------------------------------------
+
+admin_ports = [22, 3389]
+
+security_group_rules = filter tfplan.resource_changes as _, rc {
+	rc.type is "aws_security_group" and rc.change.actions contains "create"
+}
+
+deny_public_admin_ingress = rule {
+	all security_group_rules as _, rc {
+		all rc.change.after.ingress else [] as ingress {
+			not (
+				ingress.cidr_blocks contains "0.0.0.0/0" and
+					(ingress.from_port in admin_ports or ingress.to_port in admin_ports)
+			)
+		}
+	}
+}
+
+# ---------------------------------------------------------------------------
+# Retention floor for stateful services
+# ---------------------------------------------------------------------------
+
+retention_floor = 7
+
+stateful_resources = filter tfplan.resource_changes as _, rc {
+	rc.type is "aws_db_instance" and rc.change.actions contains "create"
+}
+
+deny_short_backup_retention = rule {
+	all stateful_resources as _, rc {
+		rc.change.after.backup_retention_period >= retention_floor
+	}
+}
+
+# ---------------------------------------------------------------------------
+# Aggregate gates
+# ---------------------------------------------------------------------------
+
+main = rule {
+	deny_missing_tags and
+		deny_unencrypted_storage and
+		deny_public_admin_ingress and
+		deny_short_backup_retention
+}
