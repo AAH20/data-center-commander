@@ -75,7 +75,10 @@ jobs:
         env:
           PYTHONPATH: src
         run: |
-          pip install coverage
+          # 71 test files import pytest; installing only `coverage` left every one
+          # of them failing to load under unittest discover with
+          # "ModuleNotFoundError: No module named 'pytest'".
+          pip install -e ".[test]" coverage
           coverage run -m unittest discover -s tests -v
           coverage report -m
           coverage xml
