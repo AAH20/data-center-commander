@@ -50,18 +50,18 @@ resource "aws_db_instance" "this" {
   db_subnet_group_name   = var.db_subnet_group_name != null ? var.db_subnet_group_name : aws_db_subnet_group.this[0].name
   vpc_security_group_ids = var.vpc_security_group_ids
 
-  backup_retention_period         = var.backup_retention_period
-  backup_window                    = var.backup_window
-  maintenance_window               = var.maintenance_window
-  copy_tags_to_snapshot            = true
-  deletion_protection              = var.deletion_protection
-  skip_final_snapshot              = var.skip_final_snapshot
-  final_snapshot_identifier        = var.skip_final_snapshot ? null : "${var.identifier}-final-snapshot"
-  performance_insights_enabled     = var.performance_insights_enabled
+  backup_retention_period               = var.backup_retention_period
+  backup_window                         = var.backup_window
+  maintenance_window                    = var.maintenance_window
+  copy_tags_to_snapshot                 = true
+  deletion_protection                   = var.deletion_protection
+  skip_final_snapshot                   = var.skip_final_snapshot
+  final_snapshot_identifier             = var.skip_final_snapshot ? null : "${var.identifier}-final-snapshot"
+  performance_insights_enabled          = var.performance_insights_enabled
   performance_insights_retention_period = var.performance_insights_retention_period
-  monitoring_interval              = var.monitoring_interval
-  monitoring_role_arn              = var.monitoring_role_arn
-  enabled_cloudwatch_logs_exports  = var.enabled_cloudwatch_logs_exports
+  monitoring_interval                   = var.monitoring_interval
+  monitoring_role_arn                   = var.monitoring_role_arn
+  enabled_cloudwatch_logs_exports       = var.enabled_cloudwatch_logs_exports
 
   tags = merge(var.tags, {
     Name = var.identifier

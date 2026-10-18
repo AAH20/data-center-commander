@@ -129,9 +129,9 @@ resource "ibm_iam_service_id" "workload" {
 }
 
 resource "ibm_iam_service_policy" "workload" {
-  count         = var.enable_ibm ? 1 : 0
+  count          = var.enable_ibm ? 1 : 0
   iam_service_id = ibm_iam_service_id.workload[0].iam_id
-  roles         = ["Viewer", "Operator"]
+  roles          = ["Viewer", "Operator"]
 
   resources {
     service = "is"

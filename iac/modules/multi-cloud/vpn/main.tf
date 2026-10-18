@@ -85,8 +85,8 @@ resource "aws_vpn_connection_route" "gcp" {
 ###############################################################################
 
 resource "google_compute_ha_vpn_gateway" "this" {
-  count  = var.gcp_network_id != null ? 1 : 0
-  name   = "${var.project_name}-vpn-gw"
+  count   = var.gcp_network_id != null ? 1 : 0
+  name    = "${var.project_name}-vpn-gw"
   network = var.gcp_network_id
 }
 
@@ -116,8 +116,8 @@ resource "google_compute_vpn_tunnel" "to_aws" {
   router                          = var.gcp_router_id
   ike_version                     = 2
 
-  remote_traffic_selector  = [var.aws_vpc_cidr]
-  local_traffic_selector   = [var.gcp_vpc_cidr]
+  remote_traffic_selector = [var.aws_vpc_cidr]
+  local_traffic_selector  = [var.gcp_vpc_cidr]
 }
 
 resource "google_compute_router_interface" "vpn" {

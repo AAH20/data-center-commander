@@ -21,7 +21,7 @@ resource "oci_load_balancer_load_balancer" "this" {
     minimum_bandwidth_in_mbps = var.min_bandwidth
   }
 
-  ip_mode = var.ip_mode
+  ip_mode    = var.ip_mode
   is_private = var.is_private
 }
 
@@ -73,7 +73,7 @@ resource "oci_load_balancer_listener" "this" {
     idle_timeout_in_seconds = each.value.idle_timeout
   }
 
-  hostname_names = each.value.hostname_names
+  hostname_names      = each.value.hostname_names
   path_route_set_name = each.value.path_route_set_name
 }
 

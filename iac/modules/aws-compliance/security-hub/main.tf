@@ -15,7 +15,7 @@ data "aws_region" "current" {}
 resource "aws_securityhub_account" "this" {
   count = var.enable_security_hub ? 1 : 0
 
-  enable_default_standards = false
+  enable_default_standards  = false
   control_finding_generator = var.control_finding_generator
   auto_enable_new_standards = var.auto_enable_new_standards
 }
@@ -33,10 +33,10 @@ resource "aws_securityhub_standards_subscription" "this" {
 resource "aws_securityhub_member" "this" {
   for_each = { for member in var.members : member.account_id => member }
 
-  master_id    = data.aws_caller_identity.current.account_id
-  account_id   = each.value.account_id
-  email        = each.value.email
-  invite       = each.value.invite
+  master_id  = data.aws_caller_identity.current.account_id
+  account_id = each.value.account_id
+  email      = each.value.email
+  invite     = each.value.invite
 
   depends_on = [aws_securityhub_account.this]
 }

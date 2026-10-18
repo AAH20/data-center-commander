@@ -56,7 +56,7 @@ variable "healthcheck" {
     port                     = number
     path                     = optional(string)
     check_interval_seconds   = optional(number)
-    response_timeout_seconds  = optional(number)
+    response_timeout_seconds = optional(number)
     healthy_threshold        = optional(number)
     unhealthy_threshold      = optional(number)
   })

@@ -34,13 +34,13 @@ resource "digitalocean_loadbalancer" "this" {
   dynamic "healthcheck" {
     for_each = var.healthcheck != null ? [var.healthcheck] : []
     content {
-      protocol               = healthcheck.value.protocol
-      port                   = healthcheck.value.port
-      path                   = lookup(healthcheck.value, "path", "/")
-      check_interval_seconds = lookup(healthcheck.value, "check_interval_seconds", 10)
+      protocol                 = healthcheck.value.protocol
+      port                     = healthcheck.value.port
+      path                     = lookup(healthcheck.value, "path", "/")
+      check_interval_seconds   = lookup(healthcheck.value, "check_interval_seconds", 10)
       response_timeout_seconds = lookup(healthcheck.value, "response_timeout_seconds", 5)
-      healthy_threshold      = lookup(healthcheck.value, "healthy_threshold", 5)
-      unhealthy_threshold    = lookup(healthcheck.value, "unhealthy_threshold", 3)
+      healthy_threshold        = lookup(healthcheck.value, "healthy_threshold", 5)
+      unhealthy_threshold      = lookup(healthcheck.value, "unhealthy_threshold", 3)
     }
   }
 

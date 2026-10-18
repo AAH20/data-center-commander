@@ -198,18 +198,18 @@ module "ibm_compute" {
     ibm = ibm.primary
   }
 
-  instance_name     = "${var.project_name}-vsi"
-  instance_profile  = var.ibm_instance_profile
-  instance_count    = var.ibm_instance_count
-  vpc_id            = module.ibm_network[0].vpc_id
-  subnet_id         = module.ibm_network[0].subnet_id
-  security_group_id = module.ibm_network[0].security_group_id
-  region            = var.ibm_region
-  ssh_key_ids       = var.ibm_ssh_key_ids
+  instance_name      = "${var.project_name}-vsi"
+  instance_profile   = var.ibm_instance_profile
+  instance_count     = var.ibm_instance_count
+  vpc_id             = module.ibm_network[0].vpc_id
+  subnet_id          = module.ibm_network[0].subnet_id
+  security_group_id  = module.ibm_network[0].security_group_id
+  region             = var.ibm_region
+  ssh_key_ids        = var.ibm_ssh_key_ids
   enable_floating_ip = false
-  enable_monitoring = var.enable_monitoring
-  environment       = var.environment
-  common_tags       = local.tags
+  enable_monitoring  = var.enable_monitoring
+  environment        = var.environment
+  common_tags        = local.tags
 }
 
 ###############################################################################

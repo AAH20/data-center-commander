@@ -14,10 +14,10 @@ resource "openshift_project" "this" {
     name = var.name
     labels = merge(var.labels, {
       "app.kubernetes.io/managed-by" = "terraform"
-      "app.kubernetes.io/part-of"       = var.part_of
+      "app.kubernetes.io/part-of"    = var.part_of
     })
     annotations = merge(var.annotations, {
-      "openshift.io/description" = var.description
+      "openshift.io/description"  = var.description
       "openshift.io/display-name" = var.display_name != "" ? var.display_name : var.name
     })
   }

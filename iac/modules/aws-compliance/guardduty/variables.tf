@@ -18,9 +18,9 @@ variable "detector_finding_publishing_frequency" {
 variable "data_sources" {
   description = "Data source configurations for GuardDuty"
   type = object({
-    s3_logs             = optional(bool, true)
-    kubernetes          = optional(bool, true)
-    malware_protection   = optional(bool, true)
+    s3_logs            = optional(bool, true)
+    kubernetes         = optional(bool, true)
+    malware_protection = optional(bool, true)
   })
   default = {}
 }

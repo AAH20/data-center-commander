@@ -23,9 +23,9 @@ resource "cloudstack_disk" "this" {
 resource "cloudstack_volume" "this" {
   count = var.create_volume ? 1 : 0
 
-  name               = var.name
-  disk_offering      = var.disk_offering
-  zone               = var.zone_id
-  size               = var.size
-  tags               = var.tags
+  name          = var.name
+  disk_offering = var.disk_offering
+  zone          = var.zone_id
+  size          = var.size
+  tags          = var.tags
 }

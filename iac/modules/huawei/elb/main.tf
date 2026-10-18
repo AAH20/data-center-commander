@@ -9,14 +9,14 @@ terraform {
 }
 
 resource "huaweicloud_lb_loadbalancer_v3" "this" {
-  name          = var.name
-  description   = var.description
-  vpc_id        = var.vpc_id
-  subnet_id     = var.subnet_id
+  name           = var.name
+  description    = var.description
+  vpc_id         = var.vpc_id
+  subnet_id      = var.subnet_id
   ipv4_subnet_id = var.ipv4_subnet_id
-  l4_flavor_id  = var.l4_flavor_id
-  l7_flavor_id  = var.l7_flavor_id
-  tags          = var.tags
+  l4_flavor_id   = var.l4_flavor_id
+  l7_flavor_id   = var.l7_flavor_id
+  tags           = var.tags
 
   availability_zone = var.availability_zone
 }

@@ -173,8 +173,8 @@ resource "aws_config_config_rule" "custom" {
     content {
       compliance_resource_id    = lookup(scope.value, "compliance_resource_id", null)
       compliance_resource_types = lookup(scope.value, "compliance_resource_types", null)
-      tag_key                    = lookup(scope.value, "tag_key", null)
-      tag_value                  = lookup(scope.value, "tag_value", null)
+      tag_key                   = lookup(scope.value, "tag_key", null)
+      tag_value                 = lookup(scope.value, "tag_value", null)
     }
   }
 

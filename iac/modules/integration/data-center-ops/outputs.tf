@@ -41,12 +41,12 @@ output "tier" {
 output "total_capacity" {
   description = "Total capacity summary"
   value = {
-    racks         = var.total_racks
-    rack_units    = var.total_racks * var.rack_units
-    power_kw      = var.total_power_kw
-    cooling_tons  = var.total_cooling_tons
-    network_gbps  = var.total_network_gbps
-    floor_sqm     = var.usable_floor_sqm
+    racks        = var.total_racks
+    rack_units   = var.total_racks * var.rack_units
+    power_kw     = var.total_power_kw
+    cooling_tons = var.total_cooling_tons
+    network_gbps = var.total_network_gbps
+    floor_sqm    = var.usable_floor_sqm
   }
 }
 

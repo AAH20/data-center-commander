@@ -11,15 +11,15 @@ terraform {
 resource "alicloud_disk" "this" {
   count = var.count
 
-  disk_name     = "${var.name}-${count.index + 1}"
-  size          = var.size
-  category      = var.category
-  zone_id       = var.zone_id
-  description   = var.description
-  tags          = var.tags
+  disk_name   = "${var.name}-${count.index + 1}"
+  size        = var.size
+  category    = var.category
+  zone_id     = var.zone_id
+  description = var.description
+  tags        = var.tags
 
-  encrypted     = var.encrypted
-  kms_key_id    = var.kms_key_id
+  encrypted  = var.encrypted
+  kms_key_id = var.kms_key_id
 }
 
 resource "alicloud_disk_attachment" "this" {

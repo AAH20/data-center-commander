@@ -23,20 +23,20 @@ resource "aws_cloudwatch_log_group" "this" {
 resource "aws_cloudwatch_metric_alarm" "this" {
   for_each = var.metric_alarms
 
-  alarm_name          = each.key
-  comparison_operator = each.value.comparison_operator
-  evaluation_periods  = each.value.evaluation_periods
-  metric_name         = each.value.metric_name
-  namespace           = each.value.namespace
-  period              = each.value.period
-  statistic           = each.value.statistic
-  threshold           = each.value.threshold
-  alarm_description   = each.value.description
-  alarm_actions       = each.value.alarm_actions
-  ok_actions          = each.value.ok_actions
+  alarm_name                = each.key
+  comparison_operator       = each.value.comparison_operator
+  evaluation_periods        = each.value.evaluation_periods
+  metric_name               = each.value.metric_name
+  namespace                 = each.value.namespace
+  period                    = each.value.period
+  statistic                 = each.value.statistic
+  threshold                 = each.value.threshold
+  alarm_description         = each.value.description
+  alarm_actions             = each.value.alarm_actions
+  ok_actions                = each.value.ok_actions
   insufficient_data_actions = each.value.insufficient_data_actions
-  dimensions          = each.value.dimensions
-  treat_missing_data  = each.value.treat_missing_data
+  dimensions                = each.value.dimensions
+  treat_missing_data        = each.value.treat_missing_data
 
   tags = merge(var.tags, {
     Name = each.key

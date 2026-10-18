@@ -9,10 +9,10 @@ terraform {
 }
 
 resource "ibm_is_vpc" "this" {
-  name                        = var.name
-  address_prefix_management   = var.address_prefix_management
-  resource_group              = var.resource_group_id
-  tags                        = var.tags
+  name                      = var.name
+  address_prefix_management = var.address_prefix_management
+  resource_group            = var.resource_group_id
+  tags                      = var.tags
 
   # Classic access is disabled by default for security
   classic_access = var.classic_access
@@ -92,7 +92,7 @@ resource "ibm_is_public_gateway" "this" {
   name           = "${var.name}-${each.key}-pgw"
   vpc            = ibm_is_vpc.this.id
   zone           = each.value.zone
-  resource_group    = var.resource_group_id
+  resource_group = var.resource_group_id
   tags           = var.tags
 }
 

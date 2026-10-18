@@ -11,9 +11,9 @@ terraform {
 # Create a ServiceAccount
 resource "openshift_service_account" "this" {
   metadata {
-    name        = var.name
-    namespace   = var.namespace
-    labels      = merge(var.labels, {
+    name      = var.name
+    namespace = var.namespace
+    labels = merge(var.labels, {
       "app.kubernetes.io/name"    = var.name
       "app.kubernetes.io/part-of" = var.part_of
     })
@@ -37,9 +37,9 @@ resource "openshift_role" "this" {
   dynamic "rule" {
     for_each = var.role_rules
     content {
-      api_groups = rule.value.api_groups
-      resources  = rule.value.resources
-      verbs      = rule.value.verbs
+      api_groups     = rule.value.api_groups
+      resources      = rule.value.resources
+      verbs          = rule.value.verbs
       resource_names = lookup(rule.value, "resource_names", null)
     }
   }
@@ -58,9 +58,9 @@ resource "openshift_cluster_role" "this" {
   dynamic "rule" {
     for_each = var.cluster_role_rules
     content {
-      api_groups = rule.value.api_groups
-      resources  = rule.value.resources
-      verbs      = rule.value.verbs
+      api_groups     = rule.value.api_groups
+      resources      = rule.value.resources
+      verbs          = rule.value.verbs
       resource_names = lookup(rule.value, "resource_names", null)
     }
   }

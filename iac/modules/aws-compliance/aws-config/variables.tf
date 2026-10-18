@@ -59,9 +59,9 @@ variable "config_resource_types" {
 variable "managed_rules" {
   description = "List of AWS Config managed rules to enable"
   type = list(object({
-    name       = string
-    rule_identifier = string
-    input_parameters = optional(string, null)
+    name                = string
+    rule_identifier     = string
+    input_parameters    = optional(string, null)
     compliance_severity = optional(string, null)
   }))
   default = []
@@ -70,14 +70,14 @@ variable "managed_rules" {
 variable "custom_rules" {
   description = "List of custom AWS Config rules (Lambda-backed)"
   type = list(object({
-    name               = string
-    description        = string
-    source_owner       = string
-    source_identifier  = string
-    source_detail      = optional(any, null)
-    input_parameters   = optional(string, null)
+    name                        = string
+    description                 = string
+    source_owner                = string
+    source_identifier           = string
+    source_detail               = optional(any, null)
+    input_parameters            = optional(string, null)
     maximum_execution_frequency = optional(string, null)
-    scope              = optional(any, null)
+    scope                       = optional(any, null)
   }))
   default = []
 }

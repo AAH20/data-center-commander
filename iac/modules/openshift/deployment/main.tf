@@ -40,9 +40,9 @@ resource "openshift_secret" "this" {
 # Create the Deployment
 resource "openshift_deployment" "this" {
   metadata {
-    name        = var.name
-    namespace   = var.namespace
-    labels      = merge(var.labels, {
+    name      = var.name
+    namespace = var.namespace
+    labels = merge(var.labels, {
       "app.kubernetes.io/name"    = var.name
       "app.kubernetes.io/part-of" = var.part_of
     })
@@ -93,8 +93,8 @@ resource "openshift_deployment" "this" {
         }
 
         container {
-          name            = var.name
-          image           = var.image
+          name              = var.name
+          image             = var.image
           image_pull_policy = var.image_pull_policy
 
           port {
@@ -210,9 +210,9 @@ resource "openshift_deployment" "this" {
 # Create a Service for the deployment
 resource "openshift_service" "this" {
   metadata {
-    name        = var.name
-    namespace   = var.namespace
-    labels      = merge(var.labels, {
+    name      = var.name
+    namespace = var.namespace
+    labels = merge(var.labels, {
       "app.kubernetes.io/name"    = var.name
       "app.kubernetes.io/part-of" = var.part_of
     })

@@ -24,18 +24,18 @@ resource "local_file" "dc_config" {
       tier        = var.tier
     }
     capacity = {
-      total_racks          = var.total_racks
-      total_power_kw       = var.total_power_kw
-      total_cooling_tons   = var.total_cooling_tons
-      total_network_gbps   = var.total_network_gbps
-      usable_floor_sqm     = var.usable_floor_sqm
+      total_racks        = var.total_racks
+      total_power_kw     = var.total_power_kw
+      total_cooling_tons = var.total_cooling_tons
+      total_network_gbps = var.total_network_gbps
+      usable_floor_sqm   = var.usable_floor_sqm
     }
     thresholds = {
-      pue_warning          = var.pue_warning_threshold
-      pue_critical         = var.pue_critical_threshold
-      temp_warning_c       = var.temp_warning_c
-      temp_critical_c      = var.temp_critical_c
-      humidity_warning_pct = var.humidity_warning_pct
+      pue_warning           = var.pue_warning_threshold
+      pue_critical          = var.pue_critical_threshold
+      temp_warning_c        = var.temp_warning_c
+      temp_critical_c       = var.temp_critical_c
+      humidity_warning_pct  = var.humidity_warning_pct
       humidity_critical_pct = var.humidity_critical_pct
     }
     monitoring = {
@@ -46,10 +46,10 @@ resource "local_file" "dc_config" {
       retention_days       = var.retention_days
     }
     backup = {
-      enabled              = var.backup_enabled
-      schedule             = var.backup_schedule
-      retention_count      = var.backup_retention_count
-      offsite_replication  = var.offsite_replication
+      enabled             = var.backup_enabled
+      schedule            = var.backup_schedule
+      retention_count     = var.backup_retention_count
+      offsite_replication = var.offsite_replication
     }
     security = {
       tls_enabled          = var.tls_enabled
@@ -68,23 +68,23 @@ resource "local_file" "capacity_plan" {
   content = jsonencode({
     datacenter = var.datacenter_name
     computed = {
-      max_rack_units         = var.total_racks * var.rack_units
-      power_per_rack_kw      = var.total_power_kw / var.total_racks
-      cooling_per_rack_tons  = var.total_cooling_tons / var.total_racks
-      network_per_rack_gbps  = var.total_network_gbps / var.total_racks
-      floor_per_rack_sqm     = var.usable_floor_sqm / var.total_racks
+      max_rack_units        = var.total_racks * var.rack_units
+      power_per_rack_kw     = var.total_power_kw / var.total_racks
+      cooling_per_rack_tons = var.total_cooling_tons / var.total_racks
+      network_per_rack_gbps = var.total_network_gbps / var.total_racks
+      floor_per_rack_sqm    = var.usable_floor_sqm / var.total_racks
     }
     headroom = {
-      rack_units_available   = var.total_racks * var.rack_units - var.allocated_rack_units
-      power_headroom_kw      = var.total_power_kw - var.allocated_power_kw
-      cooling_headroom_tons  = var.total_cooling_tons - var.allocated_cooling_tons
-      network_headroom_gbps  = var.total_network_gbps - var.allocated_network_gbps
+      rack_units_available  = var.total_racks * var.rack_units - var.allocated_rack_units
+      power_headroom_kw     = var.total_power_kw - var.allocated_power_kw
+      cooling_headroom_tons = var.total_cooling_tons - var.allocated_cooling_tons
+      network_headroom_gbps = var.total_network_gbps - var.allocated_network_gbps
     }
     utilization = {
-      rack_unit_utilization  = var.allocated_rack_units / (var.total_racks * var.rack_units) * 100
-      power_utilization      = var.allocated_power_kw / var.total_power_kw * 100
-      cooling_utilization    = var.allocated_cooling_tons / var.total_cooling_tons * 100
-      network_utilization    = var.allocated_network_gbps / var.total_network_gbps * 100
+      rack_unit_utilization = var.allocated_rack_units / (var.total_racks * var.rack_units) * 100
+      power_utilization     = var.allocated_power_kw / var.total_power_kw * 100
+      cooling_utilization   = var.allocated_cooling_tons / var.total_cooling_tons * 100
+      network_utilization   = var.allocated_network_gbps / var.total_network_gbps * 100
     }
   })
 }
@@ -245,37 +245,37 @@ resource "local_file" "backup_script" {
 
     BACKUP_DIR="/var/backups/datacenter-commander"
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    BACKUP_PATH="${'$'}{BACKUP_DIR}/${'$'}{TIMESTAMP}"
+    BACKUP_PATH="$${BACKUP_DIR}/$${TIMESTAMP}"
     RETENTION=${var.backup_retention_count}
 
-    mkdir -p "${'$'}{BACKUP_PATH}"
+    mkdir -p "$${BACKUP_PATH}"
 
     # Database backup
     echo "Backing up database..."
-    pg_dump "${'$'}{DATABASE_URL:-postgresql://localhost/datacenter}" \
-      > "${'$'}{BACKUP_PATH}/database.sql"
+    pg_dump "$${DATABASE_URL:-postgresql://localhost/datacenter}" \
+      > "$${BACKUP_PATH}/database.sql"
 
     # Configuration backup
     echo "Backing up configuration..."
-    tar czf "${'$'}{BACKUP_PATH}/config.tar.gz" \
+    tar czf "$${BACKUP_PATH}/config.tar.gz" \
       -C "${var.config_output_path}" .
 
     # Secrets backup (encrypted)
     echo "Backing up secrets..."
     tar czf - -C /etc/datacenter-commander . \
       | gpg --symmetric --cipher-algo AES256 \
-      > "${'$'}{BACKUP_PATH}/secrets.tar.gz.gpg"
+      > "$${BACKUP_PATH}/secrets.tar.gz.gpg"
 
     # Cleanup old backups
     echo "Cleaning up old backups..."
-    ls -1t "${'$'}{BACKUP_DIR}" | tail -n +$((RETENTION + 1)) | while read -r old; do
-      rm -rf "${'$'}{BACKUP_DIR}/${'$'}{old}"
+    ls -1t "$${BACKUP_DIR}" | tail -n +$((RETENTION + 1)) | while read -r old; do
+      rm -rf "$${BACKUP_DIR}/$${old}"
     done
 
     # Offsite replication
-    ${var.offsite_replication ? "echo \"Replicating to offsite...\"\n    rclone sync \"${'$'}{BACKUP_PATH}\" remote:${var.datacenter_name}-backups/" : "# Offsite replication disabled"}
+    ${var.offsite_replication ? "echo \"Replicating to offsite...\"\n    rclone sync \"$${BACKUP_PATH}\" remote:${var.datacenter_name}-backups/" : "# Offsite replication disabled"}
 
-    echo "Backup complete: ${'$'}{BACKUP_PATH}"
+    echo "Backup complete: $${BACKUP_PATH}"
   EOT
 
   file_permission = "0755"

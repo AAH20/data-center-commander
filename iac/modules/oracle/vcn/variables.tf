@@ -67,13 +67,13 @@ variable "create_security_list" {
 variable "ingress_rules" {
   description = "List of ingress security rules"
   type = list(object({
-    protocol      = string
-    source        = string
-    description   = string
-    tcp_port_min  = number
-    tcp_port_max  = number
-    udp_port_min  = number
-    udp_port_max  = number
+    protocol     = string
+    source       = string
+    description  = string
+    tcp_port_min = number
+    tcp_port_max = number
+    udp_port_min = number
+    udp_port_max = number
   }))
   default = []
 }

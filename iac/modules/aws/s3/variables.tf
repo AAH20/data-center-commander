@@ -24,14 +24,14 @@ variable "bucket_key_enabled" {
 variable "lifecycle_rules" {
   description = "List of lifecycle rules"
   type = list(object({
-    id                                  = string
-    enabled                             = bool
-    transitions                         = list(object({
+    id      = string
+    enabled = bool
+    transitions = list(object({
       days          = number
       storage_class = string
     }))
-    expiration_days                     = optional(number, null)
-    noncurrent_version_expiration_days  = optional(number, null)
+    expiration_days                    = optional(number, null)
+    noncurrent_version_expiration_days = optional(number, null)
   }))
   default = []
 }

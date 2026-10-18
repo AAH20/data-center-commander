@@ -61,19 +61,19 @@ variable "create_network_acl" {
 variable "network_acl_rules" {
   description = "List of network ACL rules"
   type = list(object({
-    name              = string
-    action            = string
-    source            = string
-    destination       = string
-    direction         = string
-    icmp_type         = optional(number)
-    icmp_code         = optional(number)
-    tcp_port_min      = optional(number)
-    tcp_port_max      = optional(number)
+    name                = string
+    action              = string
+    source              = string
+    destination         = string
+    direction           = string
+    icmp_type           = optional(number)
+    icmp_code           = optional(number)
+    tcp_port_min        = optional(number)
+    tcp_port_max        = optional(number)
     tcp_source_port_min = optional(number)
     tcp_source_port_max = optional(number)
-    udp_port_min      = optional(number)
-    udp_port_max      = optional(number)
+    udp_port_min        = optional(number)
+    udp_port_max        = optional(number)
     udp_source_port_min = optional(number)
     udp_source_port_max = optional(number)
   }))
@@ -89,14 +89,14 @@ variable "create_security_group" {
 variable "security_group_rules" {
   description = "Map of security group rules (key = rule name)"
   type = map(object({
-    direction         = string
-    remote            = string
-    icmp_type         = optional(number)
-    icmp_code         = optional(number)
-    tcp_port_min      = optional(number)
-    tcp_port_max      = optional(number)
-    udp_port_min      = optional(number)
-    udp_port_max      = optional(number)
+    direction    = string
+    remote       = string
+    icmp_type    = optional(number)
+    icmp_code    = optional(number)
+    tcp_port_min = optional(number)
+    tcp_port_max = optional(number)
+    udp_port_min = optional(number)
+    udp_port_max = optional(number)
   }))
   default = {}
 }

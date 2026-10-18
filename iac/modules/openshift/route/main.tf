@@ -11,9 +11,9 @@ terraform {
 # Create an OpenShift Route
 resource "openshift_route" "this" {
   metadata {
-    name        = var.name
-    namespace   = var.namespace
-    labels      = merge(var.labels, {
+    name      = var.name
+    namespace = var.namespace
+    labels = merge(var.labels, {
       "app.kubernetes.io/name"    = var.name
       "app.kubernetes.io/part-of" = var.part_of
     })
@@ -35,12 +35,12 @@ resource "openshift_route" "this" {
     }
 
     tls {
-      termination                   = var.tls_termination
+      termination                      = var.tls_termination
       insecure_edge_termination_policy = var.insecure_policy
-      certificate                   = var.tls_certificate
-      key                           = var.tls_key
-      ca_certificate                = var.tls_ca_certificate
-      destination_ca_certificate    = var.destination_ca_certificate
+      certificate                      = var.tls_certificate
+      key                              = var.tls_key
+      ca_certificate                   = var.tls_ca_certificate
+      destination_ca_certificate       = var.destination_ca_certificate
     }
 
     wildcard_policy = var.wildcard_policy

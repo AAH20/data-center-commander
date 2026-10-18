@@ -44,25 +44,25 @@ module "aws_config" {
 
   managed_rules = [
     {
-      name               = "s3-bucket-public-read-prohibited"
-      rule_identifier    = "S3_BUCKET_PUBLIC_READ_PROHIBITED"
+      name            = "s3-bucket-public-read-prohibited"
+      rule_identifier = "S3_BUCKET_PUBLIC_READ_PROHIBITED"
     },
     {
-      name               = "s3-bucket-public-write-prohibited"
-      rule_identifier    = "S3_BUCKET_PUBLIC_WRITE_PROHIBITED"
+      name            = "s3-bucket-public-write-prohibited"
+      rule_identifier = "S3_BUCKET_PUBLIC_WRITE_PROHIBITED"
     },
     {
-      name               = "rds-storage-encrypted"
-      rule_identifier    = "RDS_STORAGE_ENCRYPTED"
+      name            = "rds-storage-encrypted"
+      rule_identifier = "RDS_STORAGE_ENCRYPTED"
     },
     {
-      name               = "ec2-volume-inuse-check"
-      rule_identifier    = "EC2_VOLUME_INUSE_CHECK"
+      name            = "ec2-volume-inuse-check"
+      rule_identifier = "EC2_VOLUME_INUSE_CHECK"
     },
     {
-      name               = "iam-password-policy"
-      rule_identifier    = "IAM_PASSWORD_POLICY"
-      input_parameters   = jsonencode({
+      name            = "iam-password-policy"
+      rule_identifier = "IAM_PASSWORD_POLICY"
+      input_parameters = jsonencode({
         RequireUppercaseCharacters = true
         RequireLowercaseCharacters = true
         RequireSymbols             = true
@@ -73,16 +73,16 @@ module "aws_config" {
       })
     },
     {
-      name               = "root-account-mfa-enabled"
-      rule_identifier    = "ROOT_ACCOUNT_MFA_ENABLED"
+      name            = "root-account-mfa-enabled"
+      rule_identifier = "ROOT_ACCOUNT_MFA_ENABLED"
     },
     {
-      name               = "iam-user-no-policies-check"
-      rule_identifier    = "IAM_USER_NO_POLICIES_CHECK"
+      name            = "iam-user-no-policies-check"
+      rule_identifier = "IAM_USER_NO_POLICIES_CHECK"
     },
     {
-      name               = "security-group-open-to-world"
-      rule_identifier    = "INSECURE_SECURITY_GROUP_RULES"
+      name            = "security-group-open-to-world"
+      rule_identifier = "INSECURE_SECURITY_GROUP_RULES"
     }
   ]
 
@@ -99,8 +99,8 @@ module "guardduty" {
   detector_finding_publishing_frequency = "SIX_HOURS"
 
   data_sources = {
-    s3_logs           = true
-    kubernetes        = true
+    s3_logs            = true
+    kubernetes         = true
     malware_protection = true
   }
 
@@ -133,13 +133,13 @@ module "security_hub" {
 module "cloudtrail" {
   source = "./cloudtrail"
 
-  trail_name                     = "compliance-trail"
-  s3_bucket_name                 = var.compliance_s3_bucket
-  s3_key_prefix                  = "cloudtrail"
-  enable_log_file_validation     = true
-  is_multi_region_trail          = true
-  include_global_service_events  = true
-  kms_key_id                     = var.compliance_kms_key_id
+  trail_name                    = "compliance-trail"
+  s3_bucket_name                = var.compliance_s3_bucket
+  s3_key_prefix                 = "cloudtrail"
+  enable_log_file_validation    = true
+  is_multi_region_trail         = true
+  include_global_service_events = true
+  kms_key_id                    = var.compliance_kms_key_id
 
   event_selectors = [
     {
@@ -173,10 +173,10 @@ module "cloudtrail" {
 module "iam_access_analyzer" {
   source = "./iam-access-analyzer"
 
-  analyzer_name        = "compliance-analyzer"
-  analyzer_type        = "ACCOUNT"
+  analyzer_name         = "compliance-analyzer"
+  analyzer_type         = "ACCOUNT"
   unused_access_enabled = true
-  unused_access_age    = 90
+  unused_access_age     = 90
 
   tags = {
     Environment = var.environment

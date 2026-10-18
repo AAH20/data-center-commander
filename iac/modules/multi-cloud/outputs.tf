@@ -118,10 +118,10 @@ output "total_instances" {
 output "all_instance_ips" {
   description = "Map of cloud provider to list of public IPs"
   value = {
-    aws           = var.enable_aws ? module.aws_compute[0].instance_public_ips : []
-    gcp           = var.enable_gcp ? module.gcp_compute[0].instance_public_ips : []
-    azure         = var.enable_azure ? module.azure_compute[0].instance_public_ips : []
+    aws          = var.enable_aws ? module.aws_compute[0].instance_public_ips : []
+    gcp          = var.enable_gcp ? module.gcp_compute[0].instance_public_ips : []
+    azure        = var.enable_azure ? module.azure_compute[0].instance_public_ips : []
     digitalocean = var.enable_digitalocean ? module.digitalocean_compute[0].droplet_public_ips : []
-    ibm           = var.enable_ibm ? module.ibm_compute[0].instance_public_ips : []
+    ibm          = var.enable_ibm ? module.ibm_compute[0].instance_public_ips : []
   }
 }

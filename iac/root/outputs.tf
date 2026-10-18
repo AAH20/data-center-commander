@@ -74,9 +74,9 @@ output "storage_buckets" {
 output "identity_roles" {
   description = "IAM role ARNs across clouds"
   value = {
-    aws_role_arn    = module.identity.aws_role_arn
-    gcp_sa_email    = module.identity.gcp_service_account_email
-    azure_role_id   = module.identity.azure_role_definition_id
-    ibm_service_id  = module.identity.ibm_service_id
+    aws_role_arn   = module.identity.aws_role_arn
+    gcp_sa_email   = module.identity.gcp_service_account_email
+    azure_role_id  = module.identity.azure_role_definition_id
+    ibm_service_id = module.identity.ibm_service_id
   }
 }

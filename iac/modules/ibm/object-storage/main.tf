@@ -9,10 +9,10 @@ terraform {
 }
 
 resource "ibm_cos_bucket" "this" {
-  bucket_name          = var.bucket_name
-  resource_group_id    = var.resource_group_id
-  location             = var.location
-  storage_class        = var.storage_class
+  bucket_name       = var.bucket_name
+  resource_group_id = var.resource_group_id
+  location          = var.location
+  storage_class     = var.storage_class
 
   dynamic "activity_tracking" {
     for_each = var.enable_activity_tracking ? [1] : []
@@ -24,8 +24,8 @@ resource "ibm_cos_bucket" "this" {
   dynamic "metrics_monitoring" {
     for_each = var.enable_metrics_monitoring ? [1] : []
     content {
-      metrics_monitoring_crn = var.metrics_monitoring_crn
-      usage_metrics_enabled  = true
+      metrics_monitoring_crn  = var.metrics_monitoring_crn
+      usage_metrics_enabled   = true
       request_metrics_enabled = true
     }
   }

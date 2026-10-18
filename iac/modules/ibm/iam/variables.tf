@@ -18,7 +18,7 @@ variable "member_ibm_ids" {
 variable "policies" {
   description = "Map of policies to attach (key = policy name)"
   type = map(object({
-    roles     = list(string)
+    roles = list(string)
     resources = optional(object({
       attributes = optional(map(string))
     }))

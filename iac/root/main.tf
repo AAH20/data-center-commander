@@ -78,8 +78,8 @@ provider "digitalocean" {
 }
 
 provider "ibm" {
-  alias           = "primary"
-  region          = var.ibm_region
+  alias            = "primary"
+  region           = var.ibm_region
   ibmcloud_api_key = var.ibm_api_key
 }
 
@@ -88,7 +88,7 @@ provider "ibm" {
 ###############################################################################
 
 module "multi_cloud" {
-  source = "./modules/multi-cloud"
+  source = "../modules/multi-cloud"
 
   project_name = var.project_name
   environment  = var.environment
@@ -156,7 +156,7 @@ module "multi_cloud" {
 ###############################################################################
 
 module "storage" {
-  source = "./modules/storage"
+  source = "../modules/storage"
 
   bucket_name          = var.project_name
   environment          = var.environment
@@ -177,7 +177,7 @@ module "storage" {
 ###############################################################################
 
 module "identity" {
-  source = "./modules/identity"
+  source = "../modules/identity"
 
   project_name          = var.project_name
   enable_aws            = var.enable_aws

@@ -47,7 +47,7 @@ resource "cloudstack_instance" "this" {
 resource "cloudstack_static_nat" "this" {
   count = var.enable_static_nat ? 1 : 0
 
-  ip_address_id = var.ip_address_id
+  ip_address_id      = var.ip_address_id
   virtual_machine_id = cloudstack_instance.this[0].id
 }
 

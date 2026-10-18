@@ -71,12 +71,12 @@ variable "allowed_ips" {
 variable "lifecycle_rules" {
   description = "List of lifecycle rules"
   type = list(object({
-    id                        = string
-    enabled                   = bool
-    filter_prefix             = string
-    expiration_days           = optional(number)
-    transition_days           = optional(number)
-    transition_storage_class  = optional(string)
+    id                       = string
+    enabled                  = bool
+    filter_prefix            = string
+    expiration_days          = optional(number)
+    transition_days          = optional(number)
+    transition_storage_class = optional(string)
   }))
   default = null
 }

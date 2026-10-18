@@ -61,9 +61,9 @@ variable "listeners" {
 variable "pools" {
   description = "Map of pools (key = name)"
   type = map(object({
-    protocol        = string
-    lb_method       = string
-    listener_id     = string
+    protocol    = string
+    lb_method   = string
+    listener_id = string
   }))
   default = {}
 }

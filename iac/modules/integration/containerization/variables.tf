@@ -29,16 +29,16 @@ variable "registry_name" {
 variable "services" {
   description = "Map of service definitions to deploy"
   type = map(object({
-    image                 = string
-    tag                   = string
-    build_context         = string
-    dockerfile            = string
-    internal_port         = number
-    external_port         = number
-    env                   = list(string)
-    data_path             = string
-    container_data_path   = string
-    healthcheck_command   = list(string)
+    image               = string
+    tag                 = string
+    build_context       = string
+    dockerfile          = string
+    internal_port       = number
+    external_port       = number
+    env                 = list(string)
+    data_path           = string
+    container_data_path = string
+    healthcheck_command = list(string)
   }))
   default = {}
 }

@@ -20,16 +20,16 @@ resource "oci_core_vcn" "this" {
 resource "oci_core_subnet" "this" {
   for_each = var.subnets
 
-  compartment_id    = var.compartment_id
-  vcn_id            = oci_core_vcn.this.id
-  cidr_block        = each.value.cidr_block
-  display_name      = "${var.name}-${each.key}"
-  dns_label         = each.key
+  compartment_id      = var.compartment_id
+  vcn_id              = oci_core_vcn.this.id
+  cidr_block          = each.value.cidr_block
+  display_name        = "${var.name}-${each.key}"
+  dns_label           = each.key
   availability_domain = each.value.availability_domain
-  route_table_id    = each.value.route_table_id
-  security_list_ids = each.value.security_list_ids
-  defined_tags      = var.defined_tags
-  freeform_tags     = var.freeform_tags
+  route_table_id      = each.value.route_table_id
+  security_list_ids   = each.value.security_list_ids
+  defined_tags        = var.defined_tags
+  freeform_tags       = var.freeform_tags
 }
 
 resource "oci_core_internet_gateway" "this" {
@@ -56,7 +56,7 @@ resource "oci_core_route_table" "this" {
     for_each = var.route_rules
     content {
       destination       = route_rules.value.destination
-      destination_type = route_rules.value.destination_type
+      destination_type  = route_rules.value.destination_type
       network_entity_id = route_rules.value.network_entity_id
     }
   }

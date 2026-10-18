@@ -30,9 +30,9 @@ variable "unused_access_age" {
 variable "rules" {
   description = "Access Analyzer rules configuration"
   type = list(object({
-    name       = string
-    rule_type  = string
-    details    = any
+    name      = string
+    rule_type = string
+    details   = any
   }))
   default = []
 }

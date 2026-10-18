@@ -16,13 +16,13 @@ variable "vpc_id" {
 variable "ingress_rules" {
   description = "List of ingress rules"
   type = list(object({
-    description                   = optional(string, null)
-    from_port                     = number
-    to_port                       = number
-    ip_protocol                   = string
-    cidr_ipv4                     = optional(string, null)
-    cidr_ipv6                     = optional(string, null)
-    referenced_security_group_id  = optional(string, null)
+    description                  = optional(string, null)
+    from_port                    = number
+    to_port                      = number
+    ip_protocol                  = string
+    cidr_ipv4                    = optional(string, null)
+    cidr_ipv6                    = optional(string, null)
+    referenced_security_group_id = optional(string, null)
   }))
   default = []
 }
@@ -30,13 +30,13 @@ variable "ingress_rules" {
 variable "egress_rules" {
   description = "List of egress rules"
   type = list(object({
-    description                   = optional(string, null)
-    from_port                     = number
-    to_port                       = number
-    ip_protocol                   = string
-    cidr_ipv4                     = optional(string, null)
-    cidr_ipv6                     = optional(string, null)
-    referenced_security_group_id  = optional(string, null)
+    description                  = optional(string, null)
+    from_port                    = number
+    to_port                      = number
+    ip_protocol                  = string
+    cidr_ipv4                    = optional(string, null)
+    cidr_ipv6                    = optional(string, null)
+    referenced_security_group_id = optional(string, null)
   }))
   default = []
 }

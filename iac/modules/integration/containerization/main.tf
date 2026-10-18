@@ -14,7 +14,7 @@ resource "docker_network" "data_center" {
   name   = "${var.project_name}-network"
   driver = "bridge"
 
-  ipam config {
+  ipam "config" {
     subnet = var.network_subnet
   }
 
@@ -117,11 +117,11 @@ resource "docker_container" "traefik" {
     read_only      = true
   }
   volumes {
-    host_path      = "${var.traefik_config_path}"
+    host_path      = var.traefik_config_path
     container_path = "/etc/traefik/dynamic"
   }
   volumes {
-    host_path      = "${var.traefik_certs_path}"
+    host_path      = var.traefik_certs_path
     container_path = "/letsencrypt"
   }
 

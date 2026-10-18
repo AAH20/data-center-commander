@@ -17,9 +17,9 @@ data "ibm_is_zones" "this" {
 }
 
 resource "ibm_is_vpc" "this" {
-  name           = var.vpc_name
+  name                      = var.vpc_name
   address_prefix_management = "manual"
-  resource_group = var.resource_group_id != "" ? var.resource_group_id : null
+  resource_group            = var.resource_group_id != "" ? var.resource_group_id : null
 
   tags = ["${var.environment}", "managed-by-opentofu"]
 }
@@ -54,8 +54,8 @@ resource "ibm_is_public_gateway" "this" {
 resource "ibm_is_subnet_public_gateway_attachment" "this" {
   count = var.enable_public_gateway ? 1 : 0
 
-  subnet                = ibm_is_subnet.this.id
-  public_gateway         = ibm_is_public_gateway.this[0].id
+  subnet         = ibm_is_subnet.this.id
+  public_gateway = ibm_is_public_gateway.this[0].id
 }
 
 resource "ibm_is_security_group" "this" {

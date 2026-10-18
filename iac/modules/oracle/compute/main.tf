@@ -13,12 +13,12 @@ data "oci_identity_availability_domains" "this" {
 }
 
 data "oci_core_images" "this" {
-  compartment_id = var.compartment_id
-  operating_system = var.operating_system
+  compartment_id           = var.compartment_id
+  operating_system         = var.operating_system
   operating_system_version = var.operating_system_version
-  shape = var.shape
-  sort_by = "TIMECREATED"
-  sort_order = "DESC"
+  shape                    = var.shape
+  sort_by                  = "TIMECREATED"
+  sort_order               = "DESC"
 }
 
 resource "oci_core_instance" "this" {
@@ -39,8 +39,8 @@ resource "oci_core_instance" "this" {
   }
 
   source_details {
-    source_type = "image"
-    source_id   = data.oci_core_images.this.images[0].id
+    source_type             = "image"
+    source_id               = data.oci_core_images.this.images[0].id
     boot_volume_size_in_gbs = var.boot_volume_size
   }
 
@@ -59,9 +59,9 @@ resource "oci_core_vnic_attachment" "this" {
   instance_id    = oci_core_instance.this[0].id
 
   create_vnic_details {
-    subnet_id              = var.additional_subnet_id
-    display_name           = "${var.name}-vnic-2"
-    assign_public_ip       = false
-    nsg_ids                = var.additional_nsg_ids
+    subnet_id        = var.additional_subnet_id
+    display_name     = "${var.name}-vnic-2"
+    assign_public_ip = false
+    nsg_ids          = var.additional_nsg_ids
   }
 }

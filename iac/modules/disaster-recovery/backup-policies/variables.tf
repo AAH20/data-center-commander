@@ -41,11 +41,11 @@ variable "vault_lock_changeable_for_days" {
 variable "backup_rules" {
   description = "List of backup plan rules"
   type = list(object({
-    rule_name         = string
-    schedule          = string
+    rule_name          = string
+    schedule           = string
     cold_storage_after = optional(number, 30)
     delete_after       = optional(number, 365)
-    copy_actions       = optional(list(object({
+    copy_actions = optional(list(object({
       destination_vault_arn = string
       cold_storage_after    = optional(number, 30)
       delete_after          = optional(number, 365)
@@ -57,8 +57,8 @@ variable "backup_rules" {
 variable "backup_selections" {
   description = "Map of backup selections"
   type = map(object({
-    iam_role_arn   = string
-    resources      = optional(list(string), [])
+    iam_role_arn = string
+    resources    = optional(list(string), [])
     selection_tags = optional(list(object({
       type  = string
       key   = string
@@ -107,7 +107,7 @@ variable "sns_email_endpoints" {
 variable "backup_vault_events" {
   description = "Backup vault events to notify on"
   type        = list(string)
-  default     = [
+  default = [
     "BACKUP_JOB_STARTED",
     "BACKUP_JOB_COMPLETED",
     "BACKUP_JOB_FAILED",

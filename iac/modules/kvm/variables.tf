@@ -96,10 +96,10 @@ variable "vm_storage_pool" {
 variable "vm_extra_volumes" {
   description = "Additional volumes to attach"
   type = list(object({
-    name   = string
+    name    = string
     size_gb = number
-    pool   = optional(string)
-    format = optional(string)
+    pool    = optional(string)
+    format  = optional(string)
   }))
   default = []
 }

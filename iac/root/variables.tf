@@ -26,8 +26,8 @@ variable "common_tags" {
   description = "Tags applied to all resources"
   type        = map(string)
   default = {
-    Project     = "data-center-commander"
-    ManagedBy   = "opentofu"
+    Project   = "data-center-commander"
+    ManagedBy = "opentofu"
   }
 }
 

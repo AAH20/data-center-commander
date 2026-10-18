@@ -11,17 +11,17 @@ terraform {
 # ─── Backup Vault ─────────────────────────────────────────────────────────────
 
 resource "aws_backup_vault" "this" {
-  name        = var.vault_name
-  kms_key_id  = var.kms_key_id
-  tags        = merge(var.tags, { Name = var.vault_name })
+  name       = var.vault_name
+  kms_key_id = var.kms_key_id
+  tags       = merge(var.tags, { Name = var.vault_name })
 }
 
 resource "aws_backup_vault_lock_configuration" "this" {
-  count                = var.enable_vault_lock ? 1 : 0
-  backup_vault_name    = aws_backup_vault.this.name
-  min_retention_days   = var.vault_lock_min_retention_days
-  max_retention_days   = var.vault_lock_max_retention_days
-  changeable_for_days  = var.vault_lock_changeable_for_days
+  count               = var.enable_vault_lock ? 1 : 0
+  backup_vault_name   = aws_backup_vault.this.name
+  min_retention_days  = var.vault_lock_min_retention_days
+  max_retention_days  = var.vault_lock_max_retention_days
+  changeable_for_days = var.vault_lock_changeable_for_days
 }
 
 # ─── Backup Plan ──────────────────────────────────────────────────────────────
@@ -38,8 +38,8 @@ resource "aws_backup_plan" "this" {
       schedule          = rule.value.schedule
 
       lifecycle {
-                cold_storage_after = rule.value.cold_storage_after
-                delete_after       = rule.value.delete_after
+        cold_storage_after = rule.value.cold_storage_after
+        delete_after       = rule.value.delete_after
       }
 
       dynamic "copy_action" {

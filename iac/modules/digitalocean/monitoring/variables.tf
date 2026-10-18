@@ -10,7 +10,7 @@ variable "alerts" {
     enabled     = optional(bool)
     tags        = optional(list(string))
     email       = optional(list(string))
-    slack       = optional(list(object({
+    slack = optional(list(object({
       url     = string
       channel = string
     })))

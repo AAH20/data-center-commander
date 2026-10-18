@@ -38,8 +38,8 @@ resource "digitalocean_database_db" "this" {
 resource "digitalocean_database_user" "this" {
   for_each = var.users
 
-  cluster_id = digitalocean_database_cluster.this.id
-  name       = each.key
+  cluster_id        = digitalocean_database_cluster.this.id
+  name              = each.key
   mysql_auth_plugin = lookup(each.value, "mysql_auth_plugin", null)
 }
 

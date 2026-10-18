@@ -51,15 +51,15 @@ variable "is_private" {
 variable "backend_sets" {
   description = "Map of backend sets (key = name)"
   type = map(object({
-    policy                      = string
-    health_checker_protocol     = string
-    health_checker_port         = number
-    health_checker_url_path     = string
-    health_checker_interval     = number
-    health_checker_timeout      = number
-    health_checker_retries      = number
-    session_cookie_name         = string
-    session_disable_fallback    = bool
+    policy                   = string
+    health_checker_protocol  = string
+    health_checker_port      = number
+    health_checker_url_path  = string
+    health_checker_interval  = number
+    health_checker_timeout   = number
+    health_checker_retries   = number
+    session_cookie_name      = string
+    session_disable_fallback = bool
   }))
   default = {}
 }

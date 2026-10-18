@@ -11,14 +11,14 @@ terraform {
 resource "digitalocean_monitor_alert" "this" {
   for_each = var.alerts
 
-  type         = each.value.type
-  compare      = each.value.compare
-  value        = each.value.value
-  window       = each.value.window
-  entities     = each.value.entities
-  description  = each.value.description
-  enabled      = lookup(each.value, "enabled", true)
-  tags         = lookup(each.value, "tags", [])
+  type        = each.value.type
+  compare     = each.value.compare
+  value       = each.value.value
+  window      = each.value.window
+  entities    = each.value.entities
+  description = each.value.description
+  enabled     = lookup(each.value, "enabled", true)
+  tags        = lookup(each.value, "tags", [])
   alerts {
     email = lookup(each.value, "email", [])
     slack = lookup(each.value, "slack", [])

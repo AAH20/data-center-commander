@@ -22,8 +22,8 @@ resource "ibm_is_volume" "this" {
 resource "ibm_is_instance_volume_attachment" "this" {
   count = var.instance_id != null ? 1 : 0
 
-  name       = "${var.name}-attachment"
-  instance   = var.instance_id
-  volume     = ibm_is_volume.this.id
+  name                             = "${var.name}-attachment"
+  instance                         = var.instance_id
+  volume                           = ibm_is_volume.this.id
   delete_volume_on_instance_delete = var.delete_on_instance_delete
 }

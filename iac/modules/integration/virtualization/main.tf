@@ -53,9 +53,9 @@ resource "libvirt_volume" "vm" {
 }
 
 resource "libvirt_cloudinit_disk" "vm" {
-  count     = var.vm_count
-  name      = "${var.cluster_name}-vm-${count.index + 1}-cloudinit.iso"
-  pool      = libvirt_pool.data_center.name
+  count = var.vm_count
+  name  = "${var.cluster_name}-vm-${count.index + 1}-cloudinit.iso"
+  pool  = libvirt_pool.data_center.name
   user_data = templatefile("${path.module}/templates/cloud-init.yml.tpl", {
     hostname    = "${var.cluster_name}-vm-${count.index + 1}"
     ssh_key     = var.ssh_public_key

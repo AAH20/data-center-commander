@@ -6,7 +6,7 @@ variable "roles" {
     max_session_duration = optional(number, 3600)
     permissions_boundary = optional(string, null)
     managed_policy_arns  = optional(list(string), [])
-    inline_policies      = optional(list(object({
+    inline_policies = optional(list(object({
       name   = string
       policy = string
     })), [])
@@ -33,8 +33,8 @@ variable "instance_profiles" {
 
 variable "groups" {
   description = "Map of IAM groups"
-  type = map(object({}))
-  default = {}
+  type        = map(object({}))
+  default     = {}
 }
 
 variable "group_policy_attachments" {
@@ -49,7 +49,7 @@ variable "group_policy_attachments" {
 variable "users" {
   description = "Map of IAM users"
   type = map(object({
-    path             = optional(string, "/")
+    path              = optional(string, "/")
     create_access_key = optional(bool, false)
   }))
   default = {}
