@@ -43,7 +43,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install type check tools
-        run: pip install mypy types-psycopg
+        # types-psycopg does not exist on PyPI (pip: 'No matching distribution
+        # found'), and psycopg 3 ships its own py.typed, so no stub package is
+        # needed. Requesting a nonexistent one failed the install, which meant
+        # mypy never ran at all.
+        run: pip install mypy
       - name: MyPy type check
         continue-on-error: true   # advisory, same reason as lint
         run: mypy src/ --ignore-missing-imports
