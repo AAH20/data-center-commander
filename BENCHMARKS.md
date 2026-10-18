@@ -17,7 +17,8 @@ Data Center Commander is a read-only, PostgreSQL-backed data-center operations c
 |--------|-------|------------|
 | Python source LOC | 26,605 | Substantial domain logic |
 | Test LOC | 10,826 | 41% test-to-source ratio |
-| Test pass rate | **89.8% (5,248/5,846)** | **636 failing — see §1a** |
+| Test pass rate (CI scope) | **89.8% (5,248/5,846)** | **636 failing — see §1a** |
+| Test pass rate (full suite) | **89.4% (6,623/7,406)** | **759 failing — 24 skipped** |
 | SQL schema LOC | 752 | Portable, well-normalized |
 | UI LOC | 2,594 | 8 JS modules + 1 HTML |
 | API endpoints | 12 | All read-only |
@@ -25,6 +26,24 @@ Data Center Commander is a read-only, PostgreSQL-backed data-center operations c
 | CI pipeline | GitHub Actions | Python 3.11, 10-min timeout |
 | Known test failures | 2 | 1 error + 1 failure |
 | Performance issues | 3 critical | N+1 queries, missing indexes, pool config |
+
+---
+
+### 1b. Two different pass rates, and why
+
+The numbers above differ by scope, and quoting one as if it were the other is how
+this file came to claim 99.8% (see §1a). Both are real:
+
+| Scope | Command | Result |
+|-------|---------|--------|
+| CI scope | `pytest tests/ --ignore=tests/e2e --ignore=tests/terraform` | 5,248 pass / 636 fail / 1 skip |
+| Full suite | `pytest tests/` | 6,623 pass / 759 fail / 24 skip |
+
+The full suite is the authoritative number and takes ~81 minutes. CI excludes `tests/e2e`
+(needs a browser against a running app) and `tests/terraform` (asserts against a module
+layout that does not exist), which is why CI reports the smaller failure count. Neither
+number is a passing grade; both are recorded so the next reader does not have to re-run
+an 81-minute suite to find out which figure is current.
 
 ---
 
