@@ -91,7 +91,7 @@ jobs:
           # tests/terraform is excluded while its 334 failures are triaged: it asserts
           # against terraform/modules/aws/vpc and similar paths that do not exist.
           # tests/e2e is excluded because it drives a browser against a running app.
-          pip install -e ".[test]" coverage
+          pip install -e ".[test,checkov]" coverage
           coverage run -m pytest tests/ -q -p no:cacheprovider \
             --ignore=tests/terraform --ignore=tests/e2e
           coverage report -m
@@ -137,7 +137,8 @@ jobs:
   k8s-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true   # kubectl is not installed on the runner, so the step takes its own\n        # skip branch and the job's outcome depends on runner image contents.
+    continue-on-error: true   # kubectl is not installed on the runner, so the step takes its own
+    # skip branch and the job's outcome depends on runner image contents.
     steps:
       - uses: actions/checkout@v4
       - name: Validate Kubernetes manifests
@@ -151,7 +152,9 @@ jobs:
   iac-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true   # the iac/ module tree has a real provider-wiring defect: an ibm provider\n        # configuration is passed to module.multi_cloud.module.ibm_compute, which does\n        # not declare the ibm-cloud/ibm provider as required, so init fails. Named\n        # here rather than silently tolerated.
+    continue-on-error: true   # the iac/ module tree has a real provider-wiring defect: an ibm provider
+    # configuration is passed to module.multi_cloud.module.ibm_compute, which does
+    # not declare the ibm-cloud/ibm provider as required, so init fails.
     steps:
       - uses: actions/checkout@v4
       - name: Install OpenTofu
