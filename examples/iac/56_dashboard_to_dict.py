@@ -14,6 +14,6 @@ d = report.to_dict()
 print(f"Status: {d['status']}")
 print(f"Generated at: {d['generated_at']}")
 print(f"Metadata: {d['metadata']}")
-print(f"Panels: {len(d['panels'])}"))
+print(f"Panels: {len(d['panels'])}")
 for p in d['panels']:
     print(f"  {p['name']}: {p['status']}")

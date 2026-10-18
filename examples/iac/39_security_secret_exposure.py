@@ -2,7 +2,7 @@
 
 Demonstrates detecting secrets in configuration.
 """
-from dcc.iac_observability.security_alerts import SecurityAlertEngine, SecurityAlertType
+from dcc.iac_observability.security_alerts import SecurityAlertEngine
 
 resources = [
     {

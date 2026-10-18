@@ -2,7 +2,7 @@
 
 Demonstrates detecting resources without MFA enabled.
 """
-from dcc.iac_observability.security_alerts import SecurityAlertEngine, SecurityAlertType
+from dcc.iac_observability.security_alerts import SecurityAlertEngine
 
 resources = [
     {

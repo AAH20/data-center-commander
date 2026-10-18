@@ -2,7 +2,7 @@
 
 Checks if data sources meet their freshness SLAs.
 """
-from dcc.quality.freshness import evaluate_sla, SourceFreshness, DEFAULT_SLA_HOURS
+from dcc.quality.freshness import evaluate_sla
 
 # Check telemetry freshness (1 hour SLA)
 status = evaluate_sla(age_hours=0.5, sla_hours=1)

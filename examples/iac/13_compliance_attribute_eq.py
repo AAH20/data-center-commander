@@ -3,7 +3,7 @@
 Demonstrates basic attribute equality compliance check.
 """
 from dcc.iac_observability.compliance import (
-    ComplianceCheck, ComplianceEngine, ComplianceSeverity, ComplianceStatus,
+    ComplianceCheck, ComplianceEngine, ComplianceSeverity,
 )
 
 check = ComplianceCheck(

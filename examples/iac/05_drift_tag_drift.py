@@ -2,7 +2,7 @@
 
 Detects when resource tags have changed.
 """
-from dcc.iac_observability.drift import DriftDetector, DriftType
+from dcc.iac_observability.drift import DriftDetector
 
 desired = {
     "i-123": {"resource_type": "aws_instance", "name": "web-1", "tags": {"env": "prod", "cost_center": "cc1"}},

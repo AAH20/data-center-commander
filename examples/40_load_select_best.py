@@ -3,8 +3,7 @@
 Compares multiple models and picks the one with lowest error.
 """
 from dcc.forecasting.load import (
-    MovingAverageForecaster, ExponentialSmoothingForecaster,
-    LinearTrendForecaster, select_best_model, LoadObservation,
+    select_best_model, LoadObservation,
 )
 from datetime import datetime, timedelta
 

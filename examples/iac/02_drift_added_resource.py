@@ -2,7 +2,7 @@
 
 Detects resources that exist in actual state but not in desired state.
 """
-from dcc.iac_observability.drift import DriftDetector, DriftType
+from dcc.iac_observability.drift import DriftDetector
 
 desired = {
     "i-123": {"resource_type": "aws_instance", "name": "web-1", "instance_type": "t3.micro"},

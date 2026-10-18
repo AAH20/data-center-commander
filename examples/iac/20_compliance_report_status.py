@@ -3,7 +3,7 @@
 Demonstrates how overall status is determined from check results.
 """
 from dcc.iac_observability.compliance import (
-    ComplianceCheck, ComplianceEngine, ComplianceStatus,
+    ComplianceCheck, ComplianceEngine,
 )
 
 # All pass

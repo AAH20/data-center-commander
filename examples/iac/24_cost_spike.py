@@ -2,7 +2,7 @@
 
 Demonstrates detecting a sudden cost increase.
 """
-from dcc.iac_observability.cost_anomaly import CostAnomalyDetector, CostAnomalyType
+from dcc.iac_observability.cost_anomaly import CostAnomalyDetector
 
 cost_data = [
     {"resource_id": "i-1", "resource_name": "web-1", "resource_type": "aws_instance",

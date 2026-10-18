@@ -2,7 +2,7 @@
 
 Demonstrates effective-dated price management.
 """
-from dcc.economics.prices import create_price_record, PriceStatus
+from dcc.economics.prices import create_price_record
 
 record = create_price_record(
     item_code="UPS-250KVA",

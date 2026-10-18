@@ -2,7 +2,7 @@
 
 Detects VPC, subnet, or security group changes (critical severity).
 """
-from dcc.iac_observability.drift import DriftDetector, DriftType, DriftSeverity
+from dcc.iac_observability.drift import DriftDetector
 
 desired = {
     "i-123": {"resource_type": "aws_instance", "name": "web-1", "vpc": "vpc-123", "subnet": "subnet-1"},

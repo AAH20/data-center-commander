@@ -5,7 +5,7 @@ Computes year-by-year cash flows with escalation and refresh.
 from decimal import Decimal
 from dcc.economics.estimates import (
     LifecycleCostCalculator, DeploymentSpec, DeploymentType,
-    EstimateLineItem, CostBehavior,
+    EstimateLineItem,
 )
 
 spec = DeploymentSpec(

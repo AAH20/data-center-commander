@@ -3,7 +3,7 @@
 Queries the price engine for the applicable price at a point in time.
 """
 from datetime import date
-from dcc.economics.prices import PriceEngine, PriceQuery, PriceStatus, create_price_record
+from dcc.economics.prices import PriceEngine, PriceQuery, create_price_record
 
 engine = PriceEngine()
 engine.add_price(create_price_record(

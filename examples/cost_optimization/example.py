@@ -6,10 +6,6 @@ from dcc.cost_optimization import (
     CostOptimizationEngine,
     InstanceType,
     PricingModel,
-    ReservedInstancePlanner,
-    RightsizingEngine,
-    RiskLevel,
-    SpotInstancePlanner,
     Workload,
 )
 

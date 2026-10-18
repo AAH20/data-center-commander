@@ -3,7 +3,7 @@
 Tracks data from source through transformations to final output.
 """
 from dcc.provenance.tracker import (
-    LineageTracker, LineageNode, LineageEdge, SourceType, TransformationType,
+    LineageTracker, SourceType, TransformationType,
 )
 
 tracker = LineageTracker()

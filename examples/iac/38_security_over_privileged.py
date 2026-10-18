@@ -2,7 +2,7 @@
 
 Demonstrates detecting wildcard permissions in IAM policies.
 """
-from dcc.iac_observability.security_alerts import SecurityAlertEngine, SecurityAlertType
+from dcc.iac_observability.security_alerts import SecurityAlertEngine
 
 resources = [
     {

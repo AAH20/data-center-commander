@@ -2,7 +2,7 @@
 
 Demonstrates detecting a sustained downward cost trend.
 """
-from dcc.iac_observability.cost_anomaly import CostAnomalyDetector, CostAnomalyType
+from dcc.iac_observability.cost_anomaly import CostAnomalyDetector
 
 cost_data = []
 for d in range(1, 15):

@@ -2,7 +2,7 @@
 
 Scores a data source on completeness, freshness, consistency, and accuracy.
 """
-from dcc.quality.engine import QualityEngine, QualityDimension
+from dcc.quality.engine import QualityEngine
 
 engine = QualityEngine()
 records = [
