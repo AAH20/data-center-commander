@@ -7,7 +7,15 @@ name = "data-center-commander"
 version = "0.1.0"
 description = "Read-only, energy-to-compute data-center operations command view"
 requires-python = ">=3.11"
-dependencies = []
+# Derived from what the source and tests actually import. This was `[]`, so the
+# editable install installed NOTHING and every third-party import failed with
+# ModuleNotFoundError -- which aborted collection for the whole run, not just the
+# affected tests. The test suite only appeared to work because PYTHONPATH leaked a
+# different interpreter's site-packages into it.
+dependencies = [
+    "fastapi>=0.110",
+    "cryptography>=42",
+]
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary,pool]>=3.2,<4"]
@@ -17,7 +25,18 @@ tracing = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.20",
     "opentelemetry-exporter-jaeger>=1.20",
 ]
-test = ["psycopg[binary,pool]>=3.2,<4"]
+test = [
+    "psycopg[binary,pool]>=3.2,<4",
+    "pytest>=8",
+    "pyyaml>=6",
+    "hypothesis>=6",
+    # starlette.testclient imports httpx at call time; without it every
+    # TestClient-based API test errors at collection.
+    "httpx>=0.27",
+]
+e2e = ["playwright>=1.40"]
+checkov = ["checkov>=3"]
+fuzz = ["atheris>=2.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -36,3 +55,8 @@ dev = [
 # ("Unknown config option"), so the collision is fixed with __init__.py packages
 # instead, which works on every version.
 testpaths = ["tests"]
+# tests/e2e imports its sibling `helpers` module by bare name. NOTE: the fix was to
+# rename tests/compliance/opa/helpers.py -> opa_helpers.py, because two modules named
+# `helpers` made `from helpers import navigate_to` bind to the OPA one. Adding
+# tests/e2e to pythonpath was NOT sufficient on its own -- the collision has to go.
+pythonpath = ["tests/e2e"]

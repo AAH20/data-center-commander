@@ -113,5 +113,5 @@ class TestWorkflowsView:
         """Review source connections should navigate to integrations."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "workflows")
-        page.evaluate(f\'document.querySelector(\\'button[data-goto=\"integrations\"]\\').click()\')
+        page.evaluate(f'document.querySelector(\'button[data-goto=\"integrations\"]\').click()')
         expect(page.locator("#view-integrations")).to_have_class(re.compile(r"\bactive\b"))

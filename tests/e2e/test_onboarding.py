@@ -117,7 +117,7 @@ class TestOnboarding:
         """Open integrations button should navigate to integrations."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
-        page.evaluate(\'document.querySelector("#dccOpenIntegrations").click()\')
+        page.evaluate('document.querySelector("#dccOpenIntegrations").click()')
         page.wait_for_timeout(300)
         expect(page.locator("#view-integrations")).to_have_class(re.compile(r"\bactive\b"))
 
