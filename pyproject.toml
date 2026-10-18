@@ -26,7 +26,9 @@ tracing = [
     "opentelemetry-exporter-jaeger>=1.20",
 ]
 test = [
-    "psycopg[binary,pool]>=3.2,<4",
+    "psycopg[binary,pool,
+    "psutil>=5.9",  # imported by the suite; was missing from this extra
+  ]>=3.2,<4",
     "pytest>=8",
     "pyyaml>=6",
     "hypothesis>=6",
