@@ -95,6 +95,7 @@ jobs:
           coverage run -m pytest tests/ -q -p no:cacheprovider \
             --ignore=tests/terraform --ignore=tests/e2e
           coverage report -m
+          echo "::warning::Known backlog: 636 failing tests (334 of them terraform tests asserting against a module layout that does not exist). See BENCHMARKS.md section 1a."
           coverage xml
       - name: Upload coverage artifact
         if: matrix.python-version == '3.12'
