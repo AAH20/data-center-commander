@@ -55,6 +55,22 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: pip install -e ".[test]"
+
+      # The suite was never run in CI: this workflow ran ruff/mypy/build only, and
+      # integration.yml used `unittest discover`, which does not collect pytest-style
+      # tests. A green badge therefore said nothing about the tests. This step makes
+      # the real number visible. It is ADVISORY (continue-on-error) only until the 636
+      # current failures are triaged -- 334 of them are terraform tests targeting
+      # terraform/modules/aws/vpc, a layout that does not exist. Flip it to blocking
+      # once the non-terraform failures reach zero, and fix the terraform suite against
+      # the real module names rather than deleting it.
+      - name: Run test suite (advisory -- 636 pre-existing failures)
+        continue-on-error: true
+        run: |
+          env -u PYTHONPATH python -m pytest -q --no-header -p no:cacheprovider \
+            --ignore=tests/terraform 2>&1 | tail -25
+          echo "::warning::Full suite has 636 failures (334 terraform). See BENCHMARKS.md §1a."
+
       - name: Run tests with coverage
         env:
           PYTHONPATH: src
@@ -112,4 +128,30 @@ jobs:
             kubectl apply --dry-run=client -k k8s/
           else
             echo "kubectl not available — skipping k8s manifest validation"
+          fi
+
+  iac-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          opentofu_version: 1.6.0
+      - name: OpenTofu fmt check
+        run: |
+          cd iac/root
+          tofu fmt -check -recursive
+      - name: OpenTofu validate
+        run: |
+          cd iac/root
+          tofu init -backend=false
+          tofu validate
+      - name: tfsec security scan
+        run: |
+          if command -v tfsec &>/dev/null; then
+            tfsec --config-file iac/policies/tfsec/tfsec.yml iac/
+          else
+            echo "tfsec not available — skipping IaC security scan"
           fi

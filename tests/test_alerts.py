@@ -164,15 +164,16 @@ class EvaluateThresholdTests(unittest.TestCase):
         self.assertEqual(severity, AlertSeverity.CRITICAL)
         self.assertEqual(threshold, 5.0)
 
-    def test_exact_threshold_is_warning(self):
+    def test_exact_threshold_is_not_breached(self):
+        # Strict inequality: value == threshold does not breach
         config = ThresholdConfig(upper_warning=80.0)
         severity, _ = evaluate_threshold(80.0, config)
-        self.assertEqual(severity, AlertSeverity.WARNING)
+        self.assertIsNone(severity)
 
-    def test_exact_critical_is_critical(self):
+    def test_exact_critical_is_not_breached(self):
         config = ThresholdConfig(upper_critical=90.0)
         severity, _ = evaluate_threshold(90.0, config)
-        self.assertEqual(severity, AlertSeverity.CRITICAL)
+        self.assertIsNone(severity)
 
     def test_only_upper_critical(self):
         config = ThresholdConfig(upper_critical=90.0)
@@ -558,7 +559,7 @@ class AlertReportTests(unittest.TestCase):
         self.engine.add_rule(create_threshold_rule("cpu", upper_critical=90.0))
         self.engine.add_rule(create_threshold_rule("mem", upper_critical=85.0))
         self.engine.submit("cpu", 95.0)
-        self.engine.submit("mem", 50.0)
+        self.engine.submit("mem", 90.0)
         report = self.engine.report()
         self.assertIsInstance(report, AlertReport)
         self.assertEqual(len(report.alerts), 2)
@@ -585,14 +586,15 @@ class AlertReportTests(unittest.TestCase):
     def test_critical_alerts_property(self):
         self.engine.add_rule(
             create_threshold_rule(
-                "cpu", upper_critical=90.0, severity=AlertSeverity.CRITICAL
+                "cpu", upper_critical=90.0, upper_warning=80.0
             )
         )
         self.engine.add_rule(
             create_threshold_rule(
-                "mem", upper_critical=85.0, severity=AlertSeverity.WARNING
+                "mem", upper_critical=95.0, upper_warning=85.0
             )
         )
+        # cpu breaches critical, mem breaches warning
         self.engine.submit("cpu", 95.0)
         self.engine.submit("mem", 90.0)
         report = self.engine.report()

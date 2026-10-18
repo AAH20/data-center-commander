@@ -5,7 +5,7 @@ Uses PerformanceTracker to monitor forecast accuracy.
 from dcc.forecasting.drift import PerformanceTracker, ModelPerformanceSnapshot
 from datetime import datetime, timedelta
 
-tracker = PerformanceTracker(model_id="load-forecast-v1")
+tracker = PerformanceTracker(model_id="load-forecast-v1", tenant_id="tenant-1")
 for day in range(30):
     snapshot = ModelPerformanceSnapshot(
         model_id="load-forecast-v1",
@@ -17,6 +17,5 @@ for day in range(30):
         errors=[2.5 * (1 + day * 0.02)] * 24,
     )
     snapshot.compute_derived()
-    tracker.add_snapshot(snapshot)
-print(f"MAE trend: {tracker.mae_trend()}")
-print(f"Drift detected: {tracker.detect_performance_drift()}")
+    tracker.record(snapshot)
+print(f"Snapshots: {tracker.snapshot_count}")

@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-10-18T04:06:30.223Z",
+  "baseUrl": "http://127.0.0.1:8790",
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "pixelThreshold": 0.1,
+  "diffThreshold": 0.01,
+  "total": 7,
+  "passed": 0,
+  "failed": 7,
+  "results": [
+    {
+      "view": "economics",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#economics\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#economics\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "view": "placement",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#placement\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#placement\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "view": "forecast",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#forecast\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#forecast\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "view": "assets",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#assets\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#assets\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "view": "security",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#security\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#security\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "view": "ops",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#ops\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#ops\", waiting until \"domcontentloaded\"\n"
+    },
+    {
+      "view": "quality",
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#quality\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#quality\", waiting until \"domcontentloaded\"\n"
+    }
+  ]
+}

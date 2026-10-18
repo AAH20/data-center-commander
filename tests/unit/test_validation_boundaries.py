@@ -87,6 +87,9 @@ class TestSeverity(unittest.TestCase):
         self.assertNotEqual(Severity.INFO, Severity.WARNING)
         self.assertNotEqual(Severity.ERROR, Severity.CRITICAL)
 
+    def test_severity_enum_members(self):
+        self.assertEqual(len(Severity), 4)
+
 
 class TestFinding(unittest.TestCase):
     def test_finding_creation(self):
@@ -105,6 +108,10 @@ class TestFinding(unittest.TestCase):
         self.assertEqual(d["message"], "Error")
         self.assertEqual(d["field"], "x")
         self.assertEqual(d["context"], {"k": "v"})
+
+    def test_finding_with_context(self):
+        f = Finding(code="W", severity=Severity.WARNING, message="warn", context={"a": 1})
+        self.assertEqual(f.context, {"a": 1})
 
 
 class TestValidationResult(unittest.TestCase):
@@ -141,6 +148,12 @@ class TestValidationResult(unittest.TestCase):
         self.assertTrue(d["passed"])
         self.assertEqual(len(d["findings"]), 1)
 
+    def test_multiple_findings(self):
+        r = ValidationResult(passed=True)
+        r.add(Finding(code="I1", severity=Severity.INFO, message="ok1"))
+        r.add(Finding(code="I2", severity=Severity.INFO, message="ok2"))
+        self.assertEqual(len(r.findings), 2)
+
 
 class TestUnitCompatibility(unittest.TestCase):
     def test_energy_unit_to_kwh(self):
@@ -173,8 +186,9 @@ class TestValidateMeterBoundary(unittest.TestCase):
     def test_valid_boundary(self):
         result = validate_meter_boundary(
             meter_id="m1",
+            boundary="facility",
             direction="import",
-            tenant_id="t1",
+            unit="kwh",
             readings=[{"timestamp": "2024-01-01T00:00:00Z", "value": 100}],
         )
         self.assertIsInstance(result, ValidationResult)
@@ -182,8 +196,9 @@ class TestValidateMeterBoundary(unittest.TestCase):
     def test_invalid_direction(self):
         result = validate_meter_boundary(
             meter_id="m1",
+            boundary="facility",
             direction="invalid",
-            tenant_id="t1",
+            unit="kwh",
             readings=[],
         )
         self.assertFalse(result.passed)
@@ -191,8 +206,9 @@ class TestValidateMeterBoundary(unittest.TestCase):
     def test_empty_readings(self):
         result = validate_meter_boundary(
             meter_id="m1",
+            boundary="facility",
             direction="import",
-            tenant_id="t1",
+            unit="kwh",
             readings=[],
         )
         self.assertIsInstance(result, ValidationResult)
@@ -267,17 +283,15 @@ class TestValidateAllocationRule(unittest.TestCase):
 class TestValidateEnergyBalance(unittest.TestCase):
     def test_balanced(self):
         result = validate_energy_balance(
-            import_kwh=Decimal("100"),
-            export_kwh=Decimal("0"),
-            losses_kwh=Decimal("5"),
+            facility_energy_kwh=Decimal("100"),
+            it_energy_kwh=Decimal("95"),
         )
         self.assertIsInstance(result, ValidationResult)
 
     def test_unbalanced(self):
         result = validate_energy_balance(
-            import_kwh=Decimal("100"),
-            export_kwh=Decimal("50"),
-            losses_kwh=Decimal("5"),
+            facility_energy_kwh=Decimal("100"),
+            it_energy_kwh=Decimal("50"),
         )
         self.assertFalse(result.passed)
 
@@ -648,8 +662,8 @@ class TestComputePue(unittest.TestCase):
 
 class TestComputeCoolingLoad(unittest.TestCase):
     def test_basic(self):
-        result = compute_cooling_load(100.0, 0.45)
-        self.assertAlmostEqual(result, 45.0)
+        result = compute_cooling_load(100.0, 3.0)
+        self.assertAlmostEqual(result, 100.0 / 3.0)
 
 
 class TestComputeCarbonEmissions(unittest.TestCase):

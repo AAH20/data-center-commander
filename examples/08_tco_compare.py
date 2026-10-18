@@ -2,24 +2,39 @@
 
 Side-by-side comparison of on-prem vs. cloud over the same horizon.
 """
-from dcc.economics.tco import TCOAssumptions, TCOEngine, compare_tco
+from dcc.economics.tco import (
+    TCOAssumptions, TCOCostBreakdown, TCOScenario, compare_tco,
+)
 
 assumptions = TCOAssumptions(currency="USD", horizon_years=10, annual_discount_rate=0.08)
-engine = TCOEngine(assumptions=assumptions)
-
-onprem = engine.evaluate(
-    capex=10_000_000, annual_energy=1_500_000, annual_maintenance=600_000,
-    annual_labor=1_000_000, annual_network=200_000, annual_software=300_000,
-    refresh_cost=3_000_000, refresh_year=6, terminal_cost=1_000_000, residual_value=2_000_000,
+onprem = TCOScenario(
+    name="On-Prem",
+    costs=TCOCostBreakdown(
+        hardware_capex=10_000_000,
+        energy_annual=1_500_000,
+        maintenance_annual=600_000,
+        labor_annual=1_000_000,
+        network_annual=200_000,
+        software_annual=300_000,
+        refresh_cost=3_000_000,
+        refresh_interval_years=6,
+        decommission_cost=1_000_000,
+        residual_value=2_000_000,
+    ),
+    assumptions=assumptions,
 )
-cloud = engine.evaluate(
-    capex=500_000, annual_energy=0, annual_maintenance=0,
-    annual_labor=200_000, annual_network=100_000, annual_software=5_000_000,
-    refresh_cost=0, refresh_year=0, terminal_cost=0, residual_value=0,
+cloud = TCOScenario(
+    name="Cloud",
+    costs=TCOCostBreakdown(
+        hardware_capex=500_000,
+        labor_annual=200_000,
+        network_annual=100_000,
+        software_annual=5_000_000,
+    ),
+    assumptions=assumptions,
 )
-
-comparison = compare_tco(onprem, cloud)
-print(f"On-prem PV: ${comparison.scenario_a.total_pv:,.2f}")
-print(f"Cloud PV: ${comparison.scenario_b.total_pv:,.2f}")
-print(f"Delta (cloud - onprem): ${comparison.npv_delta:,.2f}")
-print(f"Winner: {'Cloud' if comparison.npv_delta < 0 else 'On-prem'}")
+comparison = compare_tco([onprem, cloud])
+print(f"On-prem PV: ${comparison.scenarios[0].total_pv:,.2f}")
+print(f"Cloud PV: ${comparison.scenarios[1].total_pv:,.2f}")
+print(f"Delta (cloud - onprem): ${comparison.pv_deltas[1]:+,.2f}")
+print(f"Winner: {'Cloud' if comparison.pv_deltas[1] < 0 else 'On-prem'}")

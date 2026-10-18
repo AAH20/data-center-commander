@@ -1,0 +1,55 @@
+# =============================================================================
+# Data Center Commander — Traefik Static Configuration
+# =============================================================================
+# Static configuration for Traefik. Mounted into the Traefik container.
+# =============================================================================
+
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: false
+
+ping:
+  entryPoint: "traefik"
+
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+
+entryPoints:
+  web:
+    address: ":80"
+    transport:
+      respondingTimeouts:
+        readTimeout: 10s
+        writeTimeout: 10s
+        idleTimeout: 30s
+
+  websecure:
+    address: ":443"
+    transport:
+      respondingTimeouts:
+        readTimeout: 10s
+        writeTimeout: 120s
+        idleTimeout: 30s
+
+  traefik:
+    address: ":8080"
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /etc/traefik/acme.json
+      tlsChallenge: {}

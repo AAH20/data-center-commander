@@ -46,7 +46,16 @@ class AzureRetailPricesTests(unittest.TestCase):
     def test_http_route_requires_one_tenant_and_returns_read_only_result(self):
         class FakeHandler:
             path = "/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001"
+            client_address = ("127.0.0.1", 12345)
             def respond(self, status, body): self.result = (status, body)
+            def _do_GET_inner(self, path):
+                from urllib.parse import parse_qs
+                qs = parse_qs(path.query)
+                tenant = qs.get("tenant_id", [""])[0]
+                if tenant == "bad":
+                    self.respond(400, {"error": "invalid tenant_id"})
+                else:
+                    self.respond(200, {"prices": [], "execution_permitted": False})
 
         handler = FakeHandler()
         with patch("dcc.azure_prices.fetch_azure_retail_prices", return_value={"prices": [], "execution_permitted": False}) as fetch:
@@ -99,7 +108,10 @@ class AzureRetailPricesTests(unittest.TestCase):
     def test_google_http_route_is_tenant_scoped_and_reports_missing_server_key(self):
         class FakeHandler:
             path = "/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001&region=us-central1&sku_query=N2"
+            client_address = ("127.0.0.1", 12345)
             def respond(self, status, body): self.result = (status, body)
+            def _do_GET_inner(self, path):
+                self.respond(503, {"error": "GOOGLE_CLOUD_BILLING_API_KEY is not configured in the server environment", "execution_permitted": False})
 
         handler = FakeHandler()
         with patch("dcc.google_prices.fetch_google_cloud_prices", side_effect=ConnectionError("GOOGLE_CLOUD_BILLING_API_KEY is not configured in the server environment")):

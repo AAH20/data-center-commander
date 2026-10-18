@@ -57,5 +57,5 @@ services:
       dockerfile: Dockerfile
     command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8792"]
     environment:
-      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres@host.docker.internal:5432/data_center_commander_dev}
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:5432/data_center_commander_dev}
     restart: unless-stopped

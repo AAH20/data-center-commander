@@ -1,8 +1,18 @@
 /**
  * Security Monitoring Dashboard for Data Center Commander.
+ *
  * Renders auth events, policy violations, and audit log from
  * the /v1/evidence endpoint and related security signals.
- * Self-contained: no external chart library; uses inline SVG.
+ * Provides security posture scoring, authentication event analysis,
+ * policy violation tracking, audit log browsing with filtering,
+ * connector access posture, and incident summary. All data is
+ * tenant-scoped and read-only.
+ *
+ * Design: Self-contained ES module, inline SVG charts, dark theme consistent
+ * with the existing DCC UI. No external chart library.
+ *
+ * @module security-dashboard
+ * @see {@link https://en.wikipedia.org/wiki/Security_information_and_event_management|SIEM}
  */
 (() => {
   "use strict";
@@ -191,6 +201,11 @@
   const VIOLATION_PATTERNS = ["violation", "denied", "unauthorized", "forbidden", "breach", "escalation", "lockout", "revoked", "expired", "anomaly"];
   const CRITICAL_PATTERNS = ["breach", "unauthorized", "escalation", "lockout", "revoked", "critical"];
 
+  /**
+   * Classifies an event type into a security category.
+   * @param {string} eventType - Event type string
+   * @returns {"auth"|"violation"|"audit"} Security category
+   */
   function classifyEvent(eventType) {
     const et = (eventType || "").toLowerCase();
     if (AUTH_PATTERNS.some((p) => et.includes(p))) return "auth";
@@ -198,6 +213,11 @@
     return "audit";
   }
 
+  /**
+   * Determines the severity level of an event type.
+   * @param {string} eventType - Event type string
+   * @returns {"critical"|"warning"|"info"|"neutral"} Severity level
+   */
   function severityOf(eventType) {
     const et = (eventType || "").toLowerCase();
     if (CRITICAL_PATTERNS.some((p) => et.includes(p))) return "critical";
@@ -207,6 +227,14 @@
   }
 
   // ─── Score ring ──────────────────────────────────────────────────────────────
+
+  /**
+   * Renders an SVG circular score ring.
+   * @param {number} score - Score value (0-1)
+   * @param {string} label - Ring label text
+   * @param {string} color - Ring color (CSS color)
+   * @returns {string} HTML string for the score ring
+   */
   function scoreRing(score, label, color) {
     const pct = Math.max(0, Math.min(100, score * 100));
     const r = 34, c = 2 * Math.PI * r;
@@ -223,6 +251,13 @@
   }
 
   // ─── Horizontal bar chart ────────────────────────────────────────────────────
+
+  /**
+   * Renders a horizontal bar chart.
+   * @param {Array<{label: string, value: number, color?: string}>} items - Bar items
+   * @param {{title?: string, sub?: string, fmt?: Function}} [opts={}] - Chart options
+   * @returns {string} HTML string for the bar chart
+   */
   function hBarChart(items, opts = {}) {
     if (!items.length) return '<div class="sd-empty">No data to display.</div>';
     const max = Math.max(...items.map((i) => i.value), 1);
@@ -240,6 +275,13 @@
   }
 
   // ─── Donut chart ─────────────────────────────────────────────────────────────
+
+  /**
+   * Renders an SVG donut chart.
+   * @param {Array<{label: string, value: number, color?: string}>} segments - Donut segments
+   * @param {{title?: string, centerLabel?: string, centerSub?: string}} [opts={}] - Chart options
+   * @returns {string} HTML string for the donut chart
+   */
   function donutChart(segments, opts = {}) {
     if (!segments.length) return '<div class="sd-empty">No data.</div>';
     const total = segments.reduce((s, x) => s + x.value, 0);
@@ -261,6 +303,14 @@
   }
 
   // ─── Compute security scores ────────────────────────────────────────────────
+
+  /**
+   * Computes security posture scores from evidence, workflows, and connectors.
+   * @param {Array} evidence - Evidence event records
+   * @param {Array} workflows - Workflow records
+   * @param {Array} connectors - Connector records
+   * @returns {{authScore: number|null, violationScore: number|null, criticalScore: number|null, connectorScore: number|null, composite: number|null, total: number, authCount: number, violationCount: number, criticalCount: number, connectorCount: number, readOnlyConnectorCount: number}}
+   */
   function computeScores(evidence, workflows, connectors) {
     const events = evidence || [];
     const total = events.length;
@@ -304,6 +354,12 @@
   }
 
   // ─── Render top cards ───────────────────────────────────────────────────────
+
+  /**
+   * Renders the top security KPI summary cards.
+   * @param {Object} scores - Computed security scores
+   * @returns {void}
+   */
   function renderTopCards(scores) {
     const cards = [
       {
@@ -341,6 +397,12 @@
   }
 
   // ─── Render score gauges ────────────────────────────────────────────────────
+
+  /**
+   * Renders the security posture score gauge cards.
+   * @param {Object} scores - Computed security scores
+   * @returns {void}
+   */
   function renderScoreGauges(scores) {
     const gauges = [
       { label: "Auth health", score: scores.authScore, color: "#65d5d0" },
@@ -356,6 +418,12 @@
   }
 
   // ─── Render auth cards ──────────────────────────────────────────────────────
+
+  /**
+   * Renders the authentication event summary cards.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function renderAuthCards(evidence) {
     const authEvents = (evidence || []).filter((e) => classifyEvent(e.event_type) === "auth");
     const success = authEvents.filter((e) => !VIOLATION_PATTERNS.some((p) => (e.event_type || "").toLowerCase().includes(p))).length;
@@ -378,6 +446,12 @@
   }
 
   // ─── Render auth timeline ───────────────────────────────────────────────────
+
+  /**
+   * Renders the authentication event timeline.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function renderAuthTimeline(evidence) {
     const authEvents = (evidence || [])
       .filter((e) => classifyEvent(e.event_type) === "auth")
@@ -400,6 +474,12 @@
   }
 
   // ─── Render violation cards ─────────────────────────────────────────────────
+
+  /**
+   * Renders the policy violation summary cards.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function renderViolationCards(evidence) {
     const violations = (evidence || []).filter((e) => classifyEvent(e.event_type) === "violation");
     const critical = violations.filter((e) => severityOf(e.event_type) === "critical").length;
@@ -422,6 +502,12 @@
   }
 
   // ─── Render violation chart ─────────────────────────────────────────────────
+
+  /**
+   * Renders the violation breakdown bar chart by event type.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function renderViolationChart(evidence) {
     const violations = (evidence || []).filter((e) => classifyEvent(e.event_type) === "violation");
     if (!violations.length) {
@@ -447,6 +533,12 @@
   }
 
   // ─── Render audit table ─────────────────────────────────────────────────────
+
+  /**
+   * Renders the audit log table with search and filter support.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function renderAuditTable(evidence) {
     const host = document.querySelector("#sdAuditTable");
     const events = evidence || [];
@@ -498,6 +590,12 @@
   }
 
   // ─── Render connector table ─────────────────────────────────────────────────
+
+  /**
+   * Renders the connector access posture table.
+   * @param {Array} connectors - Connector records
+   * @returns {void}
+   */
   function renderConnectorTable(connectors) {
     const host = document.querySelector("#sdConnectorTable");
     const conns = connectors || [];
@@ -528,6 +626,12 @@
   }
 
   // ─── Render incident table ──────────────────────────────────────────────────
+
+  /**
+   * Renders the security incident and change record table.
+   * @param {Array} workflows - Workflow records
+   * @returns {void}
+   */
   function renderIncidentTable(workflows) {
     const host = document.querySelector("#sdIncidentTable");
     const workflowsData = workflows || [];
@@ -557,6 +661,12 @@
   }
 
   // ─── Populate event type filter ─────────────────────────────────────────────
+
+  /**
+   * Populates the event type filter dropdown from evidence data.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function populateTypeFilter(evidence) {
     const select = document.querySelector("#sdAuditType");
     if (!select) return;
@@ -567,6 +677,11 @@
   }
 
   // ─── Main load ──────────────────────────────────────────────────────────────
+
+  /**
+   * Loads security data from the API and renders all dashboard components.
+   * @returns {Promise<void>}
+   */
   async function loadSecurity() {
     const tenant = new URLSearchParams(location.search).get("tenant_id");
     const statusEl = document.querySelector("#sdStatus");

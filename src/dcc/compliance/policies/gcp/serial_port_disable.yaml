@@ -1,0 +1,6 @@
+# GCP Organization Policy: Disable Serial Port
+# Disables serial port access on all GCE instances
+name: organizations/ORG_ID/policies/compute.disableSerialPortAccess
+spec:
+  rules:
+    - enforce: true

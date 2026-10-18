@@ -2,25 +2,39 @@
 
 Compares observed prices against a benchmark to detect outliers.
 """
-from dcc.economics.prices import PriceEngine, PriceVariance
+from dcc.economics.prices import PriceEngine, create_price_record
 
 engine = PriceEngine()
-# Add multiple observations for the same item
-for price, conf in [(100, 0.9), (105, 0.8), (98, 0.85), (150, 0.3)]:
-    engine.add_record(create_price_record(
+baseline = create_price_record(
+    item_code="CABLE-CAT6A",
+    description="Cat6A Cable",
+    category="network",
+    quantity_unit="meter",
+    unit_price=100,
+    currency="USD",
+    geography="US-East",
+    price_basis="benchmark",
+    source_name="Benchmark",
+    source_ref="BENCH-001",
+    effective_from="2026-01-01",
+    confidence=0.95,
+)
+engine.add_price(baseline)
+for i, (price, conf) in enumerate([(105, 0.8), (98, 0.85), (150, 0.3)]):
+    comparison = create_price_record(
         item_code="CABLE-CAT6A",
         description="Cat6A Cable",
         category="network",
         quantity_unit="meter",
         unit_price=price,
         currency="USD",
-        basis=PriceBasis.VENDOR_API,
+        geography="US-East",
+        price_basis="quoted",
         source_name="Vendor",
         source_ref=f"REF-{price}",
-        effective_from="2026-01-01",
+        effective_from=f"2026-0{i+2}-01",
         confidence=conf,
-    ))
-variance = engine.compute_variance("CABLE-CAT6A")
-print(f"Mean: ${variance.mean:.2f}")
-print(f"Std dev: ${variance.std_dev:.2f}")
-print(f"CV: {variance.cv:.2%}")
+    )
+    engine.add_price(comparison)
+    variance = engine.compare_prices(baseline, comparison)
+    print(f"  vs ${price}: change={variance.percent_change:.1%}, increase={variance.is_increase}")

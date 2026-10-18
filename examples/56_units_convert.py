@@ -2,11 +2,12 @@
 
 Converts between units of the same dimension.
 """
-from dcc.validation.units import convert, get_registry
+from decimal import Decimal
+from dcc.validation.units import convert, get_registry, convert_temperature
 
 registry = get_registry()
 # Convert 5000 kW to MW
-result = convert(5000, "kW", "MW", registry=registry)
+result = convert(Decimal("5000"), "MW", source_unit="kW")
 print(f"5000 kW = {result.value} {result.unit.symbol}")
 
 # Convert temperature

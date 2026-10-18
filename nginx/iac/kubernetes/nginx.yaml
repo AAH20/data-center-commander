@@ -1,0 +1,332 @@
+# =============================================================================
+# Data Center Commander — Nginx Ingress (Kubernetes)
+# =============================================================================
+# Kubernetes manifests for deploying Nginx as an Ingress Controller
+# for DCC API instances.
+#
+# Usage:
+#   kubectl apply -f kubernetes/nginx/namespace.yaml
+#   kubectl apply -f kubernetes/nginx/configmap.yaml
+#   kubectl apply -f kubernetes/nginx/deployment.yaml
+#   kubectl apply -f kubernetes/nginx/service.yaml
+#   kubectl apply -f kubernetes/nginx/ingress.yaml
+# =============================================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-nginx-lb
+    app.kubernetes.io/part-of: data-center-commander
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-nginx-lb
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for" '
+                        'rt=$request_time uct="$upstream_connect_time" '
+                        'uht="$upstream_header_time" urt="$upstream_response_time"';
+
+        access_log /var/log/nginx/access.log main;
+
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+
+        gzip on;
+        gzip_vary on;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types text/plain text/css application/json application/javascript
+                   text/xml application/xml application/xml+rss text/javascript
+                   image/svg+xml;
+
+        limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=health_limit:10m rate=1r/s;
+
+        upstream dcc_api {
+            least_conn;
+            server dcc-api-1.dcc.svc.cluster.local:8790 weight=5 max_fails=3 fail_timeout=30s;
+            server dcc-api-2.dcc.svc.cluster.local:8791 weight=5 max_fails=3 fail_timeout=30s;
+            server dcc-api-3.dcc.svc.cluster.local:8792 weight=5 max_fails=3 fail_timeout=30s;
+            keepalive 32;
+        }
+
+        upstream dcc_health {
+            server dcc-api-1.dcc.svc.cluster.local:8790;
+            server dcc-api-2.dcc.svc.cluster.local:8791;
+            server dcc-api-3.dcc.svc.cluster.local:8792;
+        }
+
+        map $http_upgrade $connection_upgrade {
+            default upgrade;
+            ''      close;
+        }
+
+        server {
+            listen 80;
+            server_name _;
+
+            location /healthz {
+                proxy_pass http://dcc_health;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 10s;
+            }
+
+            location /readyz {
+                proxy_pass http://dcc_health;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 10s;
+            }
+
+            location / {
+                return 301 https://$host$request_uri;
+            }
+        }
+
+        server {
+            listen 443 ssl;
+            http2 on;
+            server_name _;
+
+            ssl_certificate /etc/nginx/certs/tls.crt;
+            ssl_certificate_key /etc/nginx/certs/tls.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+
+            add_header X-Frame-Options DENY always;
+            add_header X-Content-Type-Options nosniff always;
+            add_header X-XSS-Protection "1; mode=block" always;
+            add_header Referrer-Policy "no-referrer" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+            add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+
+            location /healthz {
+                proxy_pass http://dcc_health;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 10s;
+            }
+
+            location /readyz {
+                proxy_pass http://dcc_health;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_connect_timeout 5s;
+                proxy_read_timeout 10s;
+            }
+
+            location /v1/ {
+                limit_req zone=api_limit burst=20 nodelay;
+
+                proxy_pass http://dcc_api;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Request-ID $request_id;
+
+                proxy_connect_timeout 10s;
+                proxy_send_timeout 120s;
+                proxy_read_timeout 120s;
+
+                proxy_buffering on;
+                proxy_buffer_size 16k;
+                proxy_buffers 4 32k;
+                proxy_busy_buffers_size 64k;
+            }
+
+            location /assets/ {
+                limit_req zone=api_limit burst=30 nodelay;
+
+                proxy_pass http://dcc_api;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+
+                proxy_cache_valid 200 1h;
+                proxy_cache_valid 404 1m;
+                expires 1h;
+            }
+
+            location / {
+                limit_req zone=api_limit burst=20 nodelay;
+
+                proxy_pass http://dcc_api;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Request-ID $request_id;
+
+                proxy_connect_timeout 10s;
+                proxy_send_timeout 30s;
+                proxy_read_timeout 30s;
+            }
+
+            location ~ /\. {
+                deny all;
+                access_log off;
+                log_not_found off;
+            }
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-lb
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-nginx-lb
+    app.kubernetes.io/part-of: data-center-commander
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dcc-nginx-lb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcc-nginx-lb
+        app.kubernetes.io/part-of: data-center-commander
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - name: http
+              containerPort: 80
+            - name: https
+              containerPort: 443
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: tls-certs
+              mountPath: /etc/nginx/certs
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+        - name: tls-certs
+          secret:
+            secretName: dcc-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-lb
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-nginx-lb
+    app.kubernetes.io/part-of: data-center-commander
+spec:
+  type: LoadBalancer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    - name: https
+      port: 443
+      targetPort: 443
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: dcc-nginx-lb
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dcc-ingress
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-nginx-lb
+    app.kubernetes.io/part-of: data-center-commander
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    nginx.ingress.kubernetes.io/rate-limit: "10"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1s"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - dcc.example.com
+      secretName: dcc-tls
+  rules:
+    - host: dcc.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-lb
+                port:
+                  number: 80

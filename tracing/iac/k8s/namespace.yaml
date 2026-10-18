@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tracing
+  labels:
+    app.kubernetes.io/name: tracing
+    app.kubernetes.io/part-of: data-center-commander
+    app.kubernetes.io/managed-by: opentofu

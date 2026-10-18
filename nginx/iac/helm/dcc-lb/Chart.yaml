@@ -1,0 +1,13 @@
+apiVersion: v2
+name: dcc-lb
+description: A Helm chart for Data Center Commander Load Balancer (Nginx or Traefik)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - data-center-commander
+  - load-balancer
+  - nginx
+  - traefik
+maintainers:
+  - name: platform-team

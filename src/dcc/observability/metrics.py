@@ -73,7 +73,11 @@ def _validate_label_value(value: Any) -> str:
     """Validate and convert a label value to a string."""
     if value is None:
         return ""
-    s = str(value)
+    # Use .value for Enum members (e.g., ErrorType.TIMEOUT -> "timeout")
+    if isinstance(value, Enum):
+        s = str(value.value)
+    else:
+        s = str(value)
     if len(s) > 256:
         raise ValueError(f"label value exceeds 256 characters: {s[:50]}...")
     return s

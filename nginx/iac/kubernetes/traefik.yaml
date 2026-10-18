@@ -1,0 +1,278 @@
+# =============================================================================
+# Data Center Commander — Traefik IngressRoute (Kubernetes)
+# =============================================================================
+# Kubernetes manifests for deploying Traefik as an Ingress Controller
+# for DCC API instances using IngressRoute CRD.
+#
+# Usage:
+#   kubectl apply -f kubernetes/traefik/namespace.yaml
+#   kubectl apply -f kubernetes/traefik/deployment.yaml
+#   kubectl apply -f kubernetes/traefik/service.yaml
+#   kubectl apply -f kubernetes/traefik/ingressroute.yaml
+# =============================================================================
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+    app.kubernetes.io/part-of: data-center-commander
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+rules:
+  - apiGroups: [""]
+    resources: ["services", "endpoints", "secrets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions", "networking.k8s.io"]
+    resources: ["ingresses", "ingressclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutes", "middlewares", "tlsoptions"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: dcc-lb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+    app.kubernetes.io/part-of: data-center-commander
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dcc-traefik-lb
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dcc-traefik-lb
+        app.kubernetes.io/part-of: data-center-commander
+    spec:
+      serviceAccountName: traefik
+      containers:
+        - name: traefik
+          image: traefik:v3.1
+          args:
+            - "--api.dashboard=true"
+            - "--ping=true"
+            - "--providers.kubeingress=true"
+            - "--providers.kubecrd=true"
+            - "--entrypoints.web.address=:80"
+            - "--entrypoints.websecure.address=:443"
+            - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+            - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+            - "--entrypoints.web.http.redirections.entryPoint.permanent=true"
+            - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+            - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
+            - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+            - "--log.level=INFO"
+            - "--accesslog=true"
+            - "--accesslog.format=json"
+            - "--metrics.prometheus=true"
+          ports:
+            - name: web
+              containerPort: 80
+            - name: websecure
+              containerPort: 443
+            - name: admin
+              containerPort: 8080
+          volumeMounts:
+            - name: acme
+              mountPath: /letsencrypt
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: acme
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+    app.kubernetes.io/part-of: data-center-commander
+spec:
+  type: LoadBalancer
+  ports:
+    - name: web
+      port: 80
+      targetPort: web
+      protocol: TCP
+    - name: websecure
+      port: 443
+      targetPort: websecure
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: dcc-traefik-lb
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dcc-ingressroute
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+    app.kubernetes.io/part-of: data-center-commander
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`dcc.example.com`) && (PathPrefix(`/healthz`) || PathPrefix(`/readyz`))
+      kind: Rule
+      services:
+        - name: dcc-api-lb
+          port: 8790
+          healthCheck:
+            path: /healthz
+            interval: 10s
+            timeout: 5s
+      middlewares:
+        - name: dcc-headers
+          namespace: dcc-lb
+
+    - match: Host(`dcc.example.com`) && PathPrefix(`/v1/`)
+      kind: Rule
+      services:
+        - name: dcc-api-lb
+          port: 8790
+          healthCheck:
+            path: /healthz
+            interval: 10s
+            timeout: 5s
+      middlewares:
+        - name: dcc-ratelimit
+          namespace: dcc-lb
+        - name: dcc-headers
+          namespace: dcc-lb
+
+    - match: Host(`dcc.example.com`) && PathPrefix(`/assets/`)
+      kind: Rule
+      services:
+        - name: dcc-api-lb
+          port: 8790
+      middlewares:
+        - name: dcc-ratelimit-assets
+          namespace: dcc-lb
+        - name: dcc-headers
+          namespace: dcc-lb
+        - name: dcc-cache
+          namespace: dcc-lb
+
+    - match: Host(`dcc.example.com`)
+      kind: Rule
+      services:
+        - name: dcc-api-lb
+          port: 8790
+          healthCheck:
+            path: /healthz
+            interval: 10s
+            timeout: 5s
+      middlewares:
+        - name: dcc-ratelimit
+          namespace: dcc-lb
+        - name: dcc-headers
+          namespace: dcc-lb
+  tls:
+    certResolver: letsencrypt
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dcc-ratelimit
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+spec:
+  rateLimit:
+    average: 10
+    burst: 20
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dcc-ratelimit-assets
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+spec:
+  rateLimit:
+    average: 10
+    burst: 30
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dcc-headers
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+spec:
+  headers:
+    frameDeny: true
+    contentTypeNosniff: true
+    browserXssFilter: true
+    referrerPolicy: "no-referrer"
+    contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+    permissionsPolicy: "geolocation=(), microphone=(), camera=()"
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dcc-cache
+  namespace: dcc-lb
+  labels:
+    app.kubernetes.io/name: dcc-traefik-lb
+spec:
+  headers:
+    customResponseHeaders:
+      Cache-Control: "public, max-age=3600"

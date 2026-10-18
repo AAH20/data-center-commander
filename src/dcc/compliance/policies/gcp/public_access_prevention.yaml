@@ -1,0 +1,6 @@
+# GCP Organization Policy: Public Access Prevention
+# Enforces public access prevention on all GCS buckets
+name: organizations/ORG_ID/policies/storage.publicAccessPrevention
+spec:
+  rules:
+    - enforce: true

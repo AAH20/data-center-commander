@@ -1,0 +1,107 @@
+# =============================================================================
+# Data Center Commander — Traefik Load Balancer (Docker Compose)
+# =============================================================================
+# Alternative to the Nginx setup. Uses Traefik as the TLS-terminating
+# reverse proxy / load balancer for DCC API instances.
+#
+# Usage:
+#   cd nginx/iac/
+#   docker compose -f traefik/docker-compose.yml up -d
+#
+# Then open: https://localhost/
+# (Accept the self-signed cert warning.)
+# =============================================================================
+
+services:
+  # ── Traefik load balancer ──────────────────────────────────────────────
+  traefik:
+    image: traefik:v3.1
+    command:
+      - "--api.dashboard=true"
+      - "--ping=true"
+      - "--providers.docker=true"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entryPoint.permanent=true"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=INFO"
+      - "--accesslog=true"
+      - "--accesslog.format=json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/certs:/etc/traefik/certs:ro
+      - traefik-acme:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── DCC API instance 1 ──────────────────────────────────────────────
+  dcc-api-1:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8790"]
+    environment:
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres:***@host.docker.internal:5432/data_center_commander_dev}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dcc-api-1.rule=Host(`localhost`)"
+      - "traefik.http.routers.dcc-api-1.entrypoints=websecure"
+      - "traefik.http.routers.dcc-api-1.service=dcc-api-lb"
+      - "traefik.http.services.dcc-api-lb.loadbalancer.server.port=8790"
+      - "traefik.http.services.dcc-api-lb.loadbalancer.healthcheck.path=/healthz"
+      - "traefik.http.services.dcc-api-lb.loadbalancer.healthcheck.interval=10s"
+    restart: unless-stopped
+
+  # ── DCC API instance 2 ──────────────────────────────────────────────
+  dcc-api-2:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8791"]
+    environment:
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres:***@host.docker.internal:5432/data_center_commander_dev}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dcc-api-2.rule=Host(`localhost`)"
+      - "traefik.http.routers.dcc-api-2.entrypoints=websecure"
+      - "traefik.http.routers.dcc-api-2.service=dcc-api-lb"
+      - "traefik.http.services.dcc-api-lb.loadbalancer.server.port=8791"
+    restart: unless-stopped
+
+  # ── DCC API instance 3 ──────────────────────────────────────────────
+  dcc-api-3:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["python", "scripts/run-local.py", "--host", "127.0.0.1", "--port", "8792"]
+    environment:
+      DCC_DATABASE_URL: ${DCC_DATABASE_URL:-postgresql://postgres:***@host.docker.internal:5432/data_center_commander_dev}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dcc-api-3.rule=Host(`localhost`)"
+      - "traefik.http.routers.dcc-api-3.entrypoints=websecure"
+      - "traefik.http.routers.dcc-api-3.service=dcc-api-lb"
+      - "traefik.http.services.dcc-api-lb.loadbalancer.server.port=8792"
+    restart: unless-stopped
+
+volumes:
+  traefik-acme:

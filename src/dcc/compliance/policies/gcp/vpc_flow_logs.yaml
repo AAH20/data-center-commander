@@ -1,0 +1,6 @@
+# GCP Organization Policy: VPC Flow Logs
+# Enforces VPC flow logs on all subnetworks
+name: organizations/ORG_ID/policies/compute.requireVpcFlowLogs
+spec:
+  rules:
+    - enforce: true

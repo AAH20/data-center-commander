@@ -1,0 +1,202 @@
+{
+  "timestamp": "2026-09-29T12:45:34.017701+00:00",
+  "threshold": 1.5,
+  "regression_detected": false,
+  "total_compared": 27,
+  "regressions": [],
+  "improvements": [],
+  "unchanged": [
+    {
+      "name": "anomaly_detection",
+      "baseline_mean": 0.00281367,
+      "current_mean": 0.00281367,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "anomaly_iqr",
+      "baseline_mean": 0.00094933,
+      "current_mean": 0.00094933,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "backtest_cross_validate",
+      "baseline_mean": 0.00039633,
+      "current_mean": 0.00039633,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "backtest_walk_forward",
+      "baseline_mean": 0.0012224,
+      "current_mean": 0.0012224,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "budget_forecast",
+      "baseline_mean": 0.16292581,
+      "current_mean": 0.16292581,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "calibration",
+      "baseline_mean": 0.00152388,
+      "current_mean": 0.00152388,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "capacity_at_risk",
+      "baseline_mean": 0.00042569,
+      "current_mean": 0.00042569,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "capacity_forecast",
+      "baseline_mean": 0.00485158,
+      "current_mean": 0.00485158,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "consistency_validation",
+      "baseline_mean": 0.00287273,
+      "current_mean": 0.00287273,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "cost_allocation",
+      "baseline_mean": 0.00147527,
+      "current_mean": 0.00147527,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "drift_detection",
+      "baseline_mean": 0.0011596,
+      "current_mean": 0.0011596,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "estimate_sizing",
+      "baseline_mean": 9.979e-05,
+      "current_mean": 9.979e-05,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "failure_prediction",
+      "baseline_mean": 0.00511956,
+      "current_mean": 0.00511956,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "feature_extraction",
+      "baseline_mean": 0.05528,
+      "current_mean": 0.05528,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "interval_alignment",
+      "baseline_mean": 0.00362512,
+      "current_mean": 0.00362512,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "interval_resample",
+      "baseline_mean": 0.00347358,
+      "current_mean": 0.00347358,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "load_forecast",
+      "baseline_mean": 0.00074488,
+      "current_mean": 0.00074488,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "maintenance_optimization",
+      "baseline_mean": 0.00203525,
+      "current_mean": 0.00203525,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "price_forecast",
+      "baseline_mean": 0.01119029,
+      "current_mean": 0.01119029,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "quality_score",
+      "baseline_mean": 0.0009976,
+      "current_mean": 0.0009976,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "reconciliation",
+      "baseline_mean": 0.0001154,
+      "current_mean": 0.0001154,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "scenario",
+      "baseline_mean": 0.00096996,
+      "current_mean": 0.00096996,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "scenario_compare",
+      "baseline_mean": 0.00011023,
+      "current_mean": 0.00011023,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "seasonal_decompose",
+      "baseline_mean": 0.00288421,
+      "current_mean": 0.00288421,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "tco",
+      "baseline_mean": 0.007072,
+      "current_mean": 0.007072,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "tco_compare",
+      "baseline_mean": 0.00023604,
+      "current_mean": 0.00023604,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    },
+    {
+      "name": "unit_economics",
+      "baseline_mean": 4.962e-05,
+      "current_mean": 4.962e-05,
+      "ratio": 1.0,
+      "change_pct": 0.0
+    }
+  ],
+  "new_benchmarks": [],
+  "removed_benchmarks": [],
+  "errors": []
+}

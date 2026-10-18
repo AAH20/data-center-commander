@@ -1,0 +1,27 @@
+# Sentinel Policy: Multi-Cloud Compliance
+# Cross-cloud compliance policies
+import "tfplan"
+
+# Check all resources have tags
+all_resources = tfplan.resources
+
+violations_tags = rule {
+    all all_resources as _, resource {
+        resource.applied.tags is not null
+    }
+}
+
+# Check storage resources have encryption
+storage_resources = tfplan.resources | filter |_, r| { r.type in ["aws_s3_bucket", "azurerm_storage_account", "google_storage_bucket"] }
+
+violations_encryption = rule {
+    all storage_resources as _, resource {
+        resource.applied.encrypted is true or
+        resource.applied.encryption_enabled is true or
+        resource.applied.uniform_bucket_level_access is true
+    }
+}
+
+main = rule {
+    violations_tags and violations_encryption
+}

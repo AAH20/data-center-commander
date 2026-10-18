@@ -1,0 +1,81 @@
+version: "3.8"
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dcc-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    networks:
+      - dcc-monitoring
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dcc-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    volumes:
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - dcc-monitoring
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: dcc-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - dcc-monitoring
+
+  dcc-exporter:
+    build:
+      context: ./exporter
+      dockerfile: Dockerfile
+    container_name: dcc-exporter
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DCC_API_URL=${DCC_API_URL:-http://host.docker.internal:8790}
+      - DCC_TENANT_ID=${DCC_TENANT_ID:-dcc00000-0000-4000-8000-000000000001}
+      - EXPORTER_PORT=8000
+    depends_on:
+      - prometheus
+    networks:
+      - dcc-monitoring
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+
+networks:
+  dcc-monitoring:
+    driver: bridge

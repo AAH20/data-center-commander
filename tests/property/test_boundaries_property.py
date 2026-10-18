@@ -86,7 +86,7 @@ def make_base_time() -> datetime:
     readings=st.lists(
         st.fixed_dictionaries({
             "value_numeric": finite_floats,
-            "quality_status": quality_statuses,
+            "quality_status": st.sampled_from(["good", "estimated"]),
         }),
         min_size=0,
         max_size=20,

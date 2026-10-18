@@ -1,0 +1,105 @@
+# =============================================================================
+# Data Center Commander — Tracing Stack IaC Variables
+# =============================================================================
+# Copy this file to terraform.tfvars and adjust values as needed.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global Settings
+# -----------------------------------------------------------------------------
+namespace = "tracing"
+
+# Path to kubeconfig file
+kubeconfig_path = "~/.kube/config"
+
+# Common labels applied to all resources
+common_tags = {
+  Project   = "data-center-commander"
+  ManagedBy = "opentofu"
+}
+
+# -----------------------------------------------------------------------------
+# Jaeger Configuration
+# -----------------------------------------------------------------------------
+jaeger_version    = "1.53"
+jaeger_storage_type = "memory"
+jaeger_retention_days = 7
+
+# Resource allocation
+jaeger_requests_cpu    = "100m"
+jaeger_requests_memory = "256Mi"
+jaeger_limits_cpu      = "500m"
+jaeger_limits_memory   = "1Gi"
+
+# Persistence
+jaeger_enable_persistence = false
+jaeger_persistence_size   = "10Gi"
+jaeger_storage_class      = "standard"
+
+# Ingress
+jaeger_enable_ingress = false
+jaeger_ingress_host   = "jaeger.example.com"
+jaeger_ingress_class  = "nginx"
+
+# -----------------------------------------------------------------------------
+# OpenTelemetry Collector Configuration
+# -----------------------------------------------------------------------------
+otel_collector_version = "0.91.0"
+
+# Resource allocation
+otel_requests_cpu    = "100m"
+otel_requests_memory = "256Mi"
+otel_limits_cpu      = "500m"
+otel_limits_memory   = "512Mi"
+
+# Config
+otel_batch_timeout    = "1s"
+otel_send_batch_size  = 512
+otel_memory_limit_mib = 512
+
+# -----------------------------------------------------------------------------
+# Prometheus Configuration
+# -----------------------------------------------------------------------------
+prometheus_version      = "v2.49.0"
+prometheus_scrape_interval = "15s"
+
+# Resource allocation
+prometheus_requests_cpu    = "100m"
+prometheus_requests_memory = "256Mi"
+prometheus_limits_cpu      = "500m"
+prometheus_limits_memory   = "1Gi"
+
+# Persistence
+prometheus_enable_persistence = true
+prometheus_persistence_size   = "10Gi"
+prometheus_storage_class      = "standard"
+
+# Ingress
+prometheus_enable_ingress = false
+prometheus_ingress_host   = "prometheus.example.com"
+prometheus_ingress_class  = "nginx"
+
+# -----------------------------------------------------------------------------
+# Grafana Configuration
+# -----------------------------------------------------------------------------
+grafana_version = "10.3.0"
+
+# Auth
+grafana_anonymous_enabled   = true
+grafana_anonymous_org_role = "Admin"
+
+# Resource allocation
+grafana_requests_cpu    = "100m"
+grafana_requests_memory = "128Mi"
+grafana_limits_cpu      = "500m"
+grafana_limits_memory   = "512Mi"
+
+# Persistence
+grafana_enable_persistence = true
+grafana_persistence_size   = "5Gi"
+grafana_storage_class      = "standard"
+
+# Ingress
+grafana_enable_ingress = false
+grafana_ingress_host   = "grafana.example.com"
+grafana_ingress_class  = "nginx"

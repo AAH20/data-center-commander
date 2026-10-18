@@ -48,11 +48,14 @@ class TestTraceRequest(unittest.TestCase):
             pass
 
     def test_injects_trace_headers(self):
-        """inject_trace_headers should add traceparent header."""
-        headers = {}
-        inject_trace_headers(headers)
-        # Should have traceparent header (from current context or new)
-        self.assertIn("traceparent", headers)
+        """inject_trace_headers should add traceparent header when a span is active."""
+        from dcc.observability.tracing import get_tracer, SpanKind
+
+        tracer = get_tracer()
+        with tracer.start_as_current_span("test", span_kind=SpanKind.INTERNAL):
+            headers = {}
+            inject_trace_headers(headers)
+            self.assertIn("traceparent", headers)
 
 
 class TestTraceContext(unittest.TestCase):

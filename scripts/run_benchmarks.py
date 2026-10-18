@@ -29,12 +29,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import platform
 import statistics
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable
 
@@ -147,12 +147,11 @@ def _make_deployment_scenario():
             maintenance_monthly=5_000,
             labor_monthly=6_000,
             network_monthly=2_000,
-            insurance_monthly=1_000,
-            tax_monthly=500,
+            backup_monthly=1_000,
             other_monthly=1_000,
-            refresh_cost=80_000,
+            refresh=80_000,
             refresh_month=36,
-            decommission_cost=15_000,
+            exit_cost=15_000,
             residual_value=30_000,
         ),
         assumptions=ScenarioAssumptions(
@@ -210,6 +209,78 @@ def _make_time_series(n: int = 500):
     return TimeSeries(name="benchmark", interval=300, points=points)
 
 
+def _make_load_observations(n: int = 300) -> list:
+    """Create load observations for benchmarking."""
+    from dcc.forecasting.load import LoadObservation
+
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    return [
+        LoadObservation(
+            timestamp=base + timedelta(hours=i),
+            value=100 + (i % 24) * 5,
+        )
+        for i in range(n)
+    ]
+
+
+def _make_forecast_points(n: int = 168) -> list:
+    """Create forecast points for maintenance benchmarking."""
+    from dcc.forecasting.maintenance import ForecastPoint
+
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    return [
+        ForecastPoint(
+            timestamp=base + timedelta(hours=i),
+            predicted=100 + (i % 24) * 5,
+            lower_bound=90 + (i % 24) * 5,
+            upper_bound=110 + (i % 24) * 5,
+        )
+        for i in range(n)
+    ]
+
+
+def _make_risk_profiles(n: int = 10) -> list:
+    """Create asset risk profiles for maintenance benchmarking."""
+    from dcc.forecasting.failure import AssetRiskProfile
+
+    return [
+        AssetRiskProfile(
+            asset_id=f"asset-{i}",
+            asset_name=f"Asset {i}",
+            asset_type="server",
+            criticality="high",
+            lifecycle_state="active",
+            risk_score=0.1 + i * 0.05,
+            risk_level="medium",
+        )
+        for i in range(n)
+    ]
+
+
+def _make_deployment_spec():
+    """Create a deployment spec for estimate benchmarking."""
+    from dcc.economics.estimates import DeploymentSpec, DeploymentType, RedundancyLevel, TierLevel
+
+    return DeploymentSpec(
+        name="Benchmark DC",
+        deployment_type=DeploymentType.GREENFIELD,
+        it_capacity_kw=Decimal("500"),
+        rack_count=50,
+        white_space_m2=Decimal("500"),
+        geography="US-East",
+        currency="USD",
+        redundancy=RedundancyLevel.N_PLUS_1,
+        tier_level=TierLevel.TIER_III,
+        pue=Decimal("1.5"),
+        horizon_months=36,
+        discount_rate=Decimal("0.08"),
+        contingency_pct=Decimal("0.05"),
+        escalation_pct=Decimal("0.03"),
+        useful_life_years=15,
+        refresh_years=5,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Benchmark definitions
 # ---------------------------------------------------------------------------
@@ -230,9 +301,6 @@ def benchmark_tco_compare() -> dict[str, Any]:
     s1 = _make_tco_scenario()
     s2 = _make_tco_scenario()
     s2.name = "benchmark-tco-2"
-    s2.costs = s2.costs.__class__(
-        **{**s2.costs.__dict__, "hardware_capex": 600_000}
-    )
     return run_benchmark("tco.compare_tco", lambda: compare_tco([s1, s2]))
 
 
@@ -275,18 +343,26 @@ def benchmark_capacity_forecast() -> dict[str, Any]:
 
 def benchmark_capacity_at_risk() -> dict[str, Any]:
     """Benchmark capacity-at-risk computation."""
-    from dcc.forecasting.capacity import compute_capacity_at_risk
+    from dcc.forecasting.capacity import forecast_capacity, compute_capacity_at_risk
 
     points = _make_capacity_points(90)
+    forecast = forecast_capacity(
+        facility_id="fac-001",
+        dimension="power_kw",
+        unit="kW",
+        scenario="baseline",
+        data_points=points,
+        horizon_days=30,
+        method="linear",
+    )
     return run_benchmark(
         "capacity.compute_capacity_at_risk",
-        lambda: compute_capacity_at_risk(points, "power_kw", 0.95),
+        lambda: compute_capacity_at_risk(forecast, 900.0),
     )
 
 
 def benchmark_quality_score() -> dict[str, Any]:
     """Benchmark quality scoring."""
-    from dcc.forecasting.capacity import CapacityDataPoint
     from dcc.quality.engine import QualityEngine
 
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -330,23 +406,23 @@ def benchmark_anomaly_iqr() -> dict[str, Any]:
 
 def benchmark_backtest_walk_forward() -> dict[str, Any]:
     """Benchmark walk-forward backtesting."""
-    from dcc.forecasting.backtest import walk_forward
+    from dcc.forecasting.backtest import walk_forward, naive_forecast
 
     values = _make_telemetry_series(200)
     return run_benchmark(
         "backtest.walk_forward",
-        lambda: walk_forward(values, min_train_size=50, step_size=10, horizon=5),
+        lambda: walk_forward(values, lambda d: naive_forecast(d, horizon=5), min_train_size=50, step_size=10, horizon=5),
     )
 
 
 def benchmark_backtest_cross_validate() -> dict[str, Any]:
     """Benchmark cross-validation backtesting."""
-    from dcc.forecasting.backtest import cross_validate
+    from dcc.forecasting.backtest import cross_validate, naive_forecast
 
     values = _make_telemetry_series(200)
     return run_benchmark(
         "backtest.cross_validate",
-        lambda: cross_validate(values, n_splits=5, gap=2, horizon=5),
+        lambda: cross_validate(values, lambda d: naive_forecast(d, horizon=5), n_splits=5, gap=2, horizon=5),
     )
 
 
@@ -366,8 +442,7 @@ def benchmark_drift_detection() -> dict[str, Any]:
 
 def benchmark_cost_allocation() -> dict[str, Any]:
     """Benchmark cost allocation."""
-    from decimal import Decimal
-    from dcc.economics.allocation import WorkloadShare, allocate_cost
+    from dcc.economics.allocation import WorkloadShare, allocate_cost, AllocationMethod
 
     shares = [
         WorkloadShare(workload_id=f"wl-{i}", share_value=Decimal(str(100 + i)))
@@ -376,11 +451,12 @@ def benchmark_cost_allocation() -> dict[str, Any]:
     return run_benchmark(
         "allocation.allocate_cost",
         lambda: allocate_cost(
+            cost_actual_id="ca-001",
             total_amount=Decimal("100000"),
             currency="USD",
+            method=AllocationMethod.MEASURED_USAGE,
             workload_ids=[s.workload_id for s in shares],
             shares=shares,
-            method="measured_usage",
         ),
     )
 
@@ -390,16 +466,19 @@ def benchmark_consistency_validation() -> dict[str, Any]:
     from dcc.validation.consistency import reconcile_energy_sources
 
     rows_a = [
-        {"source": "utility", "observed_at": f"2026-01-{i+1:02d}T00:00:00Z", "kwh": 1000 + i * 10}
+        {"observed_at": f"2026-01-{i+1:02d}T00:00:00Z", "kwh": 1000 + i * 10}
         for i in range(50)
     ]
     rows_b = [
-        {"source": "bms", "observed_at": f"2026-01-{i+1:02d}T00:00:00Z", "kwh": 1000 + i * 10}
+        {"observed_at": f"2026-01-{i+1:02d}T00:00:00Z", "kwh": 1000 + i * 10}
         for i in range(50)
     ]
     return run_benchmark(
         "consistency.reconcile_energy_sources",
-        lambda: reconcile_energy_sources(rows_a, rows_b),
+        lambda: reconcile_energy_sources(
+            facility_meter_readings=rows_a,
+            submeter_readings=rows_b,
+        ),
     )
 
 
@@ -421,7 +500,7 @@ def benchmark_interval_resample() -> dict[str, Any]:
     ts = _make_time_series(500)
     return run_benchmark(
         "intervals.resample",
-        lambda: resample(ts, target_interval=900, aggregation="mean"),
+        lambda: resample(ts, target_interval=900),
     )
 
 
@@ -429,16 +508,25 @@ def benchmark_failure_prediction() -> dict[str, Any]:
     """Benchmark failure prediction."""
     from dcc.forecasting.failure import predict_equipment_failures
 
-    telemetry = {
-        "temp": _make_telemetry_series(200),
-        "vibration": _make_telemetry_series(200),
-        "power": _make_telemetry_series(200),
-    }
+    assets = [
+        {"id": f"asset-{i}", "name": f"Asset {i}", "asset_type": "server"}
+        for i in range(10)
+    ]
+    telemetry_rows = [
+        {
+            "asset_id": f"asset-{i % 10}",
+            "metric_id": "temp",
+            "observed_at": f"2026-01-{i//24+1:02d}T{i%24:02d}:00:00Z",
+            "value_numeric": 60 + (i % 5),
+        }
+        for i in range(200)
+    ]
     return run_benchmark(
         "failure.predict_equipment_failures",
         lambda: predict_equipment_failures(
-            asset_id="asset-001",
-            telemetry_series=telemetry,
+            tenant_id="tenant-001",
+            assets=assets,
+            telemetry_rows=telemetry_rows,
         ),
     )
 
@@ -456,13 +544,13 @@ def benchmark_feature_extraction() -> dict[str, Any]:
 
 def benchmark_load_forecast() -> dict[str, Any]:
     """Benchmark load forecasting."""
-    from dcc.forecasting.load import LoadForecaster
+    from dcc.forecasting.load import MovingAverageForecaster
 
-    values = _make_telemetry_series(300)
-    forecaster = LoadForecaster(window=24)
+    observations = _make_load_observations(300)
+    forecaster = MovingAverageForecaster(window=24)
     return run_benchmark(
         "load.forecast",
-        lambda: forecaster.forecast(values, horizon=24),
+        lambda: forecaster.forecast(observations, horizon=24),
     )
 
 
@@ -470,28 +558,30 @@ def benchmark_maintenance_optimization() -> dict[str, Any]:
     """Benchmark maintenance window optimization."""
     from dcc.forecasting.maintenance import optimize_maintenance_windows
 
-    load_profile = _make_telemetry_series(168)  # One week hourly
+    risk_profiles = _make_risk_profiles(10)
+    forecast_points = _make_forecast_points(168)
     return run_benchmark(
         "maintenance.optimize_maintenance_windows",
         lambda: optimize_maintenance_windows(
-            load_profile=load_profile,
-            min_window_hours=4,
-            max_windows=3,
+            tenant_id="tenant-001",
+            risk_profiles=risk_profiles,
+            forecast_points=forecast_points,
         ),
     )
 
 
 def benchmark_price_forecast() -> dict[str, Any]:
     """Benchmark price forecasting."""
-    from dcc.forecasting.price import forecast_prices
+    from dcc.forecasting.price import forecast_prices, build_flat_tariff
 
-    historical = [
-        {"observed_at": f"2026-01-{i+1:02d}T00:00:00Z", "price": 0.10 + (i % 7) * 0.01}
-        for i in range(90)
-    ]
+    tariff = build_flat_tariff(
+        currency="USD",
+        timezone="UTC",
+        rate=Decimal("0.10"),
+    )
     return run_benchmark(
         "price.forecast_prices",
-        lambda: forecast_prices(historical, horizon_days=30),
+        lambda: forecast_prices(tariff, daily_kwh=Decimal("10000"), days=30),
     )
 
 
@@ -501,13 +591,18 @@ def benchmark_budget_forecast() -> dict[str, Any]:
 
     line_items = [
         {
-            "category": "energy",
-            "monthly_amount": "10000",
+            "line_id": f"line-{i}",
+            "description": f"Energy line {i}",
+            "phase": "operations",
+            "cost_behavior": "fixed_recurring",
+            "quantity": "1",
+            "base_unit_cost": "10000",
             "escalation_pct": "0.03",
+            "recurrence_months": 1,
             "start_month": 1,
             "end_month": 36,
         }
-        for _ in range(20)
+        for i in range(20)
     ]
     return run_benchmark(
         "budget.forecast_budget",
@@ -521,16 +616,13 @@ def benchmark_budget_forecast() -> dict[str, Any]:
 
 def benchmark_estimate_sizing() -> dict[str, Any]:
     """Benchmark estimate sizing."""
-    from dcc.economics.estimates import DeploymentEstimator
+    from dcc.economics.estimates import ComponentSizingEngine
 
-    estimator = DeploymentEstimator()
+    spec = _make_deployment_spec()
+    engine = ComponentSizingEngine(spec)
     return run_benchmark(
         "estimates.size_electrical",
-        lambda: estimator.size_electrical(
-            it_load_kw=500,
-            redundancy="N+1",
-            pue=1.5,
-        ),
+        lambda: engine.size_electrical(),
     )
 
 
@@ -538,7 +630,7 @@ def benchmark_reconciliation() -> dict[str, Any]:
     """Benchmark estimate reconciliation."""
     from dcc.economics.reconciliation import reconcile_estimate
 
-    estimate_lines = [
+    estimate_rollup = [
         {
             "phase": "design",
             "category": "electrical",
@@ -556,7 +648,13 @@ def benchmark_reconciliation() -> dict[str, Any]:
     ]
     return run_benchmark(
         "reconciliation.reconcile_estimate",
-        lambda: reconcile_estimate(estimate_lines, actuals),
+        lambda: reconcile_estimate(
+            estimate_id="est-001",
+            estimate_name="Benchmark Estimate",
+            currency="USD",
+            estimate_rollup=estimate_rollup,
+            actuals=actuals,
+        ),
     )
 
 
@@ -567,13 +665,16 @@ def benchmark_unit_economics() -> dict[str, Any]:
     return run_benchmark(
         "unit.compute_all_unit_economics",
         lambda: compute_all_unit_economics(
-            total_cost=1_000_000,
-            currency="USD",
-            annual_energy_kwh=4_380_000,
+            present_value=1_000_000,
+            years=10,
+            discount_rate=0.08,
             it_capacity_kw=500,
             rack_count=50,
             area_m2=500,
-            annual_work_units=120_000,
+            energy_cost=500_000,
+            it_energy_kwh=4_380_000,
+            facility_energy_kwh=6_570_000,
+            useful_work=120_000,
         ),
     )
 
@@ -591,15 +692,23 @@ def benchmark_seasonal_decompose() -> dict[str, Any]:
 
 def benchmark_calibration() -> dict[str, Any]:
     """Benchmark forecast calibration."""
-    from dcc.forecasting.calibration import calibrate_forecasts
+    from dcc.forecasting.calibration import (
+        ActualPoint,
+        ForecastPoint,
+        calibrate_forecasts,
+    )
 
-    pairs = [
-        {"forecast": 100 + i, "actual": 100 + i + (i % 5) - 2}
+    forecasts = [
+        ForecastPoint(timestamp=i, value=100 + i)
+        for i in range(200)
+    ]
+    actuals = [
+        ActualPoint(timestamp=i, value=100 + i + (i % 5) - 2)
         for i in range(200)
     ]
     return run_benchmark(
         "calibration.calibrate_forecasts",
-        lambda: calibrate_forecasts(pairs),
+        lambda: calibrate_forecasts(forecasts, actuals),
     )
 
 

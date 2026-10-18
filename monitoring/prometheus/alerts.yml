@@ -1,0 +1,38 @@
+groups:
+  - name: dcc-alerts
+    rules:
+      - alert: DCCAPIUnhealthy
+        expr: dcc_api_healthy == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DCC API is unhealthy"
+          description: "The Data Center Commander API has been unhealthy for more than 1 minute."
+
+      - alert: DCCDatabaseUnhealthy
+        expr: dcc_database_ready == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DCC database is not ready"
+          description: "The DCC database readiness check has been failing for more than 1 minute."
+
+      - alert: DCCNoRecentTelemetry
+        expr: dcc_latest_telemetry_age_seconds > 3600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No recent telemetry ingested"
+          description: "No telemetry has been ingested in the last hour."
+
+      - alert: DCCExporterDown
+        expr: up{job="dcc-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DCC Prometheus exporter is down"
+          description: "The DCC exporter has been unreachable for more than 2 minutes."

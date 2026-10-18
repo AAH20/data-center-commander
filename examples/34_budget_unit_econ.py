@@ -12,4 +12,6 @@ result = compute_unit_economics(
     denominator_unit="kW",
 )
 print(f"EAC: ${result['equivalent_annual_cost']:,.2f}")
-print(f"Cost per unit: ${result['cost_per_unit']:,.2f}/{result['denominator_unit"]}")
+cpu = result["cost_per_unit"]
+unit = result["denominator_unit"]
+print(f"Cost per unit: ${cpu:,.2f}/{unit}")

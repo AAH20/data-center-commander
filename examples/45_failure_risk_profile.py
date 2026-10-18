@@ -9,10 +9,13 @@ telemetry_rows = [
     {"asset_id": "GEN-1", "metric_key": "oil_pressure", "value_numeric": 38, "quality_status": "suspect", "observed_at": "2026-01-02T00:00:00Z"},
     {"asset_id": "GEN-1", "metric_key": "oil_pressure", "value_numeric": 35, "quality_status": "bad", "observed_at": "2026-01-03T00:00:00Z"},
 ]
+assets = [
+    {"id": "GEN-1", "name": "Generator 1", "asset_type": "generator", "criticality": "critical", "lifecycle_state": "operational"},
+]
 result = predict_equipment_failures(
     tenant_id="tenant-1",
+    assets=assets,
     telemetry_rows=telemetry_rows,
-    asset_info={"GEN-1": {"name": "Generator 1", "asset_type": "generator", "criticality": "critical", "lifecycle_state": "operational"}},
     window_days=7,
 )
 profile = result.risk_profiles[0]

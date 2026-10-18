@@ -1,0 +1,6 @@
+# GCP Organization Policy: Uniform Bucket-Level Access
+# Enforces uniform bucket-level access on all GCS buckets
+name: organizations/ORG_ID/policies/storage.uniformBucketLevelAccess
+spec:
+  rules:
+    - enforce: true

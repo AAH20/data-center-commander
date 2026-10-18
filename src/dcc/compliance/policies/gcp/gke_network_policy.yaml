@@ -1,0 +1,6 @@
+# GCP Organization Policy: GKE Network Policy
+# Enforces network policy on all GKE clusters
+name: organizations/ORG_ID/policies/container.requireNetworkPolicy
+spec:
+  rules:
+    - enforce: true

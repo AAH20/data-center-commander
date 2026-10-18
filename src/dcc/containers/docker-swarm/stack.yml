@@ -1,0 +1,458 @@
+version: "3.9"
+
+# ── Docker Swarm Stack — Data Center Commander ───────────────────────────────
+# Deploy:  docker stack deploy -c stack.yml dcc
+# Update:  docker stack deploy -c stack.yml dcc  (rolling update)
+# Remove:  docker stack rm dcc
+# Logs:    docker service logs -f dcc_app
+# Scale:    docker service scale dcc_app=4
+
+services:
+  # ── PostgreSQL Database ──────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    hostname: "{{.Service.Name}}.{{.Task.Slot}}"
+    environment:
+      POSTGRES_USER: dcc
+      POSTGRES_DB: data_center_commander
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    configs:
+      - source: db_init_schema
+        target: /docker-entrypoint-initdb.d/01_schema.sql
+        mode: 0444
+      - source: db_init_migration_001
+        target: /docker-entrypoint-initdb.d/002_migration_001.sql
+        mode: 0444
+      - source: db_init_migration_002
+        target: /docker-entrypoint-initdb.d/003_migration_002.sql
+        mode: 0444
+      - source: db_init_migration_003
+        target: /docker-entrypoint-initdb.d/004_migration_003.sql
+        mode: 0444
+      - source: db_init_migration_004
+        target: /docker-entrypoint-initdb.d/005_migration_004.sql
+        mode: 0444
+    volumes:
+      - type: volume
+        source: db_data
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dcc -d data_center_commander"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+    networks:
+      - dcc_backend
+
+  # ── DCC API Application ─────────────────────────────────────────────────
+  app:
+    image: data-center-commander:latest
+    environment:
+      DCC_DATABASE_URL_FILE: /run/secrets/db_url
+      DCC_LOG_LEVEL: "INFO"
+      DCC_PORT: "8790"
+      DCC_HOST: "0.0.0.0"
+      DCC_DEMO_MODE: "false"
+      DCC_READ_ONLY: "true"
+      DCC_TRACING_ENABLED: "false"
+      DCC_OTLP_ENDPOINT: "http://otel-collector:4317"
+      DCC_SERVICE_NAME: "data-center-commander"
+      DCC_TRACE_SAMPLE_RATE: "1.0"
+    secrets:
+      - db_url
+    configs:
+      - source: app_config
+        target: /app/config/app.env
+        mode: 0444
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8790/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+    ports:
+      - target: 8790
+        published: 8790
+        protocol: tcp
+        mode: host
+    networks:
+      - dcc_backend
+      - dcc_frontend
+
+  # ── Nginx Reverse Proxy ─────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    configs:
+      - source: nginx_conf
+        target: /etc/nginx/nginx.conf
+        mode: 0444
+      - source: nginx_dcc_conf
+        target: /etc/nginx/conf.d/dcc.conf
+        mode: 0444
+    healthcheck:
+      test: ["CMD-SHELL", "nginx -t || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+        reservations:
+          cpus: "0.05"
+          memory: 16M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: host
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: host
+    networks:
+      - dcc_frontend
+
+  # ── OpenTelemetry Collector (optional) ──────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    configs:
+      - source: otel_config
+        target: /etc/otel-collector-config.yaml
+        mode: 0444
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+    networks:
+      - dcc_backend
+
+  # ── Prometheus (optional) ───────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+        mode: 0444
+    volumes:
+      - type: volume
+        source: prometheus_data
+        target: /prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+    ports:
+      - target: 9090
+        published: 9090
+        protocol: tcp
+        mode: host
+    networks:
+      - dcc_backend
+
+  # ── Grafana (optional) ──────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    environment:
+      GF_SECURITY_ADMIN_USER_FILE: /run/secrets/grafana_admin_user
+      GF_SECURITY_ADMIN_PASSWORD_FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+    secrets:
+      - grafana_admin_user
+      - grafana_admin_password
+    configs:
+      - source: grafana_datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yml
+        mode: 0444
+      - source: grafana_dashboards
+        target: /etc/grafana/provisioning/dashboards/dashboards.yml
+        mode: 0444
+    volumes:
+      - type: volume
+        source: grafana_data
+        target: /var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == worker
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      rollback_config:
+        parallelism: 0
+        delay: 10s
+        failure_action: pause
+        monitor: 60s
+        max_failure_ratio: 0.3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        monitor: 60s
+        max_failure_ratio: 0.3
+        order: start-first
+    ports:
+      - target: 3000
+        published: 3000
+        protocol: tcp
+        mode: host
+    networks:
+      - dcc_backend
+
+# ── Secrets ─────────────────────────────────────────────────────────────────
+# Create secrets before deploying:
+#   echo "your-secure-password" | docker secret create db_password -
+#   echo "postgresql://dcc:your-secure-password@db:5432/data_center_commander" | docker secret create db_url -
+#   echo "admin" | docker secret create grafana_admin_user -
+#   echo "your-grafana-password" | docker secret create grafana_admin_password -
+secrets:
+  db_password:
+    external: true
+  db_url:
+    external: true
+  grafana_admin_user:
+    external: true
+  grafana_admin_password:
+    external: true
+
+# ── Configs ─────────────────────────────────────────────────────────────────
+# Create configs before deploying:
+#   docker config create db_init_schema database/schema.sql
+#   docker config create db_init_migration_001 database/migrations/001_cost_intelligence.sql
+#   docker config create db_init_migration_002 database/migrations/002_lifecycle_rollup_fix.sql
+#   docker config create db_init_migration_003 database/migrations/003_estimate_price_link_validation.sql
+#   docker config create db_init_migration_004 database/migrations/004_placement_comparison_snapshots.sql
+#   docker config create app_config src/dcc/containers/docker-swarm/configs/app.env
+#   docker config create nginx_conf src/dcc/containers/docker-swarm/configs/nginx.conf
+#   docker config create nginx_dcc_conf src/dcc/containers/docker-swarm/configs/dcc.conf
+#   docker config create otel_config src/dcc/containers/docker-swarm/configs/otel-collector.yaml
+#   docker config create prometheus_config src/dcc/containers/docker-swarm/configs/prometheus.yml
+#   docker config create grafana_datasources src/dcc/containers/docker-swarm/configs/grafana-datasources.yml
+#   docker config create grafana_dashboards src/dcc/containers/docker-swarm/configs/grafana-dashboards.yml
+configs:
+  db_init_schema:
+    external: true
+  db_init_migration_001:
+    external: true
+  db_init_migration_002:
+    external: true
+  db_init_migration_003:
+    external: true
+  db_init_migration_004:
+    external: true
+  app_config:
+    external: true
+  nginx_conf:
+    external: true
+  nginx_dcc_conf:
+    external: true
+  otel_config:
+    external: true
+  prometheus_config:
+    external: true
+  grafana_datasources:
+    external: true
+  grafana_dashboards:
+    external: true
+
+# ── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  dcc_backend:
+    driver: overlay
+    attachable: false
+    driver_opts:
+      encrypted: "true"
+    ipam:
+      config:
+        - subnet: 10.0.1.0/24
+  dcc_frontend:
+    driver: overlay
+    attachable: false
+    driver_opts:
+      encrypted: "true"
+    ipam:
+      config:
+        - subnet: 10.0.2.0/24
+
+# ── Volumes ─────────────────────────────────────────────────────────────────
+volumes:
+  db_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

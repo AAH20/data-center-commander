@@ -1,45 +1,139 @@
-name: Benchmark
+name: benchmark
 
 on:
   pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "scripts/run_benchmarks.py"
+      - ".github/workflows/benchmark.yml"
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "scripts/run_benchmarks.py"
+      - ".github/workflows/benchmark.yml"
   schedule:
-    - cron: '0 0 * * 0'
+    # Run daily at 02:00 UTC to track performance over time
+    - cron: "0 2 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: benchmark-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   benchmark:
+    name: Run benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -e ".[test]" pytest-benchmark
+          python-version: "3.11"
+
+      - name: Cache benchmark baseline
+        uses: actions/cache@v4
+        with:
+          path: .benchmarks/baseline.json
+          key: benchmark-baseline-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            benchmark-baseline-${{ github.ref_name }}-
+            benchmark-baseline-main-
+
       - name: Run benchmarks
         env:
           PYTHONPATH: src
         run: |
-          python -m pytest tests/ --benchmark-only --benchmark-json=benchmark-results.json || true
+          python scripts/run_benchmarks.py \
+            --output .benchmarks/results.json \
+            --iterations 5 \
+            --warmup 2
+
       - name: Upload benchmark results
-        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
-          path: benchmark-results.json
-          retention-days: 30
-      - name: Compare with baseline
-        if: github.event_name == 'pull_request'
+          name: benchmark-results-${{ github.run_id }}
+          path: .benchmarks/results.json
+          retention-days: 90
+
+      - name: Compare against baseline
+        id: compare
+        env:
+          PYTHONPATH: src
         run: |
-          echo "Benchmark comparison would run here with stored baselines"
-          echo "Current results:"
-          cat benchmark-results.json 2>/dev/null || echo "No benchmark results"
+          if [ -f .benchmarks/baseline.json ]; then
+            python scripts/compare_benchmarks.py \
+              --baseline .benchmarks/baseline.json \
+              --current .benchmarks/results.json \
+              --threshold 1.5 \
+              --output .benchmarks/comparison.md
+            echo "regression_detected=$(python -c "import json; c=json.load(open('.benchmarks/comparison.json')); print(str(c.get('regression_detected', False)).lower())" 2>/dev/null || echo "false")" >> "$GITHUB_OUTPUT"
+          else
+            echo "No baseline found — skipping comparison"
+            echo "regression_detected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = '.benchmarks/comparison.md';
+            if (fs.existsSync(path)) {
+              const body = fs.readFileSync(path, 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Update baseline on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          cp .benchmarks/results.json .benchmarks/baseline.json
+
+      - name: Fail on regression
+        if: steps.compare.outputs.regression_detected == 'true'
+        run: |
+          echo "::error::Performance regression detected! See comparison report for details."
+          exit 1
+
+  benchmark-summary:
+    name: Benchmark summary
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: always()
+    steps:
+      - name: Download results
+        uses: actions/download-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: .benchmarks
+
+      - name: Generate summary
+        run: |
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Benchmark | Mean (ms) | Std (ms) |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|----------|----------|" >> $GITHUB_STEP_SUMMARY
+          python -c "
+          import json
+          data = json.load(open('.benchmarks/results.json'))
+          for name, result in sorted(data['benchmarks'].items()):
+              if 'error' in result:
+                  print(f'| {name} | ERROR | - |')
+              else:
+                  mean_ms = result['mean_seconds'] * 1000
+                  std_ms = result['std_seconds'] * 1000
+                  print(f'| {name} | {mean_ms:.3f} | {std_ms:.3f} |')
+          " >> $GITHUB_STEP_SUMMARY

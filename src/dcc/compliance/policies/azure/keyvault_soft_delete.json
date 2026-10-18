@@ -1,0 +1,30 @@
+{
+  "properties": {
+    "displayName": "Key Vaults should have soft delete enabled",
+    "policyType": "BuiltIn",
+    "mode": "Indexed",
+    "description": "Ensure all Key Vaults have soft delete enabled.",
+    "metadata": {
+      "category": "Reliability",
+      "version": "1.0.0"
+    },
+    "parameters": {},
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.KeyVault/vaults"
+          },
+          {
+            "field": "Microsoft.KeyVault/vaults/enableSoftDelete",
+            "notEquals": true
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  }
+}

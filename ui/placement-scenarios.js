@@ -31,6 +31,11 @@
   const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const tenantId = () => new URL(location.href).searchParams.get("tenant_id") || document.querySelector("#tenantInput")?.value || document.querySelector("#tenantSelect")?.value || "";
   const validTenant = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  /**
+   * Refreshes the list of saved placement scenario drafts from the server.
+   * Validates tenant UUID before making the request.
+   * @returns {Promise<void>}
+   */
   async function refresh() {
     const tenant = tenantId();
     if (!validTenant(tenant)) { status.textContent = "Select/configure a UUID tenant before loading saved drafts."; list.replaceChildren(); return; }

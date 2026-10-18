@@ -1,0 +1,12 @@
+{
+  "ConfigRuleName": "ec2-instance-imdsv2-required",
+  "Description": "Checks that EC2 instances require IMDSv2.",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "EC2_INSTANCE_IMDSV2_REQUIRED"
+  },
+  "InputParameters": {},
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::EC2::Instance"]
+  }
+}

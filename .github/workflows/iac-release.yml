@@ -1,0 +1,303 @@
+name: IaC Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-rc.*"
+      - "v*.*.*-beta.*"
+      - "v*.*.*-alpha.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iac-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "0"
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # 1. Validate Terraform modules
+  # ─────────────────────────────────────────────────────────────────────────
+  validate-terraform:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - terraform/modules/aws
+          - terraform/modules/aws-compliance
+          - terraform/modules/gcp-compliance
+          - terraform/modules/digitalocean
+          - terraform/modules/ibm
+          - terraform/modules/kvm
+          - terraform/modules/openshift
+          - terraform/modules/integration
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: Terraform fmt (check)
+        run: |
+          cd ${{ matrix.module }}
+          terraform fmt -check -recursive -diff
+
+      - name: Terraform init (backend disabled)
+        run: |
+          cd ${{ matrix.module }}
+          terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        run: |
+          cd ${{ matrix.module }}
+          terraform validate -no-color
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 2. Validate OpenTofu modules
+  # ─────────────────────────────────────────────────────────────────────────
+  validate-opentofu:
+    name: Validate OpenTofu
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - opentofu
+          - opentofu/modules/compute
+          - opentofu/modules/identity
+          - opentofu/modules/network
+          - opentofu/modules/network/aws
+          - opentofu/modules/network/azure
+          - opentofu/modules/network/gcp
+          - opentofu/modules/network/ibm
+          - opentofu/modules/storage
+          - opentofu/modules/multi-cloud
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.8.5"
+          tofu_wrapper: false
+
+      - name: OpenTofu fmt (check)
+        run: |
+          cd ${{ matrix.module }}
+          tofu fmt -check -recursive -diff
+
+      - name: OpenTofu init (backend disabled)
+        run: |
+          cd ${{ matrix.module }}
+          tofu init -backend=false -input=false
+
+      - name: OpenTofu validate
+        run: |
+          cd ${{ matrix.module }}
+          tofu validate -no-color
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 3. Validate Kubernetes manifests
+  # ─────────────────────────────────────────────────────────────────────────
+  validate-k8s:
+    name: Validate Kubernetes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Setup kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Validate kustomize build
+        run: |
+          kustomize build k8s/ > /tmp/k8s-rendered.yaml
+          echo "Rendered manifest lines: $(wc -l < /tmp/k8s-rendered.yaml)"
+
+      - name: kubectl dry-run validation
+        run: |
+          kubectl apply --dry-run=client -f /tmp/k8s-rendered.yaml
+          kubectl apply --dry-run=server -f /tmp/k8s-rendered.yaml 2>&1 || \
+            echo "Server dry-run skipped (no cluster connection)"
+
+      - name: kubeconform (schema validation)
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -strict -summary -output text /tmp/k8s-rendered.yaml
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 4. Generate IaC changelog
+  # ─────────────────────────────────────────────────────────────────────────
+  changelog:
+    name: Generate IaC Changelog
+    needs: [validate-terraform, validate-opentofu, validate-k8s]
+    runs-on: ubuntu-latest
+    outputs:
+      release_body: ${{ steps.git-cliff.outputs.content }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version id
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate changelog with git-cliff
+        id: git-cliff
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: .github/cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac-changelog
+          path: CHANGELOG.md
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 5. Package IaC artifacts
+  # ─────────────────────────────────────────────────────────────────────────
+  package:
+    name: Package IaC Artifacts
+    needs: [validate-terraform, validate-opentofu, validate-k8s]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create IaC artifact bundle
+        run: |
+          mkdir -p dist
+          VERSION="${GITHUB_REF#refs/tags/}"
+          [ "${{ github.event_name }}" = "workflow_dispatch" ] && VERSION="${{ inputs.version }}"
+
+          # Terraform modules bundle
+          tar czf "dist/terraform-modules-${VERSION}.tar.gz" \
+            --exclude='.terraform' \
+            --exclude='*.tfstate*' \
+            --exclude='.terraform.lock.hcl' \
+            terraform/
+
+          # OpenTofu modules bundle
+          tar czf "dist/opentofu-modules-${VERSION}.tar.gz" \
+            --exclude='.terraform' \
+            --exclude='*.tfstate*' \
+            --exclude='.terraform.lock.hcl' \
+            opentofu/
+
+          # Kubernetes manifests bundle
+          tar czf "dist/k8s-manifests-${VERSION}.tar.gz" k8s/
+
+          # Combined IaC bundle
+          tar czf "dist/iac-bundle-${VERSION}.tar.gz" \
+            --exclude='.terraform' \
+            --exclude='*.tfstate*' \
+            --exclude='.terraform.lock.hcl' \
+            terraform/ opentofu/ k8s/
+
+          # Generate checksums
+          cd dist
+          shasum -a 256 *.tar.gz > SHA256SUMS.txt
+          cd ..
+
+      - name: Upload IaC artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: iac-artifacts
+          path: dist/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 6. Create GitHub Release
+  # ─────────────────────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [changelog, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: iac-changelog
+          path: dist/
+
+      - name: Download IaC artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: iac-artifacts
+          path: dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: dist/CHANGELOG.md
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          draft: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # 7. Update CHANGELOG.md in repo (on main branch)
+  # ─────────────────────────────────────────────────────────────────────────
+  update-changelog:
+    name: Update CHANGELOG.md
+    needs: release
+    runs-on: ubuntu-latest
+    if: "!contains(github.ref, '-rc') && !contains(github.ref, '-beta') && !contains(github.ref, '-alpha')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: iac-changelog
+          path: ./
+
+      - name: Commit updated CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --staged --quiet || git commit -m "chore(release): update CHANGELOG.md for ${GITHUB_REF#refs/tags/}"
+          git push origin main

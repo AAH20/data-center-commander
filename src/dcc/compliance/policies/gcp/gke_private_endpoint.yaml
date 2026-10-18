@@ -1,0 +1,6 @@
+# GCP Organization Policy: GKE Private Endpoint
+# Enforces private endpoint on all GKE clusters
+name: organizations/ORG_ID/policies/container.requirePrivateEndpoint
+spec:
+  rules:
+    - enforce: true

@@ -2,15 +2,17 @@
 
 Shows how the sizing engine derives quantities from design parameters.
 """
+from decimal import Decimal
 from dcc.economics.estimates import ComponentSizingEngine, DeploymentSpec, DeploymentType
 
 spec = DeploymentSpec(
-    deployment_type=DeploymentType.ONPREM,
-    it_capacity_kw=3000,
+    name="DC 3MW",
+    deployment_type=DeploymentType.GREENFIELD,
+    it_capacity_kw=Decimal("3000"),
     rack_count=300,
-    area_m2=5000,
+    white_space_m2=Decimal("5000"),
 )
 engine = ComponentSizingEngine(spec)
-components = engine.size_components()
+components = engine.size_all_components()
 for comp in components:
-    print(f"  {comp.component}: {comp.quantity} {comp.unit}")
+    print(f"  {comp.description}: {comp.quantity} {comp.quantity_unit}")

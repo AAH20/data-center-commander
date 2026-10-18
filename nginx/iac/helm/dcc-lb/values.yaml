@@ -1,0 +1,120 @@
+# Default values for dcc-lb
+
+# ── Load Balancer Configuration ──────────────────────────────────────────────
+# Choose "nginx" or "traefik"
+loadBalancerType: nginx
+
+# ── Image Configuration ──────────────────────────────────────────────────────
+image:
+  repository: nginx
+  tag: "1.27-alpine"
+  pullPolicy: IfNotPresent
+
+# For Traefik, override with:
+#   repository: traefik
+#   tag: "v3.1"
+
+# ── Replica Configuration ────────────────────────────────────────────────────
+replicaCount: 2
+
+# ── Service Configuration ────────────────────────────────────────────────────
+service:
+  type: LoadBalancer
+  ports:
+    http:
+      port: 80
+      targetPort: 80
+      protocol: TCP
+    https:
+      port: 443
+      targetPort: 443
+      protocol: TCP
+
+# ── Ingress Configuration ────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+  hosts:
+    - host: dcc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: dcc-tls
+      hosts:
+        - dcc.example.com
+
+# ── Backend Configuration ────────────────────────────────────────────────────
+backends:
+  - name: dcc-api-1
+    port: 8790
+  - name: dcc-api-2
+    port: 8791
+  - name: dcc-api-3
+    port: 8792
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+rateLimit:
+  enabled: true
+  average: 10
+  burst: 20
+
+# ── TLS Configuration ────────────────────────────────────────────────────────
+tls:
+  enabled: true
+  secretName: dcc-tls
+  # For self-signed certs (dev only)
+  selfSigned: true
+
+# ── Resources ────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# ── Autoscaling ──────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 75
+
+# ── Monitoring ───────────────────────────────────────────────────────────────
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+
+# ── Security ─────────────────────────────────────────────────────────────────
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+podSecurityContext:
+  fsGroup: 101
+
+# ── Node Selector / Tolerations / Affinity ───────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Common Labels ─────────────────────────────────────────────────────────────
+commonLabels:
+  app.kubernetes.io/part-of: data-center-commander
+  app.kubernetes.io/managed-by: Helm

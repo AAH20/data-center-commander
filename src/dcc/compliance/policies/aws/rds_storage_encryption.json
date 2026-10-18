@@ -1,0 +1,12 @@
+{
+  "ConfigRuleName": "rds-storage-encrypted",
+  "Description": "Checks that RDS instances have storage encryption enabled.",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "RDS_STORAGE_ENCRYPTED"
+  },
+  "InputParameters": {},
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::RDS::DBInstance"]
+  }
+}

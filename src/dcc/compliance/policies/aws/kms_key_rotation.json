@@ -1,0 +1,12 @@
+{
+  "ConfigRuleName": "kms-key-rotation-enabled",
+  "Description": "Checks that KMS keys have automatic rotation enabled.",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "KMS_KEY_ROTATION_ENABLED"
+  },
+  "InputParameters": {},
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::KMS::Key"]
+  }
+}

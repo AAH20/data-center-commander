@@ -26,3 +26,13 @@ where = ["src"]
 dev = [
     "hypothesis>=6.168.3",
 ]
+
+[tool.pytest.ini_options]
+# `tests/__init__.py` exists but the subdirectories did not, so pytest's default
+# "prepend" import mode computed the SAME module name for files sharing a basename
+# in different directories (tests/compliance/test_models.py vs
+# tests/test_cost_optimization/test_models.py) and aborted collection.
+# NOTE: `importmode = "importlib"` is NOT accepted by this pytest version
+# ("Unknown config option"), so the collision is fixed with __init__.py packages
+# instead, which works on every version.
+testpaths = ["tests"]

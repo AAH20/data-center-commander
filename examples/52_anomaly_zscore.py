@@ -2,10 +2,10 @@
 
 Flags observations that deviate significantly from the mean.
 """
-from dcc.forecasting.anomaly import detect_anomalies
+from dcc.quality.anomaly import zscore_detect
 
 values = [100, 102, 98, 101, 99, 103, 97, 100, 150, 101, 99, 100]
-report = detect_anomalies(values, method="zscore", threshold=2.5)
+report = zscore_detect(values, threshold=2.5)
 print(f"Method: {report.method}")
 print(f"Anomalies: {report.anomaly_count}/{report.total_points}")
 for a in report.anomalies:

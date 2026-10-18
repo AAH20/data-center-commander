@@ -1,0 +1,30 @@
+{
+  "properties": {
+    "displayName": "Storage accounts should have encryption enabled",
+    "policyType": "BuiltIn",
+    "mode": "Indexed",
+    "description": "Ensure all storage accounts have encryption at rest enabled.",
+    "metadata": {
+      "category": "Encryption",
+      "version": "1.0.0"
+    },
+    "parameters": {},
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Storage/storageAccounts"
+          },
+          {
+            "field": "Microsoft.Storage/storageAccounts/encryption.enabled",
+            "notEquals": true
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  }
+}

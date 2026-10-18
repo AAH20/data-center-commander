@@ -1,0 +1,30 @@
+{
+  "properties": {
+    "displayName": "SQL databases should have TDE enabled",
+    "policyType": "BuiltIn",
+    "mode": "Indexed",
+    "description": "Ensure all SQL databases have Transparent Data Encryption enabled.",
+    "metadata": {
+      "category": "Encryption",
+      "version": "1.0.0"
+    },
+    "parameters": {},
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Sql/servers/databases"
+          },
+          {
+            "field": "Microsoft.Sql/servers/databases/transparentDataEncryption.status",
+            "notEquals": "Enabled"
+          }
+        ]
+      },
+      "then": {
+        "effect": "deny"
+      }
+    }
+  }
+}

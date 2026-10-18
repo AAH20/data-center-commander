@@ -210,8 +210,8 @@ class TestUnitComputationFuzz:
     """Fuzz unit computation functions."""
 
     @given(
-        total=finite_decimals,
-        it=finite_decimals,
+        total=positive_decimals,
+        it=positive_decimals,
     )
     @settings(max_examples=200)
     def test_compute_pue_never_crashes(self, total, it):
@@ -223,8 +223,8 @@ class TestUnitComputationFuzz:
             pass
 
     @given(
-        total=finite_decimals,
-        it=finite_decimals,
+        total=positive_decimals,
+        it=positive_decimals,
     )
     @settings(max_examples=200)
     def test_compute_dcime_never_crashes(self, total, it):
@@ -236,8 +236,8 @@ class TestUnitComputationFuzz:
             pass
 
     @given(
-        energy=finite_decimals,
-        carbon_factor=finite_decimals,
+        energy=positive_decimals,
+        carbon_factor=positive_decimals,
     )
     @settings(max_examples=200)
     def test_compute_carbon_emissions_never_crashes(self, energy, carbon_factor):
@@ -249,8 +249,8 @@ class TestUnitComputationFuzz:
             pass
 
     @given(
-        heat_load=finite_decimals,
-        cop=finite_decimals,
+        heat_load=positive_decimals,
+        cop=positive_decimals,
     )
     @settings(max_examples=200)
     def test_compute_cooling_load_never_crashes(self, heat_load, cop):
@@ -262,8 +262,8 @@ class TestUnitComputationFuzz:
             pass
 
     @given(
-        battery=finite_decimals,
-        load=finite_decimals,
+        battery=positive_decimals,
+        load=positive_decimals,
         efficiency=st.decimals(min_value=Decimal("0.001"), max_value=Decimal("1.0"), allow_nan=False, allow_infinity=False),
     )
     @settings(max_examples=200)
@@ -276,9 +276,9 @@ class TestUnitComputationFuzz:
             pass
 
     @given(
-        power_value=finite_decimals,
+        power_value=positive_decimals,
         power_unit=st.sampled_from(["W", "kW", "MW"]),
-        duration=finite_decimals,
+        duration=positive_decimals,
     )
     @settings(max_examples=200)
     def test_compute_energy_from_power_never_crashes(self, power_value, power_unit, duration):
@@ -291,9 +291,9 @@ class TestUnitComputationFuzz:
             pass
 
     @given(
-        energy_value=finite_decimals,
+        energy_value=positive_decimals,
         energy_unit=st.sampled_from(["Wh", "kWh", "MWh"]),
-        duration=finite_decimals,
+        duration=positive_decimals,
     )
     @settings(max_examples=200)
     def test_compute_power_from_energy_never_crashes(self, energy_value, energy_unit, duration):

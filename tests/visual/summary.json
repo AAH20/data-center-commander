@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-29T12:15:31.402Z",
+  "timestamp": "2026-10-18T04:06:46.952Z",
   "baseUrl": "http://127.0.0.1:8790",
   "viewport": {
     "width": 1440,
@@ -8,56 +8,68 @@
   "pixelThreshold": 0.1,
   "diffThreshold": 0.01,
   "total": 12,
-  "passed": 12,
-  "failed": 0,
+  "passed": 0,
+  "failed": 12,
   "results": [
     {
       "view": "overview",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#overview\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#overview\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "energy",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#energy\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#energy\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "analytics",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#analytics\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#analytics\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "finance",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#finance\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#finance\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "capacity",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#capacity\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#capacity\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "assets",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#assets\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#assets\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "reliability",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#reliability\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#reliability\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "workflows",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#workflows\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#workflows\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "integrations",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#integrations\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#integrations\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "evidence",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#evidence\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#evidence\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "workloads",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#workloads\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#workloads\", waiting until \"domcontentloaded\"\n"
     },
     {
       "view": "critical",
-      "status": "baseline_saved"
+      "status": "error",
+      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#critical\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#critical\", waiting until \"domcontentloaded\"\n"
     }
   ]
 }

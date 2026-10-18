@@ -1,0 +1,28 @@
+# tfsec configuration for Data Center Commander
+# This file registers custom data center security rules with tfsec
+
+# Custom rule paths - tfsec will scan these directories for .rego files
+custom_rules:
+  - iac/policies/tfsec/
+
+# Rule severities:
+# - HIGH: Critical security issues that must be fixed
+# - MEDIUM: Important security concerns that should be addressed
+# - LOW: Best practice recommendations
+
+# Data center custom rules are organized by domain:
+# - dc_vpc_flow_logs.rego: VPC flow log requirements
+# - dc_default_sg.rego: Default security group restrictions
+# - dc_vpc_dns.rego: VPC DNS settings
+# - dc_aws_config.rego: AWS Config compliance
+# - dc_kvm_security.rego: KVM/libvirt security
+# - dc_tagging.rego: Resource tagging requirements
+# - dc_encryption.rego: Encryption requirements
+# - dc_network_isolation.rego: Network segmentation
+# - dc_cloud_init.rego: Cloud-init security
+# - dc_iam.rego: IAM least-privilege
+# - dc_monitoring.rego: Monitoring and logging
+
+# Usage:
+#   tfsec --custom-check-dir iac/policies/tfsec/ .
+#   tfsec --config-file iac/policies/tfsec/tfsec.yml .

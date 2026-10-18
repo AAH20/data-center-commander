@@ -12,13 +12,13 @@ from typing import Any, Iterator
 from urllib.parse import parse_qs, urlsplit
 
 from .logging import bind_context, clear_context, get_logger
-from .tracing import SpanKind, extract_context, get_tracer, inject_context
+from .tracing import Span, SpanKind, extract_context, get_tracer, inject_context
 
 _logger = get_logger("dcc.observability.middleware")
 
 
 @contextmanager
-def trace_request(handler: BaseHTTPRequestHandler, operation: str) -> Iterator[None]:
+def trace_request(handler: BaseHTTPRequestHandler, operation: str) -> Iterator[Span]:
     """Context manager that creates a server span for an HTTP request.
 
     Usage:
@@ -60,7 +60,7 @@ def trace_request(handler: BaseHTTPRequestHandler, operation: str) -> Iterator[N
         pass
 
     try:
-        yield
+        yield span
     except Exception as exc:
         span.record_exception(exc)
         raise

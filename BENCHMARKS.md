@@ -17,7 +17,7 @@ Data Center Commander is a read-only, PostgreSQL-backed data-center operations c
 |--------|-------|------------|
 | Python source LOC | 26,605 | Substantial domain logic |
 | Test LOC | 10,826 | 41% test-to-source ratio |
-| Test pass rate | 99.8% (1,060/1,062) | Excellent |
+| Test pass rate | **89.8% (5,248/5,846)** | **636 failing — see §1a** |
 | SQL schema LOC | 752 | Portable, well-normalized |
 | UI LOC | 2,594 | 8 JS modules + 1 HTML |
 | API endpoints | 12 | All read-only |
@@ -417,3 +417,43 @@ The project is solidly at **Stage 0** of its roadmap. The foundation is well-bui
 
 *Report generated: 2026-09-29*  
 *Data sources: Direct codebase analysis, test execution, performance audit report*
+
+---
+
+## 1a. Correction — 2026-10-18 (verified)
+
+The pass-rate figure above previously read **"99.8% (1,060/1,062)"**. That is stale and was
+never re-derived after the suite grew. Measured with `pytest --collect-only` and a full run:
+
+| | Value |
+|---|---|
+| Tests collected | **5,846** |
+| Passed | **5,248** |
+| **Failed** | **636** |
+| Skipped | 1 |
+| **Pass rate** | **89.8%** |
+
+### Three findings behind that number
+
+1. **CI never ran this suite.** `ci.yml` runs `ruff check` and `ruff format --check` only.
+   `integration.yml` runs `python -m unittest discover -s tests` — `unittest`, not `pytest` — so
+   the pytest suite does not execute in CI. **A green badge on this repo is a LINT signal, not a
+   test signal.**
+
+2. **Collection was broken by a stray config in `$HOME`.** A `pytest.ini` at `/Users/ahmedhassan/`
+   set `testpaths = tests/iac-security`, so pytest resolved `rootdir` to the home directory and
+   used that file instead of this repo's config. Moved aside. Two genuine collection errors were
+   also fixed: `tests/e2e` needed `playwright` (now guarded with `importorskip`), and same-named
+   test modules in different directories collided (now disambiguated with `__init__.py` markers).
+
+3. **334 of the 636 failures are terraform tests**, and they fail because they target a module
+   layout that does not exist. `tests/terraform/test_aws_modules.py` resolves
+   `terraform/modules/aws/vpc` via `get_module_path(MODULES_BASE, "aws", "vpc")`, but
+   `terraform/modules/` contains `aws-compliance`, `azure-compliance`, `disaster-recovery`, `gcp`
+   and `gcp-compliance` — a different naming scheme. 13 terraform test files assert against a
+   structure that is absent, so the `infra/` tree they appear to cover has **zero** real coverage.
+   Even `test_module_exists` fails.
+
+**Consequence for any external use:** do not quote a pass rate from this document without
+re-running the suite. The 5,248 passing tests are real; the 636 failures are real; and the
+terraform suite currently certifies nothing.

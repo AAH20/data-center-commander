@@ -1,7 +1,16 @@
 /**
  * Operations Monitoring Dashboard for Data Center Commander.
+ *
  * Renders system health, alerts, and SLO status from the DCC API.
- * Self-contained: no external chart library; uses inline SVG.
+ * Provides a comprehensive operational view including health scores,
+ * active alerts, SLO attainment, capacity utilization, connector status,
+ * and recent activity timeline. All data is tenant-scoped and read-only.
+ *
+ * Design: Self-contained ES module, inline SVG charts, dark theme consistent
+ * with the existing DCC UI. No external chart library.
+ *
+ * @module ops-dashboard
+ * @see {@link https://en.wikipedia.org/wiki/Service-level_objective|SLO}
  */
 (() => {
   "use strict";
@@ -194,6 +203,12 @@
   const tenant = new URLSearchParams(location.search).get("tenant_id") || "";
   const syntheticDemo = new URLSearchParams(location.search).get("demo") === "synthetic";
 
+  /**
+   * Fetches data from a DCC API endpoint with tenant scoping.
+   * @param {string} path - API path (e.g., "/v1/overview")
+   * @returns {Promise<Object>} Parsed JSON response
+   * @throws {Error} If the request fails
+   */
   async function fetchApi(path) {
     const params = new URLSearchParams({ tenant_id: tenant });
     if (syntheticDemo) params.set("demo", "synthetic");
@@ -204,6 +219,13 @@
   }
 
   // ─── Compute Health Score ───────────────────────────────────────────────────
+  /**
+   * Computes a composite health score from connector, telemetry, and KPI quality.
+   * @param {Array} connectors - Connector status records
+   * @param {Array} telemetry - Telemetry quality records
+   * @param {Array} kpiQuality - KPI quality records
+   * @returns {number|null} Health score (0-1) or null if no data
+   */
   function computeHealthScore(connectors, telemetry, kpiQuality) {
     const checks = [];
     // Connector health
@@ -223,6 +245,11 @@
   }
 
   // ─── Detect Alerts ──────────────────────────────────────────────────────────
+  /**
+   * Detects operational alerts from KPI quality, telemetry, workflows, connectors, and capacity.
+   * @param {Object} data - Combined operational data
+   * @returns {Array<{severity: string, title: string, detail: string, time: string|null, source: string|null}>} Sorted alerts
+   */
   function detectAlerts(data) {
     const alerts = [];
     const { kpiQuality, telemetryQuality, workflowHealth, connectors, capacity } = data;
@@ -291,6 +318,13 @@
   }
 
   // ─── Compute SLO Status ─────────────────────────────────────────────────────
+  /**
+   * Computes SLO attainment status from KPI quality, capacity, and workflow health.
+   * @param {Array} kpiQuality - KPI quality records
+   * @param {Array} capacity - Capacity snapshot records
+   * @param {Array} workflowHealth - Workflow health records
+   * @returns {Array<{name: string, value: number|null, target: number, display: string, unit: string}>} SLO status list
+   */
   function computeSloStatus(kpiQuality, capacity, workflowHealth) {
     const slos = [];
 
@@ -332,6 +366,14 @@
   }
 
   // ─── Render: Top Cards ──────────────────────────────────────────────────────
+  /**
+   * Renders the top KPI summary cards.
+   * @param {number|null} healthScore - Composite health score
+   * @param {Array} alerts - Active alerts
+   * @param {Array} sloStatus - SLO status list
+   * @param {Array} connectors - Connector records
+   * @returns {void}
+   */
   function renderTopCards(healthScore, alerts, sloStatus, connectors) {
     const criticalCount = alerts.filter((a) => a.severity === "critical").length;
     const warningCount = alerts.filter((a) => a.severity === "warning").length;
@@ -376,6 +418,14 @@
   }
 
   // ─── Render: System Health ──────────────────────────────────────────────────
+  /**
+   * Renders the system health component cards.
+   * @param {Array} connectors - Connector records
+   * @param {Array} telemetry - Telemetry quality records
+   * @param {Array} kpiQuality - KPI quality records
+   * @param {Object} overview - Overview data
+   * @returns {void}
+   */
   function renderHealth(connectors, telemetry, kpiQuality, overview) {
     const grid = document.querySelector("#opsHealthGrid");
     const healthScore = computeHealthScore(connectors, telemetry, kpiQuality);
@@ -443,6 +493,11 @@
   }
 
   // ─── Render: Alerts ─────────────────────────────────────────────────────────
+  /**
+   * Renders the active alerts list.
+   * @param {Array} alerts - Alert records
+   * @returns {void}
+   */
   function renderAlerts(alerts) {
     const container = document.querySelector("#opsAlerts");
     const countEl = document.querySelector("#opsAlertCount");
@@ -468,6 +523,11 @@
   }
 
   // ─── Render: SLO Status ─────────────────────────────────────────────────────
+  /**
+   * Renders the SLO attainment status cards.
+   * @param {Array} slos - SLO status records
+   * @returns {void}
+   */
   function renderSloStatus(slos) {
     const grid = document.querySelector("#opsSloGrid");
     if (!slos.length) {
@@ -504,6 +564,11 @@
   }
 
   // ─── Render: Capacity ───────────────────────────────────────────────────────
+  /**
+   * Renders the capacity utilization bars by scenario and dimension.
+   * @param {Array} capacity - Capacity snapshot records
+   * @returns {void}
+   */
   function renderCapacity(capacity) {
     const container = document.querySelector("#opsCapacity");
     if (!capacity.length) {
@@ -566,6 +631,11 @@
   }
 
   // ─── Render: Connectors ─────────────────────────────────────────────────────
+  /**
+   * Renders the connector status cards.
+   * @param {Array} connectors - Connector records
+   * @returns {void}
+   */
   function renderConnectors(connectors) {
     const container = document.querySelector("#opsConnectors");
     if (!connectors.length) {
@@ -586,6 +656,11 @@
   }
 
   // ─── Render: Timeline ───────────────────────────────────────────────────────
+  /**
+   * Renders the recent activity timeline.
+   * @param {Array} evidence - Evidence event records
+   * @returns {void}
+   */
   function renderTimeline(evidence) {
     const container = document.querySelector("#opsTimeline");
     if (!evidence.length) {
@@ -608,6 +683,11 @@
 
   // ─── Main Load ──────────────────────────────────────────────────────────────
   let loaded = false;
+
+  /**
+   * Loads all operational data and renders the dashboard.
+   * @returns {Promise<void>}
+   */
   async function loadOps() {
     const banner = document.querySelector("#opsBanner");
     if (!tenant) {

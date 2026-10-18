@@ -185,6 +185,42 @@ def _parse_timestamp(value: Any, field_name: str = "timestamp") -> datetime:
 # ---------------------------------------------------------------------------
 
 
+def validate_interval_alignment(
+    interval_seconds: int,
+    timestamps: list[datetime],
+) -> ValidationResult:
+    """Validate that timestamps are aligned to the expected interval.
+
+    Args:
+        interval_seconds: Expected interval in seconds.
+        timestamps: List of timestamps to check.
+
+    Returns:
+        ValidationResult with alignment status.
+    """
+    result = ValidationResult(passed=True)
+    if not timestamps:
+        return result
+    if interval_seconds <= 0:
+        result.add(Finding(
+            code="INVALID_INTERVAL",
+            severity=Severity.ERROR,
+            message=f"interval_seconds must be positive, got {interval_seconds}",
+        ))
+        return result
+    for ts in timestamps:
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        epoch = ts.timestamp()
+        if epoch % interval_seconds != 0:
+            result.add(Finding(
+                code="MISALIGNED_TIMESTAMP",
+                severity=Severity.WARNING,
+                message=f"Timestamp {ts.isoformat()} is not aligned to {interval_seconds}s interval",
+            ))
+    return result
+
+
 def validate_meter_boundary(
     *,
     meter_id: str,
@@ -1111,3 +1147,587 @@ def validate_energy_chain(
 
     meter_result.metrics["total_meter_energy_kwh"] = str(round(total_kwh, 4))
     return meter_result
+
+
+# ---------------------------------------------------------------------------
+# Additional validation functions
+# ---------------------------------------------------------------------------
+
+
+def validate_unit_compatibility(source_unit: str, target_unit: str) -> ValidationResult:
+    """Validate that two units are compatible for conversion."""
+    result = ValidationResult(passed=True)
+    src = _normalize_unit(source_unit)
+    tgt = _normalize_unit(target_unit)
+    src_is_energy = src in ENERGY_UNIT_TO_KWH
+    tgt_is_energy = tgt in ENERGY_UNIT_TO_KWH
+    src_is_power = src in POWER_UNIT_TO_KW
+    tgt_is_power = tgt in POWER_UNIT_TO_KW
+    if (src_is_energy and not tgt_is_energy) or (src_is_power and not tgt_is_power):
+        result.add(Finding(
+            code="incompatible_units",
+            severity=Severity.ERROR,
+            message=f"Cannot convert {source_unit} to {target_unit}: incompatible dimensions",
+        ))
+    return result
+
+
+def validate_quality_gate(quality_status: str, value: float) -> ValidationResult:
+    """Validate that a reading passes the quality gate."""
+    result = ValidationResult(passed=True)
+    if quality_status not in USABLE_QUALITY:
+        result.add(Finding(
+            code="quality_gate_failed",
+            severity=Severity.ERROR,
+            message=f"Quality status {quality_status!r} is not in usable set {sorted(USABLE_QUALITY)}",
+        ))
+    return result
+
+
+def validate_allocation_rule(method: str, total: Decimal, allocated: Decimal) -> ValidationResult:
+    """Validate an allocation rule."""
+    result = ValidationResult(passed=True)
+    if method not in VALID_ALLOCATION_METHODS:
+        result.add(Finding(
+            code="invalid_method",
+            severity=Severity.ERROR,
+            message=f"Unknown allocation method {method!r}",
+        ))
+    if allocated > total:
+        result.add(Finding(
+            code="over_allocation",
+            severity=Severity.ERROR,
+            message=f"Allocated {allocated} exceeds total {total}",
+        ))
+    return result
+
+
+def validate_tenant_scope(tenant_id: str, records: list[dict[str, Any]]) -> ValidationResult:
+    """Validate that all records belong to the expected tenant."""
+    result = ValidationResult(passed=True)
+    for i, rec in enumerate(records):
+        rec_tenant = rec.get("tenant_id")
+        if rec_tenant and rec_tenant != tenant_id:
+            result.add(Finding(
+                code="tenant_mismatch",
+                severity=Severity.ERROR,
+                message=f"Record {i} has tenant {rec_tenant!r}, expected {tenant_id!r}",
+            ))
+    return result
+
+
+def validate_measurement_continuity(
+    timestamps: list[datetime], expected_interval_seconds: int
+) -> ValidationResult:
+    """Validate that measurements are continuous."""
+    result = ValidationResult(passed=True)
+    if len(timestamps) < 2:
+        return result
+    for i in range(1, len(timestamps)):
+        delta = (timestamps[i] - timestamps[i - 1]).total_seconds()
+        if abs(delta - expected_interval_seconds) > 1:
+            result.add(Finding(
+                code="gap_detected",
+                severity=Severity.WARNING,
+                message=f"Gap of {delta}s between readings {i-1} and {i}, expected {expected_interval_seconds}s",
+            ))
+    return result
+
+
+def validate_power_factor_range(pf: float) -> ValidationResult:
+    """Validate power factor is in valid range."""
+    result = ValidationResult(passed=True)
+    if pf < 0 or pf > 1:
+        result.add(Finding(
+            code="invalid_power_factor",
+            severity=Severity.ERROR,
+            message=f"Power factor {pf} is outside [0, 1]",
+        ))
+    return result
+
+
+def validate_pue_range(pue: float) -> ValidationResult:
+    """Validate PUE is in valid range."""
+    result = ValidationResult(passed=True)
+    if pue < 1.0:
+        result.add(Finding(
+            code="invalid_pue",
+            severity=Severity.ERROR,
+            message=f"PUE {pue} is below 1.0",
+        ))
+    return result
+
+
+def validate_cooling_efficiency(cop: float) -> ValidationResult:
+    """Validate cooling efficiency (COP)."""
+    result = ValidationResult(passed=True)
+    if cop <= 0:
+        result.add(Finding(
+            code="invalid_cop",
+            severity=Severity.ERROR,
+            message=f"COP {cop} must be positive",
+        ))
+    return result
+
+
+def validate_temperature_bounds(temp: float) -> ValidationResult:
+    """Validate temperature is in valid range."""
+    result = ValidationResult(passed=True)
+    if temp < -273.15 or temp > 200:
+        result.add(Finding(
+            code="temperature_out_of_range",
+            severity=Severity.ERROR,
+            message=f"Temperature {temp} is outside valid range [-273.15, 200]",
+        ))
+    return result
+
+
+def validate_pressure_bounds(pressure: float) -> ValidationResult:
+    """Validate pressure is in valid range."""
+    result = ValidationResult(passed=True)
+    if pressure < 0:
+        result.add(Finding(
+            code="negative_pressure",
+            severity=Severity.ERROR,
+            message=f"Pressure {pressure} is negative",
+        ))
+    return result
+
+
+def validate_humidity_bounds(humidity: float) -> ValidationResult:
+    """Validate humidity is in valid range."""
+    result = ValidationResult(passed=True)
+    if humidity < 0 or humidity > 100:
+        result.add(Finding(
+            code="humidity_out_of_range",
+            severity=Severity.ERROR,
+            message=f"Humidity {humidity} is outside [0, 100]",
+        ))
+    return result
+
+
+def validate_flow_rate_bounds(flow: float) -> ValidationResult:
+    """Validate flow rate is in valid range."""
+    result = ValidationResult(passed=True)
+    if flow < 0:
+        result.add(Finding(
+            code="negative_flow",
+            severity=Severity.ERROR,
+            message=f"Flow rate {flow} is negative",
+        ))
+    return result
+
+
+def validate_voltage_bounds(voltage: float) -> ValidationResult:
+    """Validate voltage is in valid range."""
+    result = ValidationResult(passed=True)
+    if voltage < 0:
+        result.add(Finding(
+            code="negative_voltage",
+            severity=Severity.ERROR,
+            message=f"Voltage {voltage} is negative",
+        ))
+    return result
+
+
+def validate_current_bounds(current: float) -> ValidationResult:
+    """Validate current is in valid range."""
+    result = ValidationResult(passed=True)
+    if current < 0:
+        result.add(Finding(
+            code="negative_current",
+            severity=Severity.ERROR,
+            message=f"Current {current} is negative",
+        ))
+    return result
+
+
+def validate_frequency_bounds(freq: float) -> ValidationResult:
+    """Validate frequency is in valid range."""
+    result = ValidationResult(passed=True)
+    if freq <= 0:
+        result.add(Finding(
+            code="invalid_frequency",
+            severity=Severity.ERROR,
+            message=f"Frequency {freq} must be positive",
+        ))
+    return result
+
+
+def validate_carbon_intensity_bounds(ci: float) -> ValidationResult:
+    """Validate carbon intensity is in valid range."""
+    result = ValidationResult(passed=True)
+    if ci < 0:
+        result.add(Finding(
+            code="negative_carbon_intensity",
+            severity=Severity.ERROR,
+            message=f"Carbon intensity {ci} is negative",
+        ))
+    return result
+
+
+def validate_data_completeness(
+    records: list[dict[str, Any]], required_fields: list[str]
+) -> ValidationResult:
+    """Validate that all records have required fields."""
+    result = ValidationResult(passed=True)
+    for i, rec in enumerate(records):
+        for field in required_fields:
+            if field not in rec:
+                result.add(Finding(
+                    code="missing_field",
+                    severity=Severity.ERROR,
+                    message=f"Record {i} missing required field {field!r}",
+                ))
+    return result
+
+
+def validate_duplicate_timestamps(timestamps: list[datetime]) -> ValidationResult:
+    """Validate that there are no duplicate timestamps."""
+    result = ValidationResult(passed=True)
+    seen = set()
+    for ts in timestamps:
+        key = ts.isoformat()
+        if key in seen:
+            result.add(Finding(
+                code="duplicate_timestamp",
+                severity=Severity.ERROR,
+                message=f"Duplicate timestamp {key}",
+            ))
+        seen.add(key)
+    return result
+
+
+def validate_monotonic_timestamps(timestamps: list[datetime]) -> ValidationResult:
+    """Validate that timestamps are monotonically increasing."""
+    result = ValidationResult(passed=True)
+    for i in range(1, len(timestamps)):
+        if timestamps[i] <= timestamps[i - 1]:
+            result.add(Finding(
+                code="non_monotonic",
+                severity=Severity.ERROR,
+                message=f"Timestamp {i} is not greater than {i-1}",
+            ))
+    return result
+
+
+def validate_value_range(
+    value: float, min_val: float | None = None, max_val: float | None = None
+) -> ValidationResult:
+    """Validate that a value is within a range."""
+    result = ValidationResult(passed=True)
+    if min_val is not None and value < min_val:
+        result.add(Finding(
+            code="below_minimum",
+            severity=Severity.ERROR,
+            message=f"Value {value} is below minimum {min_val}",
+        ))
+    if max_val is not None and value > max_val:
+        result.add(Finding(
+            code="above_maximum",
+            severity=Severity.ERROR,
+            message=f"Value {value} is above maximum {max_val}",
+        ))
+    return result
+
+
+def validate_sign_consistency(
+    values: list[float], expected_sign: str
+) -> ValidationResult:
+    """Validate that all values have the expected sign."""
+    result = ValidationResult(passed=True)
+    for v in values:
+        if expected_sign == "positive" and v < 0:
+            result.add(Finding(
+                code="sign_mismatch",
+                severity=Severity.ERROR,
+                message=f"Value {v} is negative, expected positive",
+            ))
+        elif expected_sign == "negative" and v > 0:
+            result.add(Finding(
+                code="sign_mismatch",
+                severity=Severity.ERROR,
+                message=f"Value {v} is positive, expected negative",
+            ))
+    return result
+
+
+def validate_meter_direction(direction: str) -> ValidationResult:
+    """Validate meter direction."""
+    result = ValidationResult(passed=True)
+    if direction not in VALID_DIRECTIONS:
+        result.add(Finding(
+            code="invalid_direction",
+            severity=Severity.ERROR,
+            message=f"Invalid direction {direction!r}",
+        ))
+    return result
+
+
+def validate_allocation_method(method: str) -> ValidationResult:
+    """Validate allocation method."""
+    result = ValidationResult(passed=True)
+    if method not in VALID_ALLOCATION_METHODS:
+        result.add(Finding(
+            code="invalid_method",
+            severity=Severity.ERROR,
+            message=f"Invalid allocation method {method!r}",
+        ))
+    return result
+
+
+def validate_quality_status(status: str) -> ValidationResult:
+    """Validate quality status."""
+    result = ValidationResult(passed=True)
+    if status not in USABLE_QUALITY:
+        result.add(Finding(
+            code="invalid_quality",
+            severity=Severity.ERROR,
+            message=f"Invalid quality status {status!r}",
+        ))
+    return result
+
+
+def validate_energy_unit(unit: str) -> ValidationResult:
+    """Validate energy unit."""
+    result = ValidationResult(passed=True)
+    if _normalize_unit(unit) not in ENERGY_UNIT_TO_KWH:
+        result.add(Finding(
+            code="invalid_energy_unit",
+            severity=Severity.ERROR,
+            message=f"Invalid energy unit {unit!r}",
+        ))
+    return result
+
+
+def validate_power_unit(unit: str) -> ValidationResult:
+    """Validate power unit."""
+    result = ValidationResult(passed=True)
+    if _normalize_unit(unit) not in POWER_UNIT_TO_KW:
+        result.add(Finding(
+            code="invalid_power_unit",
+            severity=Severity.ERROR,
+            message=f"Invalid power unit {unit!r}",
+        ))
+    return result
+
+
+def convert_energy_to_kwh(value: Decimal, unit: str) -> Decimal:
+    """Convert energy value to kWh."""
+    return _convert_to_kwh(value, unit)
+
+
+def convert_power_to_kw(value: Decimal, unit: str) -> Decimal:
+    """Convert power value to kW."""
+    return _convert_to_kw(value, unit)
+
+
+def compute_energy_from_power(power: float, hours: float) -> float:
+    """Compute energy from power and duration."""
+    return power * hours
+
+
+def compute_power_from_energy(energy: float, hours: float) -> float:
+    """Compute power from energy and duration."""
+    if hours == 0:
+        raise ValueError("hours must be non-zero")
+    return energy / hours
+
+
+def compute_pue(total: float, it: float) -> float:
+    """Compute PUE."""
+    if it == 0:
+        raise ValueError("IT power must be non-zero")
+    return total / it
+
+
+def compute_cooling_load(heat_load: float, cop: float) -> float:
+    """Compute cooling load."""
+    if cop == 0:
+        raise ValueError("COP must be non-zero")
+    return heat_load / cop
+
+
+def compute_carbon_emissions(energy: float, factor: float) -> float:
+    """Compute carbon emissions."""
+    return energy * factor
+
+
+def compute_dcime(it: float, total: float) -> float:
+    """Compute DCiE."""
+    if total == 0:
+        raise ValueError("Total power must be non-zero")
+    return it / total
+
+
+def compute_ups_runtime(battery: float, load: float, efficiency: float = 0.95) -> float:
+    """Compute UPS runtime."""
+    if load == 0:
+        raise ValueError("Load must be non-zero")
+    return (battery * efficiency) / load
+
+
+def compute_energy_cost(energy: float, rate: float) -> float:
+    """Compute energy cost."""
+    return energy * rate
+
+
+def compute_demand_cost(demand: float, rate: float) -> float:
+    """Compute demand cost."""
+    return demand * rate
+
+
+def compute_total_cost(energy_cost: float, demand_cost: float, fixed: float) -> float:
+    """Compute total cost."""
+    return energy_cost + demand_cost + fixed
+
+
+def compute_cost_per_kwh(cost: float, energy: float) -> float:
+    """Compute cost per kWh."""
+    if energy == 0:
+        raise ValueError("Energy must be non-zero")
+    return cost / energy
+
+
+def compute_cost_per_kw(cost: float, power: float) -> float:
+    """Compute cost per kW."""
+    if power == 0:
+        raise ValueError("Power must be non-zero")
+    return cost / power
+
+
+def compute_cost_per_rack(cost: float, racks: float) -> float:
+    """Compute cost per rack."""
+    if racks == 0:
+        raise ValueError("Rack count must be non-zero")
+    return cost / racks
+
+
+def compute_cost_per_m2(cost: float, area: float) -> float:
+    """Compute cost per m²."""
+    if area == 0:
+        raise ValueError("Area must be non-zero")
+    return cost / area
+
+
+def compute_cost_per_kwh_it(cost: float, it_energy: float) -> float:
+    """Compute cost per kWh IT."""
+    if it_energy == 0:
+        raise ValueError("IT energy must be non-zero")
+    return cost / it_energy
+
+
+def compute_cost_per_kwh_facility(cost: float, facility_energy: float) -> float:
+    """Compute cost per kWh facility."""
+    if facility_energy == 0:
+        raise ValueError("Facility energy must be non-zero")
+    return cost / facility_energy
+
+
+def compute_equivalent_annual_cost(capex: float, years: int, discount_rate: float) -> float:
+    """Compute equivalent annual cost."""
+    if years == 0:
+        raise ValueError("Years must be non-zero")
+    return capex / years
+
+
+def compute_net_present_value(cashflows: list[float], discount_rate: float) -> float:
+    """Compute NPV."""
+    npv = 0.0
+    for i, cf in enumerate(cashflows):
+        npv += cf / (1 + discount_rate) ** i
+    return npv
+
+
+def compute_internal_rate_of_return(cashflows: list[float]) -> float | None:
+    """Compute IRR using bisection."""
+    if not cashflows:
+        return None
+    lo, hi = -0.99, 10.0
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        npv = sum(cf / (1 + mid) ** i for i, cf in enumerate(cashflows))
+        if abs(npv) < 1e-6:
+            return mid
+        if npv > 0:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
+
+
+def compute_payback_period(capex: float, annual_savings: float) -> float:
+    """Compute payback period."""
+    if annual_savings == 0:
+        raise ValueError("Annual savings must be non-zero")
+    return capex / annual_savings
+
+
+def compute_return_on_investment(gain: float, cost: float) -> float:
+    """Compute ROI."""
+    if cost == 0:
+        raise ValueError("Cost must be non-zero")
+    return (gain - cost) / cost
+
+
+def compute_levelized_cost_of_energy(capex: float, total_energy: float) -> float:
+    """Compute LCOE."""
+    if total_energy == 0:
+        raise ValueError("Total energy must be non-zero")
+    return capex / total_energy
+
+
+def compute_carbon_abatement_cost(cost: float, carbon_reduced: float) -> float:
+    """Compute carbon abatement cost."""
+    if carbon_reduced == 0:
+        raise ValueError("Carbon reduced must be non-zero")
+    return cost / carbon_reduced
+
+
+def compute_energy_reuse_effectiveness(reused: float, total: float) -> float:
+    """Compute energy reuse effectiveness."""
+    if total == 0:
+        raise ValueError("Total energy must be non-zero")
+    return reused / total
+
+
+def compute_water_usage_effectiveness(water: float, it_energy: float) -> float:
+    """Compute WUE."""
+    if it_energy == 0:
+        raise ValueError("IT energy must be non-zero")
+    return water / it_energy
+
+
+def compute_carbon_usage_effectiveness(carbon: float, it_energy: float) -> float:
+    """Compute CUE."""
+    if it_energy == 0:
+        raise ValueError("IT energy must be non-zero")
+    return carbon / it_energy
+
+
+def compute_it_equipment_utilization(used: float, total: float) -> float:
+    """Compute IT equipment utilization."""
+    if total == 0:
+        raise ValueError("Total capacity must be non-zero")
+    return used / total
+
+
+def compute_rack_space_utilization(used: float, total: float) -> float:
+    """Compute rack space utilization."""
+    if total == 0:
+        raise ValueError("Total capacity must be non-zero")
+    return used / total
+
+
+def compute_power_usage_effectiveness(it_power: float, total_power: float) -> float:
+    """Compute PUE from power values."""
+    if total_power == 0:
+        raise ValueError("Total power must be non-zero")
+    return it_power / total_power
+
+
+def compute_data_center_infrastructure_efficiency(it_power: float, total_power: float) -> float:
+    """Compute DCiE from power values."""
+    if total_power == 0:
+        raise ValueError("Total power must be non-zero")
+    return it_power / total_power

@@ -1,0 +1,12 @@
+{
+  "ConfigRuleName": "vpc-flow-logs-enabled",
+  "Description": "Checks that VPCs have flow logs enabled.",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "VPC_FLOW_LOGS_ENABLED"
+  },
+  "InputParameters": {},
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::EC2::VPC"]
+  }
+}

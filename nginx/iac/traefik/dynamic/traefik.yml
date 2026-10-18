@@ -1,0 +1,146 @@
+# =============================================================================
+# Data Center Commander — Traefik Dynamic Configuration
+# =============================================================================
+# Dynamic configuration for Traefik. Mounted into the Traefik container.
+# =============================================================================
+
+http:
+  routers:
+    # Health check router (no rate limit)
+    dcc-health:
+      rule: "PathPrefix(`/healthz`) || PathPrefix(`/readyz`)"
+      service: dcc-health
+      entryPoints:
+        - web
+      middlewares:
+        - dcc-headers
+
+    # API router (rate limited)
+    dcc-api:
+      rule: "PathPrefix(`/v1/`)"
+      service: dcc-api
+      entryPoints:
+        - web
+      middlewares:
+        - dcc-ratelimit
+        - dcc-headers
+
+    # Static assets router
+    dcc-assets:
+      rule: "PathPrefix(`/assets/`)"
+      service: dcc-api
+      entryPoints:
+        - web
+      middlewares:
+        - dcc-ratelimit-assets
+        - dcc-headers
+        - dcc-cache
+
+    # Main UI router
+    dcc-ui:
+      rule: "PathPrefix(`/`)"
+      service: dcc-api
+      entryPoints:
+        - web
+      middlewares:
+        - dcc-ratelimit
+        - dcc-headers
+
+    # HTTPS routers
+    dcc-health-secure:
+      rule: "PathPrefix(`/healthz`) || PathPrefix(`/readyz`)"
+      service: dcc-health
+      entryPoints:
+        - websecure
+      middlewares:
+        - dcc-headers
+      tls: {}
+
+    dcc-api-secure:
+      rule: "PathPrefix(`/v1/`)"
+      service: dcc-api
+      entryPoints:
+        - websecure
+      middlewares:
+        - dcc-ratelimit
+        - dcc-headers
+      tls: {}
+
+    dcc-assets-secure:
+      rule: "PathPrefix(`/assets/`)"
+      service: dcc-api
+      entryPoints:
+        - websecure
+      middlewares:
+        - dcc-ratelimit-assets
+        - dcc-headers
+        - dcc-cache
+      tls: {}
+
+    dcc-ui-secure:
+      rule: "PathPrefix(`/`)"
+      service: dcc-api
+      entryPoints:
+        - websecure
+      middlewares:
+        - dcc-ratelimit
+        - dcc-headers
+      tls: {}
+
+  services:
+    dcc-api:
+      loadBalancer:
+        servers:
+          - url: "http://dcc-api-1:8790"
+          - url: "http://dcc-api-2:8791"
+          - url: "http://dcc-api-3:8792"
+        healthCheck:
+          path: /healthz
+          interval: 10s
+          timeout: 5s
+        passHostHeader: true
+        responseForwarding:
+          flushInterval: 100ms
+
+    dcc-health:
+      loadBalancer:
+        servers:
+          - url: "http://dcc-api-1:8790"
+          - url: "http://dcc-api-2:8791"
+          - url: "http://dcc-api-3:8792"
+        healthCheck:
+          path: /healthz
+          interval: 10s
+          timeout: 5s
+        passHostHeader: true
+
+  middlewares:
+    dcc-ratelimit:
+      rateLimit:
+        average: 10
+        burst: 20
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    dcc-ratelimit-assets:
+      rateLimit:
+        average: 10
+        burst: 30
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    dcc-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "no-referrer"
+        contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+        permissionsPolicy: "geolocation=(), microphone=(), camera=()"
+
+    dcc-cache:
+      headers:
+        customResponseHeaders:
+          Cache-Control: "public, max-age=3600"

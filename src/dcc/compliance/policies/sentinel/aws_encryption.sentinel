@@ -1,0 +1,34 @@
+# Sentinel Policy: AWS Encryption Compliance
+# Ensures AWS storage resources have encryption enabled
+import "tfplan"
+
+# Check S3 buckets for encryption
+s3_buckets = tfplan.resources.aws_s3_bucket
+
+violations_s3 = rule {
+    all s3_buckets as _, bucket {
+        bucket.applied.server_side_encryption_configuration is not null
+    }
+}
+
+# Check RDS instances for encryption
+rds_instances = tfplan.resources.aws_db_instance
+
+violations_rds = rule {
+    all rds_instances as _, instance {
+        instance.applied.storage_encrypted is true
+    }
+}
+
+# Check EBS volumes for encryption
+ebs_volumes = tfplan.resources.aws_ebs_volume
+
+violations_ebs = rule {
+    all ebs_volumes as _, volume {
+        volume.applied.encrypted is true
+    }
+}
+
+main = rule {
+    violations_s3 and violations_rds and violations_ebs
+}

@@ -2,7 +2,7 @@
 
 Demonstrates effective-dated price management.
 """
-from dcc.economics.prices import create_price_record, PriceStatus, PriceBasis
+from dcc.economics.prices import create_price_record, PriceStatus
 
 record = create_price_record(
     item_code="UPS-250KVA",
@@ -11,7 +11,8 @@ record = create_price_record(
     quantity_unit="system",
     unit_price=250_000,
     currency="USD",
-    basis=PriceBasis.VENDOR_QUOTE,
+    geography="US-East",
+    price_basis="quoted",
     source_name="Vendor ABC",
     source_ref="Q-2026-001",
     effective_from="2026-01-01",

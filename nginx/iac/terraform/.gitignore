@@ -1,0 +1,33 @@
+# =============================================================================
+# Data Center Commander — Load Balancer IaC (Terraform)
+# =============================================================================
+# This .gitignore ensures sensitive Terraform files are never committed.
+# =============================================================================
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Sensitive
+*.pem
+*.key
+secrets/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

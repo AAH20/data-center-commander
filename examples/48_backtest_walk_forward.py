@@ -7,7 +7,7 @@ from dcc.forecasting.backtest import walk_forward
 data = list(range(100))
 result = walk_forward(
     data=data,
-    model_fn=lambda train, horizon: [train[-1]] * horizon,
+    model=lambda train: [train[-1]] * 5,
     min_train_size=20,
     step_size=5,
     horizon=5,

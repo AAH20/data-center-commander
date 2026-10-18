@@ -1,0 +1,93 @@
+# =============================================================================
+# Data Center Commander — OpenTofu Example Variables
+# =============================================================================
+# Copy this file to `terraform.tfvars` and fill in your values.
+# NEVER commit `terraform.tfvars` to version control.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global Settings
+# -----------------------------------------------------------------------------
+project_name = "datacenter-commander"
+environment  = "dev"
+
+common_tags = {
+  Project     = "data-center-commander"
+  Environment = "dev"
+  ManagedBy   = "opentofu"
+  Owner       = "platform-team"
+  CostCenter  = "dc-001"
+}
+
+# -----------------------------------------------------------------------------
+# Cloud Enablement
+# -----------------------------------------------------------------------------
+enable_aws          = true
+enable_gcp          = false
+enable_azure        = false
+enable_digitalocean = false
+enable_ibm          = false
+
+# -----------------------------------------------------------------------------
+# AWS Configuration
+# -----------------------------------------------------------------------------
+aws_region            = "us-east-1"
+aws_vpc_cidr          = "10.0.0.0/16"
+aws_availability_zones = ["us-east-1a", "us-east-1b", "us-east-1c"]
+aws_instance_type     = "t3.medium"
+aws_instance_count    = 2
+
+# -----------------------------------------------------------------------------
+# GCP Configuration
+# -----------------------------------------------------------------------------
+gcp_project_id       = "my-gcp-project-id"
+gcp_region           = "us-central1"
+gcp_credentials_file = ""
+gcp_vpc_cidr         = "10.1.0.0/16"
+gcp_machine_type     = "e2-medium"
+gcp_instance_count   = 1
+gcp_location         = "US"
+
+# -----------------------------------------------------------------------------
+# Azure Configuration
+# -----------------------------------------------------------------------------
+azure_subscription_id = ""
+azure_tenant_id       = ""
+azure_location        = "East US"
+azure_vnet_cidr       = "10.2.0.0/16"
+azure_vm_size         = "Standard_B2s"
+azure_instance_count  = 1
+azure_resource_group  = ""
+
+# -----------------------------------------------------------------------------
+# DigitalOcean Configuration
+# -----------------------------------------------------------------------------
+digitalocean_token          = ""
+digitalocean_region         = "nyc3"
+digitalocean_size           = "s-2vcpu-4gb"
+digitalocean_image          = "ubuntu-22-04-x64"
+digitalocean_instance_count = 1
+
+# -----------------------------------------------------------------------------
+# IBM Cloud Configuration
+# -----------------------------------------------------------------------------
+ibm_api_key          = ""
+ibm_region           = "us-south"
+ibm_vpc_cidr         = "10.3.0.0/16"
+ibm_instance_profile = "bx2-2x8"
+ibm_instance_count   = 1
+
+# -----------------------------------------------------------------------------
+# Cross-Cloud VPN Mesh
+# -----------------------------------------------------------------------------
+enable_vpn_mesh = false
+vpn_shared_key  = ""
+
+# -----------------------------------------------------------------------------
+# Security & Compliance
+# -----------------------------------------------------------------------------
+enable_encryption    = true
+enable_monitoring    = true
+enable_versioning    = true
+storage_class        = "STANDARD"
+compliance_framework = ""

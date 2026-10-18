@@ -1,0 +1,278 @@
+{
+  "timestamp": "2026-09-29T12:43:22.014065+00:00",
+  "python_version": "3.14.7",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "iterations": 2,
+  "benchmarks": {
+    "tco": {
+      "mean_seconds": 0.007072,
+      "std_seconds": 0.00982083,
+      "min_seconds": 0.00012763,
+      "max_seconds": 0.01401638,
+      "samples": [
+        0.01401638,
+        0.00012763
+      ]
+    },
+    "tco_compare": {
+      "mean_seconds": 0.00023604,
+      "std_seconds": 2.051e-05,
+      "min_seconds": 0.00022154,
+      "max_seconds": 0.00025054,
+      "samples": [
+        0.00025054,
+        0.00022154
+      ]
+    },
+    "scenario": {
+      "mean_seconds": 0.00096996,
+      "std_seconds": 0.00129683,
+      "min_seconds": 5.296e-05,
+      "max_seconds": 0.00188696,
+      "samples": [
+        0.00188696,
+        5.296e-05
+      ]
+    },
+    "scenario_compare": {
+      "mean_seconds": 0.00011023,
+      "std_seconds": 1.341e-05,
+      "min_seconds": 0.00010075,
+      "max_seconds": 0.00011971,
+      "samples": [
+        0.00011971,
+        0.00010075
+      ]
+    },
+    "capacity_forecast": {
+      "mean_seconds": 0.00485158,
+      "std_seconds": 0.00585231,
+      "min_seconds": 0.00071337,
+      "max_seconds": 0.00898979,
+      "samples": [
+        0.00898979,
+        0.00071337
+      ]
+    },
+    "capacity_at_risk": {
+      "mean_seconds": 0.00042569,
+      "std_seconds": 7.351e-05,
+      "min_seconds": 0.00037371,
+      "max_seconds": 0.00047767,
+      "samples": [
+        0.00047767,
+        0.00037371
+      ]
+    },
+    "quality_score": {
+      "mean_seconds": 0.0009976,
+      "std_seconds": 0.00101108,
+      "min_seconds": 0.00028267,
+      "max_seconds": 0.00171254,
+      "samples": [
+        0.00171254,
+        0.00028267
+      ]
+    },
+    "anomaly_detection": {
+      "mean_seconds": 0.00281367,
+      "std_seconds": 0.00057335,
+      "min_seconds": 0.00240825,
+      "max_seconds": 0.00321908,
+      "samples": [
+        0.00321908,
+        0.00240825
+      ]
+    },
+    "anomaly_iqr": {
+      "mean_seconds": 0.00094933,
+      "std_seconds": 0.00026299,
+      "min_seconds": 0.00076338,
+      "max_seconds": 0.00113529,
+      "samples": [
+        0.00076338,
+        0.00113529
+      ]
+    },
+    "seasonal_decompose": {
+      "mean_seconds": 0.00288421,
+      "std_seconds": 9.316e-05,
+      "min_seconds": 0.00281833,
+      "max_seconds": 0.00295008,
+      "samples": [
+        0.00295008,
+        0.00281833
+      ]
+    },
+    "backtest_walk_forward": {
+      "mean_seconds": 0.0012224,
+      "std_seconds": 0.00019755,
+      "min_seconds": 0.00108271,
+      "max_seconds": 0.00136208,
+      "samples": [
+        0.00108271,
+        0.00136208
+      ]
+    },
+    "backtest_cross_validate": {
+      "mean_seconds": 0.00039633,
+      "std_seconds": 3.89e-06,
+      "min_seconds": 0.00039358,
+      "max_seconds": 0.00039908,
+      "samples": [
+        0.00039908,
+        0.00039358
+      ]
+    },
+    "drift_detection": {
+      "mean_seconds": 0.0011596,
+      "std_seconds": 6.915e-05,
+      "min_seconds": 0.00111071,
+      "max_seconds": 0.0012085,
+      "samples": [
+        0.0012085,
+        0.00111071
+      ]
+    },
+    "cost_allocation": {
+      "mean_seconds": 0.00147527,
+      "std_seconds": 0.00173562,
+      "min_seconds": 0.000248,
+      "max_seconds": 0.00270254,
+      "samples": [
+        0.00270254,
+        0.000248
+      ]
+    },
+    "consistency_validation": {
+      "mean_seconds": 0.00287273,
+      "std_seconds": 0.00364434,
+      "min_seconds": 0.00029579,
+      "max_seconds": 0.00544967,
+      "samples": [
+        0.00544967,
+        0.00029579
+      ]
+    },
+    "interval_alignment": {
+      "mean_seconds": 0.00362512,
+      "std_seconds": 0.00018084,
+      "min_seconds": 0.00349725,
+      "max_seconds": 0.003753,
+      "samples": [
+        0.003753,
+        0.00349725
+      ]
+    },
+    "interval_resample": {
+      "mean_seconds": 0.00347358,
+      "std_seconds": 0.00022899,
+      "min_seconds": 0.00331167,
+      "max_seconds": 0.0036355,
+      "samples": [
+        0.00331167,
+        0.0036355
+      ]
+    },
+    "failure_prediction": {
+      "mean_seconds": 0.00511956,
+      "std_seconds": 0.00023385,
+      "min_seconds": 0.00495421,
+      "max_seconds": 0.00528492,
+      "samples": [
+        0.00495421,
+        0.00528492
+      ]
+    },
+    "feature_extraction": {
+      "mean_seconds": 0.05528,
+      "std_seconds": 0.00159028,
+      "min_seconds": 0.0541555,
+      "max_seconds": 0.0564045,
+      "samples": [
+        0.0541555,
+        0.0564045
+      ]
+    },
+    "load_forecast": {
+      "mean_seconds": 0.00074488,
+      "std_seconds": 0.00040523,
+      "min_seconds": 0.00045833,
+      "max_seconds": 0.00103142,
+      "samples": [
+        0.00045833,
+        0.00103142
+      ]
+    },
+    "maintenance_optimization": {
+      "mean_seconds": 0.00203525,
+      "std_seconds": 0.00155027,
+      "min_seconds": 0.00093904,
+      "max_seconds": 0.00313146,
+      "samples": [
+        0.00313146,
+        0.00093904
+      ]
+    },
+    "price_forecast": {
+      "mean_seconds": 0.01119029,
+      "std_seconds": 0.00011608,
+      "min_seconds": 0.01110821,
+      "max_seconds": 0.01127238,
+      "samples": [
+        0.01127238,
+        0.01110821
+      ]
+    },
+    "budget_forecast": {
+      "mean_seconds": 0.16292581,
+      "std_seconds": 0.00075357,
+      "min_seconds": 0.16239296,
+      "max_seconds": 0.16345867,
+      "samples": [
+        0.16345867,
+        0.16239296
+      ]
+    },
+    "estimate_sizing": {
+      "mean_seconds": 9.979e-05,
+      "std_seconds": 5.498e-05,
+      "min_seconds": 6.092e-05,
+      "max_seconds": 0.00013867,
+      "samples": [
+        0.00013867,
+        6.092e-05
+      ]
+    },
+    "reconciliation": {
+      "mean_seconds": 0.0001154,
+      "std_seconds": 3.703e-05,
+      "min_seconds": 8.921e-05,
+      "max_seconds": 0.00014158,
+      "samples": [
+        0.00014158,
+        8.921e-05
+      ]
+    },
+    "unit_economics": {
+      "mean_seconds": 4.962e-05,
+      "std_seconds": 2.18e-05,
+      "min_seconds": 3.421e-05,
+      "max_seconds": 6.504e-05,
+      "samples": [
+        6.504e-05,
+        3.421e-05
+      ]
+    },
+    "calibration": {
+      "mean_seconds": 0.00152388,
+      "std_seconds": 0.00015963,
+      "min_seconds": 0.001411,
+      "max_seconds": 0.00163675,
+      "samples": [
+        0.00163675,
+        0.001411
+      ]
+    }
+  }
+}

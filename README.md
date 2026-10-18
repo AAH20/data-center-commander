@@ -31,6 +31,7 @@ forecasts, production IAM, and facility control are not delivered.
 - [Security & Tenant Isolation](#security--tenant-isolation)
 - [Provenance & Lineage](#provenance--lineage)
 - [Observability](#observability)
+- [Infrastructure as Code](#infrastructure-as-code)
 - [Synthetic Demo](#synthetic-demo)
 - [Standalone Layout](#standalone-layout)
 - [Migrations](#migrations)
@@ -830,6 +831,122 @@ report = build_slo_report([slo], window_days=30)
 
 ---
 
+## Infrastructure as Code
+
+Data Center Commander includes a comprehensive Terraform module library under [`iac/modules/`](iac/modules/) for provisioning cloud infrastructure, compliance controls, virtualization, and containerization across AWS, GCP, IBM Cloud, and DigitalOcean. All modules require Terraform >= 1.5.0.
+
+### AWS Infrastructure
+
+| Module | Description |
+|---|---|
+| [`aws/vpc`](iac/modules/aws/vpc) | VPC with DNS support, flow logs to CloudWatch, and configurable CIDR |
+| [`aws/subnets`](iac/modules/aws/subnets) | Public, private, and database subnets across multiple AZs with route tables and optional NAT gateway |
+| [`aws/security-groups`](iac/modules/aws/security-groups) | Security groups with configurable ingress/egress rules |
+| [`aws/ec2`](iac/modules/aws/ec2) | EC2 instances with configurable storage, networking, monitoring, EBS encryption, and EIP assignment |
+| [`aws/iam`](iac/modules/aws/iam) | IAM roles, policies, instance profiles, groups, and users |
+| [`aws/s3`](iac/modules/aws/s3) | S3 bucket with versioning, KMS encryption, public access blocking, lifecycle rules, and access logging |
+| [`aws/rds`](iac/modules/aws/rds) | RDS instance with automated backups, encryption, Multi-AZ, Performance Insights, and CloudWatch log exports |
+| [`aws/cloudwatch`](iac/modules/aws/cloudwatch) | CloudWatch log groups, metric alarms, dashboards, and event rules |
+
+### AWS Compliance-as-Code
+
+| Module | Description |
+|---|---|
+| [`aws-compliance`](iac/modules/aws-compliance) | Aggregator module for all AWS compliance services |
+| [`aws-compliance/aws-config`](iac/modules/aws-compliance/aws-config) | AWS Config recorder, delivery channel, managed & custom rules, and aggregator |
+| [`aws-compliance/guardduty`](iac/modules/aws-compliance/guardduty) | GuardDuty detector with S3/K8s/EC2 data sources, member invitations, and publishing destination |
+| [`aws-compliance/security-hub`](iac/modules/aws-compliance/security-hub) | Security Hub with AWS Foundational, CIS, and PCI DSS standards |
+| [`aws-compliance/cloudtrail`](iac/modules/aws-compliance/cloudtrail) | Multi-region CloudTrail with log validation, event selectors, and insights |
+| [`aws-compliance/iam-access-analyzer`](iac/modules/aws-compliance/iam-access-analyzer) | IAM Access Analyzer with unused access analysis and archive rules |
+
+### GCP Compliance-as-Code
+
+| Module | Description |
+|---|---|
+| [`gcp-compliance/cloud-audit-logs`](iac/modules/gcp-compliance/cloud-audit-logs) | Cloud Audit Logs with log sinks, custom log buckets, and log views |
+| [`gcp-compliance/organization-policies`](iac/modules/gcp-compliance/organization-policies) | Organization Policy constraints (OS Login, Shielded VMs, VPC Flow Logs, serial port disable, etc.) |
+| [`gcp-compliance/security-command-center`](iac/modules/gcp-compliance/security-command-center) | Security Command Center source with notification configs, mute rules, and custom configs |
+| [`gcp-compliance/vpc-service-controls`](iac/modules/gcp-compliance/vpc-service-controls) | VPC Service Controls perimeters with access policies, access levels, and ingress/egress policies |
+
+### IBM Cloud Infrastructure
+
+| Module | Description |
+|---|---|
+| [`ibm/vpc`](iac/modules/ibm/vpc) | VPC with subnets, public gateways, network ACLs, security groups, and flow logs |
+| [`ibm/vsi`](iac/modules/ibm/vsi) | Virtual Server Instance with boot/data volumes, floating IP, and SSH keys |
+| [`ibm/block-storage`](iac/modules/ibm/block-storage) | Block storage volume with VSI attachment and customer-managed encryption |
+| [`ibm/object-storage`](iac/modules/ibm/object-storage) | COS bucket with versioning, lifecycle rules, encryption, and activity tracking |
+| [`ibm/iam`](iac/modules/ibm/iam) | IAM access groups with members, policies, and dynamic rules |
+
+### DigitalOcean Infrastructure
+
+| Module | Description |
+|---|---|
+| [`digitalocean/vpc`](iac/modules/digitalocean/vpc) | VPC with configurable IP range and region |
+| [`digitalocean/droplets`](iac/modules/digitalocean/droplets) | Droplet instances with backups, monitoring, IPv6, user data, and graceful shutdown |
+| [`digitalocean/load-balancer`](iac/modules/digitalocean/load-balancer) | Load balancer with health checks, forwarding rules, and SSL/TLS |
+| [`digitalocean/block-storage`](iac/modules/digitalocean/block-storage) | Block storage volumes with filesystem configuration and droplet attachment |
+| [`digitalocean/database`](iac/modules/digitalocean/database) | Managed database cluster with maintenance window and private networking |
+| [`digitalocean/monitoring`](iac/modules/digitalocean/monitoring) | Monitoring alerts with email and Slack notifications |
+
+### Virtualization (KVM/libvirt)
+
+| Module | Description |
+|---|---|
+| [`kvm`](iac/modules/kvm) | KVM/libvirt storage pools, virtual networks (NAT/routed/isolated), and VMs with cloud-init, multiple disks, and network interfaces |
+| [`integration/virtualization`](iac/modules/integration/virtualization) | Complete virtualization environment with storage pool, NAT network, golden image cloning, cloud-init, and VM fleet |
+
+### Containerization (Docker)
+
+| Module | Description |
+|---|---|
+| [`integration/containerization`](iac/modules/integration/containerization) | Docker network, service containers with healthchecks, Traefik reverse proxy with TLS, Prometheus + Grafana monitoring stack, and local registry |
+
+### OpenShift
+
+| Module | Description |
+|---|---|
+| [`openshift/cluster`](iac/modules/openshift/cluster) | OpenShift cluster provisioning via `openshift-install` (AWS/Azure/GCP) |
+| [`openshift/project`](iac/modules/openshift/project) | OpenShift project/namespace with resource quotas, limit ranges, and network policies |
+| [`openshift/deployment`](iac/modules/openshift/deployment) | Deployment with ConfigMap, Secret, Service, HPA, PDB, health probes, and rolling update strategy |
+| [`openshift/rbac`](iac/modules/openshift/rbac) | ServiceAccount with Role/ClusterRole and bindings |
+| [`openshift/route`](iac/modules/openshift/route) | Route with edge/passthrough/reencrypt TLS termination |
+
+### Data Center Operations
+
+| Module | Description |
+|---|---|
+| [`integration/data-center-ops`](iac/modules/integration/data-center-ops) | Generates DC configuration JSON, capacity plans, Prometheus alert rules, backup scripts, and operations runbooks |
+
+### Usage
+
+Each module is self-contained with its own `variables.tf`, `outputs.tf`, and `main.tf`. Modules can be composed together:
+
+```hcl
+module "vpc" {
+  source     = "./modules/aws/vpc"
+  name       = "datacenter-vpc"
+  cidr_block = "10.0.0.0/16"
+}
+
+module "subnets" {
+  source               = "./modules/aws/subnets"
+  name                 = "datacenter"
+  vpc_id               = module.vpc.vpc_id
+  public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+  private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+}
+
+module "compliance" {
+  source              = "./modules/aws-compliance"
+  aws_region          = "us-east-1"
+  environment         = "production"
+  compliance_s3_bucket = "my-compliance-logs"
+}
+```
+
+---
+
 ## Synthetic Demo
 
 After applying the normal schema and demo seed, add the optional additive
@@ -961,6 +1078,17 @@ data-center-commander/
 │   ├── test_units.py
 │   └── security/
 │       └── __init__.py
+├── iac/            Terraform/OpenTofu modules, root config, and policies for multi-cloud IaC
+│   ├── root/         OpenTofu root orchestrator (main.tf, variables.tf, outputs.tf)
+│   ├── modules/
+│   │   ├── aws/            VPC, subnets, security groups, EC2, IAM, S3, RDS, CloudWatch
+│   │   ├── aws-compliance/ Config, GuardDuty, Security Hub, CloudTrail, IAM Access Analyzer
+│       ├── gcp-compliance/ Audit Logs, Org Policies, SCC, VPC Service Controls
+│       ├── ibm/            VPC, VSI, block storage, object storage, IAM
+│       ├── digitalocean/   VPC, droplets, load balancer, block storage, database, monitoring
+│       ├── kvm/            KVM/libvirt virtualization (pools, networks, VMs)
+│       ├── openshift/      Cluster, project, deployment, RBAC, route
+│       └── integration/    Virtualization, containerization, data-center-ops
 ├── k8s/            Kubernetes manifests (Kustomize-based deployment)
 │   ├── 00-namespace.yaml
 │   ├── 01-configmap.yaml

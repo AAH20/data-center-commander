@@ -2,20 +2,26 @@
 
 Varies discount rate and energy escalation to see impact on total cost.
 """
-from dcc.economics.tco import TCOAssumptions, TCOEngine, run_tco_sensitivity
+from dcc.economics.tco import (
+    TCOAssumptions, TCOCostBreakdown, TCOScenario, run_tco_sensitivity,
+)
 
-base = TCOAssumptions(currency="USD", horizon_years=10, annual_discount_rate=0.08)
-engine = TCOEngine(assumptions=base)
-
+assumptions = TCOAssumptions(currency="USD", horizon_years=10, annual_discount_rate=0.08)
+scenario = TCOScenario(
+    name="Base",
+    costs=TCOCostBreakdown(
+        hardware_capex=5_000_000,
+        energy_annual=1_000_000,
+        maintenance_annual=300_000,
+        labor_annual=500_000,
+        network_annual=100_000,
+        software_annual=200_000,
+    ),
+    assumptions=assumptions,
+)
 sensitivity = run_tco_sensitivity(
-    engine=engine,
-    capex=5_000_000,
-    annual_energy=1_000_000,
-    annual_maintenance=300_000,
-    annual_labor=500_000,
-    annual_network=100_000,
-    annual_software=200_000,
-    parameter="annual_discount_rate",
+    scenario=scenario,
+    parameter_name="discount_rate",
     values=[0.04, 0.06, 0.08, 0.10, 0.12],
 )
 for val, pv in zip(sensitivity.values_tested, sensitivity.pv_results):

@@ -1,0 +1,27 @@
+# Sentinel Policy: AWS Network Security Compliance
+# Ensures AWS network security best practices
+import "tfplan"
+
+# Check security groups for unrestricted access
+security_groups = tfplan.resources.aws_security_group
+
+violations_sg = rule {
+    all security_groups as _, sg {
+        all sg.applied.ingress as _, rule {
+            rule.cidr_blocks is not ["0.0.0.0/0"]
+        }
+    }
+}
+
+# Check VPCs for flow logs
+vpcs = tfplan.resources.aws_vpc
+
+violations_vpc = rule {
+    all vpcs as _, vpc {
+        vpc.applied.flow_logs_enabled is true
+    }
+}
+
+main = rule {
+    violations_sg and violations_vpc
+}

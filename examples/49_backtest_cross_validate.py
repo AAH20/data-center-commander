@@ -7,7 +7,7 @@ from dcc.forecasting.backtest import cross_validate
 data = list(range(80))
 result = cross_validate(
     data=data,
-    model_fn=lambda train, horizon: [train[-1]] * horizon,
+    model=lambda train: [train[-1]] * 3,
     n_splits=5,
     gap=2,
     horizon=3,

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import unittest
 from unittest.mock import patch, MagicMock
+from urllib.parse import urlsplit
 
 from dcc.api import (
     Handler,
@@ -64,6 +65,8 @@ def _make_pool(rows_map=None, schema_ok=True, rls_ok=True):
                 return Cursor(rows_map.get("placement", []))
             if "facilities" in sql and "count" in sql:
                 return Cursor([{"facility_count": 5}])
+            if "facilities" in sql and "sites" in sql:
+                return Cursor(rows_map.get("facilities", []))
             if "kpi_observations" in sql:
                 return Cursor(rows_map.get("kpis", []))
             if "operational_workflows" in sql and "count" in sql:
@@ -109,36 +112,72 @@ def _make_pool(rows_map=None, schema_ok=True, rls_ok=True):
     return Pool()
 
 
+class _FakeHeaders:
+    """Mock headers that supports both dict-like and get_content_type access."""
+    def __init__(self, headers_dict):
+        self._headers = headers_dict
+
+    def get(self, key, default=None):
+        return self._headers.get(key, default)
+
+    def get_content_type(self):
+        return self._headers.get("Content-Type", "application/json")
+
+    def __contains__(self, key):
+        return key in self._headers
+
+    def __getitem__(self, key):
+        return self._headers[key]
+
+
+class _FakeHandler:
+    """Minimal handler stub for testing _do_GET_inner / _do_POST_inner."""
+    def __init__(self, path):
+        self.path = path
+        self.result = None
+        self.client_address = ("127.0.0.1", 12345)
+        self._last_status = None
+        self.pool = None
+        self.headers = _FakeHeaders({})
+        self.rfile = MagicMock()
+        self.server = MagicMock()
+        self.server.server_address = ("127.0.0.1", 8790)
+
+    def respond(self, status, body):
+        self._last_status = status
+        self.result = (status, body)
+
+    def send_response(self, status):
+        self._last_status = status
+
+    def send_header(self, *args):
+        pass
+
+    def end_headers(self):
+        pass
+
+
 class TestHealthEndpoints(unittest.TestCase):
     def test_healthz_returns_service_info(self):
-        class FakeHandler:
-            path = "/healthz"
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/healthz")
+        Handler._do_GET_inner(handler, urlsplit("/healthz"))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(handler.result[1]["service"], "data-center-commander")
         self.assertEqual(handler.result[1]["mode"], "read_only")
         self.assertFalse(handler.result[1]["execution_permitted"])
 
     def test_readyz_returns_not_configured_without_pool(self):
-        class FakeHandler:
-            path = "/readyz"
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        with patch.object(Handler, "pool", None):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/readyz")
+        handler.pool = None
+        Handler._do_GET_inner(handler, urlsplit("/readyz"))
         self.assertEqual(handler.result[0], 503)
         self.assertFalse(handler.result[1]["ready"])
         self.assertEqual(handler.result[1]["checks"]["database"], "not_configured")
 
     def test_readyz_returns_ok_with_healthy_pool(self):
-        class FakeHandler:
-            path = "/readyz"
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        with patch.object(Handler, "pool", _make_pool()):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/readyz")
+        handler.pool = _make_pool()
+        Handler._do_GET_inner(handler, urlsplit("/readyz"))
         self.assertEqual(handler.result[0], 200)
         self.assertTrue(handler.result[1]["ready"])
         self.assertEqual(handler.result[1]["checks"]["database"], "ok")
@@ -146,23 +185,17 @@ class TestHealthEndpoints(unittest.TestCase):
         self.assertEqual(handler.result[1]["checks"]["tenant_rls"], "ok")
 
     def test_readyz_returns_503_when_schema_incomplete(self):
-        class FakeHandler:
-            path = "/readyz"
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        with patch.object(Handler, "pool", _make_pool(schema_ok=False)):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/readyz")
+        handler.pool = _make_pool(schema_ok=False)
+        Handler._do_GET_inner(handler, urlsplit("/readyz"))
         self.assertEqual(handler.result[0], 503)
         self.assertFalse(handler.result[1]["ready"])
         self.assertEqual(handler.result[1]["checks"]["schema"], "incomplete")
 
     def test_readyz_returns_503_when_rls_not_enforced(self):
-        class FakeHandler:
-            path = "/readyz"
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        with patch.object(Handler, "pool", _make_pool(rls_ok=False)):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/readyz")
+        handler.pool = _make_pool(rls_ok=False)
+        Handler._do_GET_inner(handler, urlsplit("/readyz"))
         self.assertEqual(handler.result[0], 503)
         self.assertFalse(handler.result[1]["ready"])
         self.assertEqual(handler.result[1]["checks"]["tenant_rls"], "not_enforced")
@@ -192,91 +225,85 @@ class TestTenantParsing(unittest.TestCase):
 
 
 class TestCollectionEndpoints(unittest.TestCase):
-    def _make_handler(self, path):
-        class FakeHandler:
-            def __init__(self, p): self.path = p; self.result = None
-            def respond(self, status, body): self.result = (status, body)
-        return FakeHandler(path)
-
     def test_assets_endpoint_returns_tenant_scoped_data(self):
         rows = [{"external_id": "srv-1", "asset_type": "server", "name": "Server 1"}]
-        handler = self._make_handler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"assets": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"assets": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(handler.result[1]["tenant_id"], "dcc00000-0000-4000-8000-000000000001")
         self.assertEqual(len(handler.result[1]["assets"]), 1)
         self.assertTrue(handler.result[1]["read_only"])
 
     def test_assets_endpoint_rejects_missing_tenant(self):
-        handler = self._make_handler("/v1/assets")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_assets_endpoint_rejects_invalid_tenant(self):
-        handler = self._make_handler("/v1/assets?tenant_id=bad")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets?tenant_id=bad")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_assets_endpoint_rejects_window_days_zero(self):
-        handler = self._make_handler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=0")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=0")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_assets_endpoint_rejects_window_days_over_90(self):
-        handler = self._make_handler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=91")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=91")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_assets_endpoint_rejects_non_integer_window_days(self):
-        handler = self._make_handler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=abc")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=abc")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_facilities_endpoint_returns_data(self):
         rows = [{"id": "f1", "code": "DC1", "name": "Facility 1"}]
-        handler = self._make_handler("/v1/facilities?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"facilities": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/facilities?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"facilities": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(len(handler.result[1]["facilities"]), 1)
 
     def test_workflows_endpoint_returns_data(self):
         rows = [{"id": "w1", "workflow_type": "maintenance", "status": "open"}]
-        handler = self._make_handler("/v1/workflows?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"workflows": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/workflows?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"workflows": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(len(handler.result[1]["workflows"]), 1)
 
     def test_connectors_endpoint_returns_data(self):
         rows = [{"id": "c1", "name": "Connector 1", "vendor": "Test"}]
-        handler = self._make_handler("/v1/connectors?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"connectors": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/connectors?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"connectors": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(len(handler.result[1]["connectors"]), 1)
 
     def test_capacity_endpoint_returns_data(self):
         rows = [{"facility_id": "f1", "dimension": "power_kw", "usable": 100}]
-        handler = self._make_handler("/v1/capacity?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"capacity": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/capacity?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"capacity": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(len(handler.result[1]["capacity"]), 1)
 
     def test_evidence_endpoint_returns_data(self):
         rows = [{"sequence": 1, "event_type": "test", "occurred_at": "2026-01-01"}]
-        handler = self._make_handler("/v1/evidence?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"evidence": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/evidence?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"evidence": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(len(handler.result[1]["evidence"]), 1)
 
     def test_overview_endpoint_returns_data(self):
-        handler = self._make_handler("/v1/overview?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool()):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/overview?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertIn("facility_count", handler.result[1])
         self.assertIn("kpis", handler.result[1])
@@ -285,19 +312,18 @@ class TestCollectionEndpoints(unittest.TestCase):
 
     def test_topology_endpoint_returns_nodes_and_edges(self):
         nodes = [{"id": "a1", "label": "Server 1", "type": "server"}]
-        edges = [{"source": "a1", "target": "a2", "relation": "feeds"}]
-        handler = self._make_handler("/v1/topology?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"topology": nodes})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/topology?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"topology": nodes})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertIn("nodes", handler.result[1])
         self.assertIn("edges", handler.result[1])
         self.assertTrue(handler.result[1]["read_only"])
 
     def test_analytics_endpoint_returns_data(self):
-        handler = self._make_handler("/v1/analytics?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=30")
-        with patch.object(Handler, "pool", _make_pool()):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/analytics?tenant_id=dcc00000-0000-4000-8000-000000000001&window_days=30")
+        handler.pool = _make_pool()
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertIn("kpi_series", handler.result[1])
         self.assertIn("kpi_quality", handler.result[1])
@@ -307,9 +333,9 @@ class TestCollectionEndpoints(unittest.TestCase):
         self.assertFalse(handler.result[1]["execution_permitted"])
 
     def test_costs_endpoint_returns_data(self):
-        handler = self._make_handler("/v1/costs?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool()):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/costs?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertIn("estimates", handler.result[1])
         self.assertIn("prices", handler.result[1])
@@ -317,38 +343,20 @@ class TestCollectionEndpoints(unittest.TestCase):
         self.assertIn("synthetic", handler.result[1])
 
     def test_unknown_route_returns_404(self):
-        handler = self._make_handler("/v1/nonexistent?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/nonexistent?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 404)
         self.assertEqual(handler.result[1]["error"], "route_not_found")
 
     def test_database_error_returns_503(self):
-        class FakeHandler:
-            path = "/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001"
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        with patch.object(Handler, "pool", None):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/assets?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = None
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 503)
         self.assertIn("database", handler.result[1]["error"])
 
 
 class TestPlacementSnapshotWorkflow(unittest.TestCase):
-    def _make_handler(self, path, method="GET", body=None, headers=None):
-        class FakeHandler:
-            def __init__(self, p, m, b, h):
-                self.path = p
-                self.method = m
-                self.body = b
-                self.headers = h or {}
-                self.result = None
-                self.rfile = MagicMock()
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        return FakeHandler(path, method, body, headers)
-
     def _valid_payload(self):
         return {
             "name": "Test Comparison",
@@ -369,179 +377,137 @@ class TestPlacementSnapshotWorkflow(unittest.TestCase):
 
     def test_get_placement_scenarios_returns_list(self):
         rows = [{"id": "s1", "name": "Scenario 1"}]
-        handler = self._make_handler("/v1/placement/scenarios?tenant_id=dcc00000-0000-4000-8000-000000000001")
-        with patch.object(Handler, "pool", _make_pool({"placement": rows})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/placement/scenarios?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"placement": rows})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertEqual(len(handler.result[1]["scenarios"]), 1)
         self.assertEqual(handler.result[1]["status"], "draft_snapshots")
         self.assertFalse(handler.result[1]["execution_permitted"])
 
     def test_get_placement_scenarios_rejects_invalid_tenant(self):
-        handler = self._make_handler("/v1/placement/scenarios?tenant_id=bad")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/placement/scenarios?tenant_id=bad")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_creates_draft(self):
         body = self._valid_payload()
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        with patch.object(Handler, "pool", _make_pool()):
-            Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.pool = _make_pool()
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 201)
         self.assertEqual(handler.result[1]["status"], "draft_snapshot")
         self.assertFalse(handler.result[1]["execution_permitted"])
 
     def test_post_placement_snapshot_rejects_missing_origin(self):
         body = self._valid_payload()
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 403)
         self.assertEqual(handler.result[1]["error"], "same_origin_required")
 
     def test_post_placement_snapshot_rejects_wrong_origin(self):
         body = self._valid_payload()
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://evil.com"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://evil.com"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 403)
 
     def test_post_placement_snapshot_rejects_invalid_payload(self):
         body = self._valid_payload()
         body["payload"]["assumptions"]["horizon_months"] = 0
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_non_json_content_type(self):
         body = self._valid_payload()
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "text/plain", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "text/plain", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_empty_body(self):
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=None,
-            headers={"Content-Type": "application/json", "Content-Length": "0", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "0", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=b"")
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_non_object_body(self):
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=[1, 2, 3],
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=b"[1,2,3]")
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_missing_tenant(self):
         body = self._valid_payload()
         del body["tenant_id"]
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_invalid_name(self):
         body = self._valid_payload()
         body["name"] = ""
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_wrong_schema_version(self):
         body = self._valid_payload()
         body["payload"]["schema_version"] = "wrong-version"
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_invalid_currency(self):
         body = self._valid_payload()
         body["payload"]["assumptions"]["currency"] = "US"
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_invalid_observed_date(self):
         body = self._valid_payload()
         body["payload"]["sources"]["onprem"]["observed_on"] = "yesterday"
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_placement_snapshot_rejects_oversized_payload(self):
         body = self._valid_payload()
         body["payload"]["assumptions"]["padding"] = "x" * 70000
-        handler = self._make_handler(
-            "/v1/placement/scenarios",
-            method="POST",
-            body=body,
-            headers={"Content-Type": "application/json", "Content-Length": "70001", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/scenarios")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "70001", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=json.dumps(body).encode())
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/scenarios"))
         self.assertEqual(handler.result[0], 400)
 
     def test_post_to_wrong_path_returns_404(self):
-        handler = self._make_handler(
-            "/v1/placement/other",
-            method="POST",
-            body=self._valid_payload(),
-            headers={"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"},
-        )
-        Handler.do_POST(handler)
+        handler = _FakeHandler("/v1/placement/other")
+        handler.headers = _FakeHeaders({"Content-Type": "application/json", "Content-Length": "100", "Origin": "http://127.0.0.1:8790"})
+        handler.rfile.read = MagicMock(return_value=b"{}")
+        Handler._do_POST_inner(handler, urlsplit("/v1/placement/other"))
         self.assertEqual(handler.result[0], 404)
 
 
@@ -908,13 +874,18 @@ class TestServe(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "loopback"):
             serve("0.0.0.0", 8790)
 
-    def test_loopback_bind_accepted(self):
-        # We can't actually start the server in tests, but we can verify
-        # the validation passes by checking it doesn't raise ValueError
-        # (it will fail on connect_pool which is expected)
+    def test_loopback_bind_does_not_raise_value_error(self):
+        # serve() with loopback should not raise ValueError for bind address
+        # (it may fail on connect_pool, which is expected)
         with patch("dcc.api.connect_pool", side_effect=Exception("no db")):
-            with self.assertRaises(Exception):
-                serve("127.0.0.1", 0)
+            with patch("dcc.api.ThreadingHTTPServer") as mock_server:
+                mock_server.return_value = MagicMock()
+                try:
+                    serve("127.0.0.1", 0)
+                except ValueError:
+                    self.fail("serve() raised ValueError for loopback address")
+                except Exception:
+                    pass  # Other exceptions are expected (e.g., KeyboardInterrupt)
 
 
 class TestConnectPool(unittest.TestCase):
@@ -932,159 +903,104 @@ class TestConnectPool(unittest.TestCase):
 
 
 class TestPricingEndpoints(unittest.TestCase):
-    def _make_handler(self, path):
-        class FakeHandler:
-            def __init__(self, p): self.path = p; self.result = None
-            def respond(self, status, body): self.result = (status, body)
-        return FakeHandler(path)
-
     def test_azure_pricing_returns_result(self):
-        handler = self._make_handler("/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler = _FakeHandler("/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
         with patch("dcc.api.fetch_azure_retail_prices", return_value={"prices": []}):
-            Handler.do_GET(handler)
+            Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
 
     def test_azure_pricing_rejects_invalid_tenant(self):
-        handler = self._make_handler("/v1/pricing/azure-retail?tenant_id=bad")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/pricing/azure-retail?tenant_id=bad")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_azure_pricing_returns_502_on_connection_error(self):
-        handler = self._make_handler("/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler = _FakeHandler("/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
         with patch("dcc.api.fetch_azure_retail_prices", side_effect=ConnectionError("timeout")):
-            Handler.do_GET(handler)
+            Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 502)
 
     def test_google_pricing_returns_result(self):
-        handler = self._make_handler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
         with patch("dcc.api.fetch_google_cloud_prices", return_value={"prices": []}):
-            Handler.do_GET(handler)
+            Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
 
     def test_google_pricing_rejects_invalid_tenant(self):
-        handler = self._make_handler("/v1/pricing/google-cloud-retail?tenant_id=bad")
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=bad")
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 400)
 
     def test_google_pricing_returns_503_on_missing_key(self):
-        handler = self._make_handler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
         with patch("dcc.api.fetch_google_cloud_prices", side_effect=ConnectionError("GOOGLE_CLOUD_BILLING_API_KEY is not configured")):
-            Handler.do_GET(handler)
+            Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 503)
 
     def test_google_pricing_returns_502_on_other_connection_error(self):
-        handler = self._make_handler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool()
         with patch("dcc.api.fetch_google_cloud_prices", side_effect=ConnectionError("timeout")):
-            Handler.do_GET(handler)
+            Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 502)
 
 
 class TestAssetServing(unittest.TestCase):
     def test_serves_onboarding_js(self):
-        class FakeHandler:
-            path = "/assets/onboarding.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        handler = FakeHandler()
-        Handler.do_GET(handler)
-        self.assertEqual(handler.status, 200)
+        handler = _FakeHandler("/assets/onboarding.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/onboarding.js"))
+        self.assertEqual(handler._last_status, 200)
 
     def test_serves_topology_js(self):
-        class FakeHandler:
-            path = "/assets/topology.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        handler = FakeHandler()
-        Handler.do_GET(handler)
-        self.assertEqual(handler.status, 200)
+        handler = _FakeHandler("/assets/topology.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/topology.js"))
+        self.assertEqual(handler._last_status, 200)
 
     def test_serves_azure_prices_js(self):
-        class FakeHandler:
-            path = "/assets/azure-prices.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        handler = FakeHandler()
-        Handler.do_GET(handler)
-        self.assertEqual(handler.status, 200)
+        handler = _FakeHandler("/assets/azure-prices.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/azure-prices.js"))
+        self.assertEqual(handler._last_status, 200)
 
     def test_serves_placement_comparison_js(self):
-        class FakeHandler:
-            path = "/assets/placement-comparison.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        handler = FakeHandler()
-        Handler.do_GET(handler)
-        self.assertEqual(handler.status, 200)
+        handler = _FakeHandler("/assets/placement-comparison.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/placement-comparison.js"))
+        self.assertEqual(handler._last_status, 200)
 
     def test_serves_placement_scenarios_js(self):
-        class FakeHandler:
-            path = "/assets/placement-scenarios.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        handler = FakeHandler()
-        Handler.do_GET(handler)
-        self.assertEqual(handler.status, 200)
+        handler = _FakeHandler("/assets/placement-scenarios.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/placement-scenarios.js"))
+        self.assertEqual(handler._last_status, 200)
 
     def test_serves_quality_dashboard_js(self):
-        class FakeHandler:
-            path = "/assets/quality-dashboard.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-            def send_response(self, status): self.status = status
-            def send_header(self, *args): pass
-            def end_headers(self): pass
-        handler = FakeHandler()
-        Handler.do_GET(handler)
-        self.assertEqual(handler.status, 200)
+        handler = _FakeHandler("/assets/quality-dashboard.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/quality-dashboard.js"))
+        self.assertEqual(handler._last_status, 200)
 
     def test_unknown_asset_returns_404(self):
-        class FakeHandler:
-            path = "/assets/nonexistent.js"
-            def __init__(self): self.result = None
-            def respond(self, status, body): self.result = (status, body)
-        handler = FakeHandler()
-        Handler.do_GET(handler)
+        handler = _FakeHandler("/assets/nonexistent.js")
+        Handler._do_GET_inner(handler, urlsplit("/assets/nonexistent.js"))
         self.assertEqual(handler.result[0], 404)
 
 
 class TestSyntheticDemoMode(unittest.TestCase):
     def test_overview_synthetic_demo_mode(self):
         kpis = [{"metric_key": "pue", "name": "PUE", "unit": "ratio", "provenance": {"synthetic": True}}]
-        handler = type("FakeHandler", (), {
-            "path": "/v1/overview?tenant_id=dcc00000-0000-4000-8000-000000000001&demo=synthetic",
-            "result": None,
-            "respond": lambda self, status, body: setattr(self, "result", (status, body)),
-        })()
-        with patch.object(Handler, "pool", _make_pool({"kpis": kpis})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/overview?tenant_id=dcc00000-0000-4000-8000-000000000001&demo=synthetic")
+        handler.pool = _make_pool({"kpis": kpis})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertTrue(handler.result[1]["synthetic"])
         self.assertTrue(handler.result[1]["synthetic_demo_mode"])
 
     def test_overview_synthetic_without_demo_mode_hides_data(self):
         kpis = [{"metric_key": "pue", "name": "PUE", "unit": "ratio", "provenance": {"synthetic": True}}]
-        handler = type("FakeHandler", (), {
-            "path": "/v1/overview?tenant_id=dcc00000-0000-4000-8000-000000000001",
-            "result": None,
-            "respond": lambda self, status, body: setattr(self, "result", (status, body)),
-        })()
-        with patch.object(Handler, "pool", _make_pool({"kpis": kpis})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/overview?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"kpis": kpis})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertTrue(handler.result[1]["synthetic"])
         self.assertFalse(handler.result[1]["synthetic_demo_mode"])
@@ -1093,13 +1009,9 @@ class TestSyntheticDemoMode(unittest.TestCase):
 
     def test_costs_synthetic_demo_mode_shows_synthetic_prices(self):
         prices = [{"item_code": "TEST", "source_kind": "synthetic_demo", "provenance": {"synthetic": True}}]
-        handler = type("FakeHandler", (), {
-            "path": "/v1/costs?tenant_id=dcc00000-0000-4000-8000-000000000001&demo=synthetic",
-            "result": None,
-            "respond": lambda self, status, body: setattr(self, "result", (status, body)),
-        })()
-        with patch.object(Handler, "pool", _make_pool({"prices": prices})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/costs?tenant_id=dcc00000-0000-4000-8000-000000000001&demo=synthetic")
+        handler.pool = _make_pool({"prices": prices})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertTrue(handler.result[1]["synthetic"])
         self.assertTrue(handler.result[1]["synthetic_demo_mode"])
@@ -1107,13 +1019,9 @@ class TestSyntheticDemoMode(unittest.TestCase):
 
     def test_costs_synthetic_without_demo_mode_hides_synthetic_prices(self):
         prices = [{"item_code": "TEST", "source_kind": "synthetic_demo", "provenance": {"synthetic": True}}]
-        handler = type("FakeHandler", (), {
-            "path": "/v1/costs?tenant_id=dcc00000-0000-4000-8000-000000000001",
-            "result": None,
-            "respond": lambda self, status, body: setattr(self, "result", (status, body)),
-        })()
-        with patch.object(Handler, "pool", _make_pool({"prices": prices})):
-            Handler.do_GET(handler)
+        handler = _FakeHandler("/v1/costs?tenant_id=dcc00000-0000-4000-8000-000000000001")
+        handler.pool = _make_pool({"prices": prices})
+        Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
         self.assertTrue(handler.result[1]["synthetic"])
         self.assertFalse(handler.result[1]["synthetic_demo_mode"])

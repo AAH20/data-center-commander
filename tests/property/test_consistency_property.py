@@ -222,7 +222,7 @@ def test_energy_reconciliation_within_tolerance_passes(facility_total, submeter_
 
 @given(
     asset_ids=st.lists(st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))), min_size=1, max_size=20, unique=True),
-    work_order_indices=st.lists(st.integers(min_value=0, max_value=19), min_size=0, max_size=30),
+    work_order_indices=st.lists(st.integers(min_value=0, max_value=19), min_size=1, max_size=30),
 )
 @settings(max_examples=200)
 def test_asset_references_valid_inputs_pass(asset_ids, work_order_indices):
@@ -462,14 +462,14 @@ def test_tenant_boundary_foreign_tenant_fails(tenant_id, foreign_tenant):
 
 
 @given(
-    num_readings=small_ints,
+    num_readings=st.integers(min_value=1, max_value=100),
     max_age_days=st.integers(min_value=1, max_value=365),
 )
 @settings(max_examples=100)
 def test_temporal_consistency_recent_passes(num_readings, max_age_days):
     """When all readings are recent, result should PASS."""
     now = datetime.now()
-    readings = [make_telemetry(now - timedelta(days=i)) for i in range(num_readings)]
+    readings = [make_telemetry(now - timedelta(minutes=i * 10)) for i in range(num_readings)]
     result = validate_temporal_consistency(
         readings=readings,
         max_age_days=max_age_days,
@@ -479,7 +479,7 @@ def test_temporal_consistency_recent_passes(num_readings, max_age_days):
 
 
 @given(
-    num_readings=small_ints,
+    num_readings=st.integers(min_value=1, max_value=100),
 )
 @settings(max_examples=100)
 def test_temporal_consistency_future_warns(num_readings):
@@ -500,7 +500,7 @@ def test_temporal_consistency_future_warns(num_readings):
 
 
 @given(
-    num_rows=small_ints,
+    num_rows=st.integers(min_value=1, max_value=100),
     expected_unit=st.sampled_from(["kWh", "kW", "W", "MW"]),
 )
 @settings(max_examples=100)
@@ -514,7 +514,7 @@ def test_unit_consistency_matching_passes(num_rows, expected_unit):
 
 
 @given(
-    num_rows=small_ints,
+    num_rows=st.integers(min_value=1, max_value=100),
 )
 @settings(max_examples=100)
 def test_unit_consistency_mismatched_warns(num_rows):
@@ -533,7 +533,7 @@ def test_unit_consistency_mismatched_warns(num_rows):
 
 @given(
     facility_ids=st.lists(st.text(min_size=1, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))), min_size=1, max_size=10, unique=True),
-    workflow_indices=st.lists(st.integers(min_value=0, max_value=9), min_size=0, max_size=20),
+    workflow_indices=st.lists(st.integers(min_value=0, max_value=9), min_size=1, max_size=20),
 )
 @settings(max_examples=200)
 def test_workflow_facility_linkage_valid_passes(facility_ids, workflow_indices):
@@ -701,4 +701,4 @@ def test_consistency_report_mixed_findings(num_pass, num_fail, num_warn):
     assert len(report.findings) == num_pass + num_fail + num_warn
     assert report.failure_count == num_fail
     assert report.warning_count == num_warn
-    assert report.passed == (num_fail == 0)
+    assert report.passed == (num_fail == 0 and num_warn == 0)

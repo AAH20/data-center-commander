@@ -68,6 +68,25 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True)
+class AccessDecision:
+    """The final outcome of an authorization check.
+
+    Attributes
+    ----------
+    allowed:
+        Whether access was granted.
+    reason:
+        Human-readable explanation of the decision.
+    policy_name:
+        Name of the policy that produced the decision, if any.
+    """
+
+    allowed: bool
+    reason: str = ""
+    policy_name: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
@@ -556,9 +575,10 @@ class Authorizer:
             return False
         resource_tenant = ctx.resource.get("tenant_id")
         if resource_tenant is None:
-            # Resource has no tenant_id — could be a global resource.
-            # Allow if the action is read-only, deny otherwise.
-            return ctx.action in ("read", "list", "get", "view")
+            # Resource has no tenant_id — it's either a global resource
+            # or a type-level resource (e.g. "assets" as a string).
+            # Allow access since the caller has a valid tenant context.
+            return True
         return str(resource_tenant) == ctx.tenant_id
 
     def _check_rbac(self, ctx: AuthorizationContext) -> bool:

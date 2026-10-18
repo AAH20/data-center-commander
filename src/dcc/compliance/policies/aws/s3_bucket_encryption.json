@@ -1,0 +1,12 @@
+{
+  "ConfigRuleName": "s3-bucket-server-side-encryption-enabled",
+  "Description": "Checks that S3 buckets have server-side encryption enabled.",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED"
+  },
+  "InputParameters": {},
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::S3::Bucket"]
+  }
+}

@@ -2,11 +2,12 @@
 
 Allocates cost based on measured energy consumption per workload.
 """
+from decimal import Decimal
 from dcc.economics.allocation import allocate_cost, AllocationMethod, WorkloadShare
 
 report = allocate_cost(
     cost_actual_id="COST-002",
-    total_amount=500_000,
+    total_amount=Decimal("500000"),
     currency="USD",
     method=AllocationMethod.DIRECT_METER,
     workload_ids=["workload-a", "workload-b", "workload-c"],

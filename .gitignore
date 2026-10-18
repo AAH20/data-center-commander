@@ -18,6 +18,21 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+tests/visual/screenshots/
+tests/visual/diffs/
+tests/visual/summary.json
+tests/visual/node_modules/
+tests/visual/package.json
+tests/visual/package-lock.json
 monitoring/prometheus/data/
 monitoring/grafana/data/
 monitoring/alertmanager/data/
+
+# OpenTofu / Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform.tfstate.lock.info

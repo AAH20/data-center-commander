@@ -1286,3 +1286,27 @@ def quick_estimate(
         geography=geography,
     )
     return result.to_dict()
+
+
+def effective_rack_count(it_load_kw: Decimal, kw_per_rack: Decimal) -> int:
+    """Compute effective rack count from IT load and kW per rack."""
+    if kw_per_rack <= 0:
+        raise ValueError("kw_per_rack must be positive")
+    return int((it_load_kw / kw_per_rack).to_integral_value(rounding="ROUND_CEILING"))
+
+
+def effective_white_space_m2(it_load_kw: Decimal, kw_per_m2: Decimal) -> Decimal:
+    """Compute effective white space from IT load and kW per m²."""
+    if kw_per_m2 <= 0:
+        raise ValueError("kw_per_m2 must be positive")
+    return it_load_kw / kw_per_m2
+
+
+def annual_it_energy(it_load_kw: Decimal) -> Decimal:
+    """Compute annual IT energy in kWh (8760 hours)."""
+    return it_load_kw * Decimal(8760)
+
+
+def annual_facility_energy(it_load_kw: Decimal, pue: Decimal) -> Decimal:
+    """Compute annual facility energy in kWh."""
+    return annual_it_energy(it_load_kw) * pue

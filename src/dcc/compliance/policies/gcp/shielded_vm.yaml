@@ -1,0 +1,6 @@
+# GCP Organization Policy: Shielded VM
+# Enforces Shielded VM features on all GCE instances
+name: organizations/ORG_ID/policies/compute.requireShieldedVm
+spec:
+  rules:
+    - enforce: true

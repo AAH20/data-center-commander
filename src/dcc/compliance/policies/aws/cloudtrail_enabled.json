@@ -1,0 +1,12 @@
+{
+  "ConfigRuleName": "cloudtrail-enabled",
+  "Description": "Checks that CloudTrail is enabled.",
+  "Source": {
+    "Owner": "AWS",
+    "SourceIdentifier": "CLOUD_TRAIL_ENABLED"
+  },
+  "InputParameters": {},
+  "Scope": {
+    "ComplianceResourceTypes": ["AWS::CloudTrail::Trail"]
+  }
+}

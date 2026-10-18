@@ -1,0 +1,25 @@
+# Sentinel Policy: Azure Encryption Compliance
+# Ensures Azure resources have encryption enabled
+import "tfplan"
+
+# Check storage accounts for encryption
+storage_accounts = tfplan.resources.azurerm_storage_account
+
+violations_storage = rule {
+    all storage_accounts as _, account {
+        account.applied.encryption_enabled is true
+    }
+}
+
+# Check SQL databases for TDE
+sql_databases = tfplan.resources.azurerm_mssql_database
+
+violations_sql = rule {
+    all sql_databases as _, db {
+        db.applied.tde_enabled is true
+    }
+}
+
+main = rule {
+    violations_storage and violations_sql
+}

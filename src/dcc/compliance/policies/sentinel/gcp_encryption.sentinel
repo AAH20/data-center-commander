@@ -1,0 +1,25 @@
+# Sentinel Policy: GCP Encryption Compliance
+# Ensures GCP resources have encryption enabled
+import "tfplan"
+
+# Check GCS buckets for uniform access
+gcs_buckets = tfplan.resources.google_storage_bucket
+
+violations_gcs = rule {
+    all gcs_buckets as _, bucket {
+        bucket.applied.uniform_bucket_level_access is true
+    }
+}
+
+# Check GKE clusters for network policy
+gke_clusters = tfplan.resources.google_container_cluster
+
+violations_gke = rule {
+    all gke_clusters as _, cluster {
+        cluster.applied.network_policy_enabled is true
+    }
+}
+
+main = rule {
+    violations_gcs and violations_gke
+}
