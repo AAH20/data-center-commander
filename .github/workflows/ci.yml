@@ -155,9 +155,13 @@ jobs:
       - name: Validate Kubernetes manifests
         run: |
           if command -v kubectl &>/dev/null; then
-            kubectl apply --dry-run=client -k k8s/
+            # --validate=false is required: without a cluster, --dry-run=client still
+            # fetches the openapi schema from the API server and fails with
+            # "connection refused". The dry-run still parses and renders the
+            # manifests, which is the point of the job.
+            kubectl apply --dry-run=client --validate=false -k k8s/
           else
-            echo "kubectl not available — skipping k8s manifest validation"
+            echo "kubectl not available -- skipping k8s manifest validation"
           fi
 
   iac-validate:

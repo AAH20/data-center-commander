@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-18T04:06:46.952Z",
+  "timestamp": "2026-10-18T05:37:49.289Z",
   "baseUrl": "http://127.0.0.1:8790",
   "viewport": {
     "width": 1440,
@@ -8,68 +8,68 @@
   "pixelThreshold": 0.1,
   "diffThreshold": 0.01,
   "total": 12,
-  "passed": 0,
-  "failed": 12,
+  "passed": 12,
+  "failed": 0,
   "results": [
     {
       "view": "overview",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#overview\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#overview\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "energy",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#energy\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#energy\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "analytics",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#analytics\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#analytics\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "finance",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#finance\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#finance\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "capacity",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#capacity\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#capacity\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "assets",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#assets\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#assets\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "reliability",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#reliability\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#reliability\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "workflows",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#workflows\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#workflows\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "integrations",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#integrations\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#integrations\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "evidence",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#evidence\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#evidence\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "workloads",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#workloads\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#workloads\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     },
     {
       "view": "critical",
-      "status": "error",
-      "error": "page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:8790/#critical\nCall log:\n  - navigating to \"http://127.0.0.1:8790/#critical\", waiting until \"domcontentloaded\"\n"
+      "status": "pass",
+      "diffFraction": 0.000019290123456790123
     }
   ]
 }
