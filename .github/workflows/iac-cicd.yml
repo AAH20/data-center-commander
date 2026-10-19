@@ -60,6 +60,7 @@ jobs:
     outputs:
       directories: ${{ steps.set-dirs.outputs.directories }}
       has_changes: ${{ steps.set-dirs.outputs.has_changes }}
+      policy_only: ${{ steps.set-dirs.outputs.policy_only }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,32 +77,44 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          # NOTE: this previously scanned `terraform` and `opentofu`, neither of
-          # which exists in this repository -- terraform lives in infra/ and iac/.
-          # A manual dispatch therefore found nothing and skipped every downstream
-          # job, including the OPA and Sentinel policy gates.
-          #
-          # The push/PR path matched only *.tf, so a change to a policy file
-          # (policies/**.rego, policies/**.sentinel) never triggered the jobs that
-          # evaluate those policies. Policy changes are now part of the trigger set.
+          # SCOPE. This repository holds several unrelated terraform trees: iac/ and
+          # infra/ are the managed ones; terraform/, logging/, nginx/ and tracing/ are
+          # not part of this pipeline. An earlier revision scanned the whole tree,
+          # which yields 88 directories and runs the full matrix -- including Terraform
+          # Apply -- against every one of them. Only the managed roots are in scope.
+          MANAGED="iac infra"
+
+          scan_all() {
+            for root in $MANAGED; do
+              [ -d "$root" ] && find "$root" -name "*.tf" -exec dirname {} \; 2>/dev/null
+            done | sort -u
+          }
+
+          policy_only=false
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)
+
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            dirs=$(find . -name "*.tf" -not -path "./.git/*" -exec dirname {} \; | sort -u | jq -R . | jq -cs .)
+            dirs=$(scan_all | jq -R . | jq -cs .)
+          elif echo "$changed" | grep -qE '^(policies/|\.github/workflows/iac-cicd\.yml)'; then
+            # A policy or pipeline change. The policy jobs must re-run; planning,
+            # applying and drift-detecting every module because a .rego file moved
+            # must not.
+            dirs="[]"
+            policy_only=true
           else
-            changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
-            if echo "$changed" | grep -qE '^(policies/|\.github/workflows/iac-cicd\.yml)'; then
-              # A policy or pipeline change: validate every terraform directory.
-              dirs=$(find . -name "*.tf" -not -path "./.git/*" -exec dirname {} \; | sort -u | jq -R . | jq -cs .)
-            else
-              dirs=$(echo "$changed" | grep -E '\.tf$' | xargs -I{} dirname {} | sort -u | jq -R . | jq -cs .)
-            fi
+            dirs=$(echo "$changed" | grep -E '\.tf$' | xargs -I{} dirname {} 2>/dev/null \
+                   | sort -u | jq -R . | jq -cs .)
           fi
+
           echo "directories=$dirs" >> "$GITHUB_OUTPUT"
+          echo "policy_only=$policy_only" >> "$GITHUB_OUTPUT"
           if [ "$dirs" != "[]" ]; then
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           fi
           echo "Changed directories: $dirs"
+          echo "Policy-only change: $policy_only"
 
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Terraform Format & Validate
@@ -214,13 +227,69 @@ jobs:
           retention-days: 14
 
   # ─────────────────────────────────────────────────────────────────────────
+  # 4b. Governance Gate — prove the policies can fail
+  # ─────────────────────────────────────────────────────────────────────────
+  policy-gate:
+    name: Governance Gate Self-Test
+    runs-on: ubuntu-latest
+    needs: discover
+    # Runs whenever the policies themselves could have changed. This is the job that
+    # distinguishes a gate that works from a gate that silently matches nothing --
+    # the failure mode this repository had, where Conftest reported SUCCESS for months
+    # while evaluating an input shape nothing produced.
+    if: |
+      needs.discover.outputs.has_changes == 'true' ||
+      needs.discover.outputs.policy_only == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Conftest
+        run: |
+          curl -sSL -o conftest.tar.gz \
+            https://github.com/open-policy-agent/conftest/releases/download/v0.71.1/conftest_0.71.1_Linux_x86_64.tar.gz
+          tar -xzf conftest.tar.gz conftest
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+      - name: Assert the gate accepts a compliant plan
+        run: |
+          conftest test policies/rego/testdata/tfplan_governance/compliant.json \
+            --policy policies/rego/tfplan_governance.rego \
+            --namespace datacenter.tfplan_governance
+      - name: Assert the gate rejects a violating plan
+        run: |
+          if conftest test policies/rego/testdata/tfplan_governance/violating.json \
+               --policy policies/rego/tfplan_governance.rego \
+               --namespace datacenter.tfplan_governance; then
+            echo "::error::The governance gate accepted a plan that violates all four controls."
+            exit 1
+          fi
+          echo "Gate correctly rejected the violating plan."
+      - name: Assert all four controls fire by name
+        run: |
+          conftest test policies/rego/testdata/tfplan_governance/violating.json \
+            --policy policies/rego/tfplan_governance.rego \
+            --namespace datacenter.tfplan_governance \
+            --output json > /tmp/out.json 2>&1 || true
+          for needle in "missing mandatory tag" "must set" "exposes port" "below the floor"; do
+            if grep -q "$needle" /tmp/out.json; then
+              echo "  fired: $needle"
+            else
+              echo "::error::control did not fire: $needle"
+              exit 1
+            fi
+          done
+
+  # ─────────────────────────────────────────────────────────────────────────
   # 5. Compliance Scan — OPA/Conftest with custom policies
   # ─────────────────────────────────────────────────────────────────────────
   compliance:
     name: OPA Compliance Scan
     runs-on: ubuntu-latest
     needs: discover
-    if: needs.discover.outputs.has_changes == 'true'
+    # Policy gates re-run on a policy change even when no .tf file moved, otherwise
+    # editing a .rego or .sentinel file would never be validated by the job that reads it.
+    if: |
+      needs.discover.outputs.has_changes == 'true' ||
+      needs.discover.outputs.policy_only == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -286,7 +355,11 @@ jobs:
     name: Sentinel Policy Check
     runs-on: ubuntu-latest
     needs: discover
-    if: needs.discover.outputs.has_changes == 'true'
+    # Policy gates re-run on a policy change even when no .tf file moved, otherwise
+    # editing a .rego or .sentinel file would never be validated by the job that reads it.
+    if: |
+      needs.discover.outputs.has_changes == 'true' ||
+      needs.discover.outputs.policy_only == 'true'
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -495,10 +568,10 @@ jobs:
     if: |
       always() &&
       needs.discover.outputs.has_changes == 'true' &&
-      (
-        (github.event_name == 'workflow_dispatch' && inputs.action == 'apply') ||
-        (github.event_name == 'push' && github.ref == 'refs/heads/main')
-      )
+      # Apply requires an explicit dispatch. It previously also ran on any push to
+      # main, so a commit could trigger applies across every discovered directory.
+      # Infrastructure changes are not a side effect of a commit.
+      github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
     environment:
       name: ${{ inputs.environment || 'dev' }}
     strategy:
