@@ -67,15 +67,33 @@ jobs:
 
       - name: Find changed Terraform directories
         id: set-dirs
+        # Event context goes through env rather than being interpolated into the
+        # shell. `${{ github.event.before }}` is hex in practice, but interpolating
+        # any event field into a `run:` block is the documented injection pattern,
+        # and quoting it costs nothing.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual trigger: scan all root configs
-            dirs=$(find terraform opentofu -name "*.tf" -exec dirname {} \; | sort -u | jq -R . | jq -cs .)
+          # NOTE: this previously scanned `terraform` and `opentofu`, neither of
+          # which exists in this repository -- terraform lives in infra/ and iac/.
+          # A manual dispatch therefore found nothing and skipped every downstream
+          # job, including the OPA and Sentinel policy gates.
+          #
+          # The push/PR path matched only *.tf, so a change to a policy file
+          # (policies/**.rego, policies/**.sentinel) never triggered the jobs that
+          # evaluate those policies. Policy changes are now part of the trigger set.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            dirs=$(find . -name "*.tf" -not -path "./.git/*" -exec dirname {} \; | sort -u | jq -R . | jq -cs .)
           else
-            # PR/push: only changed directories
-            base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"
-            head_sha="${{ github.event.pull_request.head.sha || github.sha }}"
-            dirs=$(git diff --name-only "$base_sha" "$head_sha" | grep -E '\.tf$' | xargs -I{} dirname {} | sort -u | jq -R . | jq -cs .)
+            changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+            if echo "$changed" | grep -qE '^(policies/|\.github/workflows/iac-cicd\.yml)'; then
+              # A policy or pipeline change: validate every terraform directory.
+              dirs=$(find . -name "*.tf" -not -path "./.git/*" -exec dirname {} \; | sort -u | jq -R . | jq -cs .)
+            else
+              dirs=$(echo "$changed" | grep -E '\.tf$' | xargs -I{} dirname {} | sort -u | jq -R . | jq -cs .)
+            fi
           fi
           echo "directories=$dirs" >> "$GITHUB_OUTPUT"
           if [ "$dirs" != "[]" ]; then
