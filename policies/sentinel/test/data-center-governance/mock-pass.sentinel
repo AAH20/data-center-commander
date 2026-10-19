@@ -1,0 +1,40 @@
+# Mock of the tfplan/v2 import. Supplies the shape the policy reads:
+# resource_changes[].type / change.actions / change.after.
+resource_changes = {
+	"aws_instance.example": {
+		"type": "aws_instance",
+		"change": {
+			"actions": ["create"],
+			"after": {
+				"tags": {"owner": "platform", "Environment": "prod", "team": "infra"},
+			},
+		},
+	},
+	"aws_db_instance.example": {
+		"type": "aws_db_instance",
+		"change": {
+			"actions": ["create"],
+			"after": {
+				"tags": {"owner": "platform", "Environment": "prod", "team": "infra"},
+				"storage_encrypted": true,
+				"backup_retention_period": 14,
+			},
+		},
+	},
+	"aws_security_group.example": {
+		"type": "aws_security_group",
+		"change": {
+			"actions": ["create"],
+			"after": {
+				"tags": {"owner": "platform", "Environment": "prod", "team": "infra"},
+				"ingress": [
+					{
+						"cidr_blocks": ["10.0.0.0/16"],
+						"from_port": 22,
+						"to_port": 22,
+					},
+				],
+			},
+		},
+	},
+}

@@ -224,16 +224,23 @@ jobs:
         run: terraform plan -input=false -no-color -out=tfplan.binary && terraform show -json tfplan.binary > tfplan.json
 
       - name: Setup Conftest
+        # 0.71.1 bundles OPA 1.21.1. The previous 0.56.0 bundled OPA 0.69.0, which
+        # rejects the Rego v1 syntax these policies are written in -- it failed with
+        # "rego_parse_error: var cannot be used for rule name" on 1151 lines and
+        # checked nothing. This matches OPA_VERSION already pinned in soc-cicd.yml.
         run: |
-          wget -q -O conftest.tar.gz https://github.com/open-policy-agent/conftest/releases/download/v0.56.0/conftest_0.56.0_Linux_x86_64.tar.gz
+          wget -q -O conftest.tar.gz https://github.com/open-policy-agent/conftest/releases/download/v0.71.1/conftest_0.71.1_Linux_x86_64.tar.gz
           tar xzf conftest.tar.gz
           sudo mv conftest /usr/local/bin/
 
       - name: Run Conftest policy check
         working-directory: ${{ matrix.directory }}
         run: |
+          # policies/tfsec/ holds tfsec custom rules in JSON; Conftest evaluates
+          # Rego. Pointing it at tfsec/ meant this step never checked anything --
+          # there was not a single .rego file in the directory it was given.
           conftest test tfplan.json \
-            --policy ../policies/tfsec/ \
+            --policy ../policies/rego/ \
             --all-namespaces \
             --output table \
             2>&1 | tee conftest-results.txt

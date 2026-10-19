@@ -1,8 +1,17 @@
 # Data Center Commander — Sentinel governance policy
 #
 # Enforces the project's non-negotiable infrastructure contracts at plan time.
-# Kept intentionally small and explicit: every rule maps to a documented
-# product contract in docs/ARCHITECTURE.md so an operator can cite it.
+# Every rule maps to a documented product contract so an operator can cite it.
+#
+# NOTE ON SCOPE. Sentinel is HashiCorp-proprietary: the *runtime* is free (the CLI
+# downloads from releases.hashicorp.com), but *enforcement* — gating a real run —
+# exists only inside HCP Terraform and Terraform Enterprise paid tiers, and it does
+# not run on OpenTofu at all. This policy is therefore authored and unit-tested
+# here, and its rules are mirrored in policies/rego/ where they can actually gate
+# this repo's OpenTofu pipeline. Keep the two in step.
+#
+# This file previously did not parse: it used `all X else [] as y {`, which is not
+# Sentinel syntax. The default clause belongs after the block.
 
 import "tfplan/v2" as tfplan
 
@@ -12,16 +21,19 @@ import "tfplan/v2" as tfplan
 
 mandatory_tags = ["owner", "Environment", "team"]
 
+# `change.after` is the correct field. This previously read `resource.applied.tags`,
+# which is not part of tfplan/v2's resource change shape -- so the function returned
+# {} for every resource and the rule reported untagged resources that were in fact
+# tagged. The Sentinel test harness caught it; nothing else would have.
+#
+# `else {}` keeps an untagged resource in scope, so the rule reports it rather than
+# silently passing a resource that declares no tags at all.
 resource_tags = func(resource) {
-	return resource.applied.tags else {}
-
-	# `else {}` keeps untagged resources in scope so the rule below reports
-	# them, rather than silently passing a resource that declares no tags.
+	return resource.after.tags else {}
 }
 
 tagged_resources = filter tfplan.resource_changes as _, rc {
-	rc.type is not "no-op" and
-		rc.change.actions contains "create"
+	rc.change.actions contains "create"
 }
 
 deny_missing_tags = rule {
@@ -38,7 +50,7 @@ deny_missing_tags = rule {
 
 encryption_attributes = {
 	"aws_db_instance": "storage_encrypted",
-	"aws_ebs_volume": "encrypted",
+	"aws_ebs_volume":  "encrypted",
 }
 
 encryptable_resources = filter tfplan.resource_changes as _, rc {
@@ -64,11 +76,8 @@ security_group_rules = filter tfplan.resource_changes as _, rc {
 
 deny_public_admin_ingress = rule {
 	all security_group_rules as _, rc {
-		all rc.change.after.ingress else [] as ingress {
-			not (
-				ingress.cidr_blocks contains "0.0.0.0/0" and
-					(ingress.from_port in admin_ports or ingress.to_port in admin_ports)
-			)
+		all rc.change.after.ingress as ingress {
+			not (ingress.cidr_blocks contains "0.0.0.0/0" and (ingress.from_port in admin_ports or ingress.to_port in admin_ports))
 		}
 	}
 }
@@ -95,7 +104,7 @@ deny_short_backup_retention = rule {
 
 main = rule {
 	deny_missing_tags and
-		deny_unencrypted_storage and
-		deny_public_admin_ingress and
-		deny_short_backup_retention
+	deny_unencrypted_storage and
+	deny_public_admin_ingress and
+	deny_short_backup_retention
 }
