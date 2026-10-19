@@ -246,6 +246,13 @@ jobs:
             2>&1 | tee conftest-results.txt
           exit ${PIPESTATUS[0]}
 
+      - name: Verify the governance gate can fail
+        # Runs the policy against a known-compliant and a known-violating plan.
+        # Without this, a policy that silently stops matching would look identical
+        # to one that passes -- which is exactly how this repo's OPA scan reported
+        # SUCCESS for months while evaluating nothing.
+        run: bash policies/rego/selftest.sh
+
       - name: Upload Conftest results
         if: always()
         uses: actions/upload-artifact@v4

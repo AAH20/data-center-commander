@@ -1,0 +1,63 @@
+{
+  "resource_changes": [
+    {
+      "address": "aws_instance.ok",
+      "type": "aws_instance",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "tags": {
+            "owner": "platform",
+            "Environment": "prod",
+            "team": "infra"
+          }
+        }
+      }
+    },
+    {
+      "address": "aws_db_instance.ok",
+      "type": "aws_db_instance",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "tags": {
+            "owner": "platform",
+            "Environment": "prod",
+            "team": "infra"
+          },
+          "storage_encrypted": true,
+          "backup_retention_period": 14
+        }
+      }
+    },
+    {
+      "address": "aws_security_group.ok",
+      "type": "aws_security_group",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "tags": {
+            "owner": "platform",
+            "Environment": "prod",
+            "team": "infra"
+          },
+          "ingress": [
+            {
+              "cidr_blocks": [
+                "10.0.0.0/16"
+              ],
+              "from_port": 22,
+              "to_port": 22
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
