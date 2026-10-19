@@ -5,8 +5,45 @@
 # providers through a unified interface. Each cloud is independently enabled
 # and configured.
 #
-# Providers are passed from the root module.
+# Providers are passed from the root module. They must nevertheless be DECLARED
+# here: a module that forwards a provider without declaring its source gets the
+# default hashicorp/<name> namespace, which is a different provider type from the
+# one the child modules require. That mismatch is what made `terraform init`
+# fail for this whole tree with:
+#
+#   Provider type mismatch
+#     ibm = ibm.primary
+#   The local name "ibm.primary" in module.multi_cloud represents provider
+#   "hashicorp/ibm", but "ibm" in module.multi_cloud.module.ibm_compute
+#   represents "ibm-cloud/ibm".
+#
+# Sources below match root/main.tf and every leaf module.
 # =============================================================================
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+    digitalocean = {
+      source  = "digitalocean/digitalocean"
+      version = "~> 2.0"
+    }
+    ibm = {
+      source  = "IBM-Cloud/ibm"
+      version = "~> 1.60"
+    }
+  }
+}
 
 locals {
   tags = merge(var.common_tags, {
@@ -25,7 +62,7 @@ module "aws_network" {
   source = "../network/aws"
 
   providers = {
-    aws = aws.primary
+    aws = aws
   }
 
   vpc_name           = "${var.project_name}-vpc"
@@ -42,12 +79,13 @@ module "aws_compute" {
   source = "../compute/aws"
 
   providers = {
-    aws = aws.primary
+    aws = aws
   }
 
   instance_name     = "${var.project_name}-ec2"
   instance_type     = var.aws_instance_type
   instance_count    = var.aws_instance_count
+  vpc_id            = module.aws_network[0].vpc_id
   subnet_ids        = module.aws_network[0].public_subnet_ids
   security_group_id = module.aws_network[0].common_security_group_id
   enable_encryption = var.enable_encryption
@@ -66,7 +104,7 @@ module "gcp_network" {
   source = "../network/gcp"
 
   providers = {
-    google = google.primary
+    google = google
   }
 
   network_name     = "${var.project_name}-vpc"
@@ -83,7 +121,7 @@ module "gcp_compute" {
   source = "../compute/gcp"
 
   providers = {
-    google = google.primary
+    google = google
   }
 
   instance_name     = "${var.project_name}-gce"
@@ -109,7 +147,7 @@ module "azure_network" {
   source = "../network/azure"
 
   providers = {
-    azurerm = azurerm.primary
+    azurerm = azurerm
   }
 
   vnet_name              = "${var.project_name}-vnet"
@@ -126,13 +164,14 @@ module "azure_compute" {
   source = "../compute/azure"
 
   providers = {
-    azurerm = azurerm.primary
+    azurerm = azurerm
   }
 
   vm_name           = "${var.project_name}-vm"
   vm_size           = var.azure_vm_size
   instance_count    = var.azure_instance_count
   resource_group    = module.azure_network[0].resource_group_name
+  vnet_id           = module.azure_network[0].vnet_id
   subnet_id         = module.azure_network[0].subnet_id
   location          = var.azure_location
   admin_username    = "azureuser"
@@ -152,7 +191,7 @@ module "digitalocean_compute" {
   source = "../compute/digitalocean"
 
   providers = {
-    digitalocean = digitalocean.primary
+    digitalocean = digitalocean
   }
 
   droplet_name      = "${var.project_name}-droplet"
@@ -176,7 +215,7 @@ module "ibm_network" {
   source = "../network/ibm"
 
   providers = {
-    ibm = ibm.primary
+    ibm = ibm
   }
 
   vpc_name              = "${var.project_name}-vpc"
@@ -195,7 +234,7 @@ module "ibm_compute" {
   source = "../compute/ibm"
 
   providers = {
-    ibm = ibm.primary
+    ibm = ibm
   }
 
   instance_name      = "${var.project_name}-vsi"
@@ -221,8 +260,8 @@ module "vpn_mesh" {
   source = "./vpn"
 
   providers = {
-    aws    = aws.primary
-    google = google.primary
+    aws    = aws
+    google = google
   }
 
   project_name   = var.project_name

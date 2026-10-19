@@ -62,12 +62,12 @@ resource "aws_vpn_connection" "to_gcp" {
   tunnel1_phase1_encryption_algorithms = ["AES256"]
   tunnel1_phase2_encryption_algorithms = ["AES256"]
   tunnel1_ike_versions                 = ["ikev2"]
-  tunnel1_shared_key                   = local.shared_key
+  tunnel1_preshared_key                = local.shared_key
 
   tunnel2_phase1_encryption_algorithms = ["AES256"]
   tunnel2_phase2_encryption_algorithms = ["AES256"]
   tunnel2_ike_versions                 = ["ikev2"]
-  tunnel2_shared_key                   = local.shared_key
+  tunnel2_preshared_key                = local.shared_key
 
   tags = merge(var.common_tags, {
     Name = "${var.project_name}-to-gcp"
@@ -93,7 +93,7 @@ resource "google_compute_ha_vpn_gateway" "this" {
 resource "google_compute_external_vpn_gateway" "aws" {
   count           = var.aws_vpc_id != null ? 1 : 0
   name            = "${var.project_name}-aws-ext-gw"
-  redundancy_type = "TWO_IPS"
+  redundancy_type = "TWO_IPS_REDUNDANCY"
 
   interface {
     id         = 0

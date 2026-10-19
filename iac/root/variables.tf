@@ -308,3 +308,27 @@ variable "compliance_framework" {
     error_message = "Must be one of: HIPAA, SOC2, PCI-DSS, NIST, ISO27001."
   }
 }
+
+# ---------------------------------------------------------------------------
+# Declared late: the root passes these into module.multi_cloud, but never
+# declared them, so validate failed with
+#   "Reference to undeclared input variable".
+# ---------------------------------------------------------------------------
+
+variable "ssh_public_key" {
+  description = "SSH public key for Azure and IBM instances."
+  type        = string
+  default     = ""
+}
+
+variable "digitalocean_ssh_key_names" {
+  description = "DigitalOcean SSH key names to install on droplets."
+  type        = list(string)
+  default     = []
+}
+
+variable "ibm_ssh_key_ids" {
+  description = "IBM Cloud VPC SSH key IDs to install on VSIs."
+  type        = list(string)
+  default     = []
+}

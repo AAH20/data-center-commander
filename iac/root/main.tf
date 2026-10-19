@@ -90,6 +90,20 @@ provider "ibm" {
 module "multi_cloud" {
   source = "../modules/multi-cloud"
 
+  # Every aliased provider must be forwarded explicitly. The root configures
+  # aws.primary / google.primary / azurerm.primary / digitalocean.primary /
+  # ibm.primary, but a child module receives NO provider configuration unless it
+  # is named here -- so the module failed with:
+  #   missing provider
+  #   module.multi_cloud.provider["registry.terraform.io/ibm-cloud/ibm"].primary
+  providers = {
+    aws          = aws.primary
+    google       = google.primary
+    azurerm      = azurerm.primary
+    digitalocean = digitalocean.primary
+    ibm          = ibm.primary
+  }
+
   project_name = var.project_name
   environment  = var.environment
   common_tags  = var.common_tags

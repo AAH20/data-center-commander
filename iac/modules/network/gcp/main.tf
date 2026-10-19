@@ -17,7 +17,10 @@ resource "google_compute_network" "this" {
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"
 
-  labels = var.common_tags
+  # `labels` is not an argument of google_compute_network (the Google provider
+  # rejects it with "An argument named "labels" is not expected here"). Common
+  # tags are applied to the resources that do support labels instead.
+  description = "Managed by ${var.environment}"
 }
 
 resource "google_compute_subnetwork" "this" {
@@ -33,8 +36,6 @@ resource "google_compute_subnetwork" "this" {
     flow_sampling        = 0.5
     metadata             = "INCLUDE_ALL_METADATA"
   }
-
-  labels = var.common_tags
 }
 
 resource "google_compute_router" "this" {
@@ -51,8 +52,6 @@ resource "google_compute_router_nat" "this" {
   region                             = var.region
   nat_ip_allocate_option             = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-
-  labels = var.common_tags
 }
 
 resource "google_compute_firewall" "allow_internal" {
@@ -73,8 +72,6 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = [var.subnet_cidr]
   direction     = "INGRESS"
-
-  labels = var.common_tags
 }
 
 resource "google_compute_firewall" "allow_ssh" {
@@ -88,8 +85,6 @@ resource "google_compute_firewall" "allow_ssh" {
 
   source_ranges = ["0.0.0.0/0"]
   direction     = "INGRESS"
-
-  labels = var.common_tags
 }
 
 resource "google_compute_firewall" "allow_http" {
@@ -103,6 +98,4 @@ resource "google_compute_firewall" "allow_http" {
 
   source_ranges = ["0.0.0.0/0"]
   direction     = "INGRESS"
-
-  labels = var.common_tags
 }
