@@ -36,3 +36,6 @@ monitoring/alertmanager/data/
 *.tfvars
 !terraform.tfvars.example
 .terraform.tfstate.lock.info
+
+# Sentinel test cache (created by `sentinel test`; not source)
+policies/sentinel/.sentinel/
