@@ -162,16 +162,12 @@ variable "kms_key_arn" {
 # Safety
 # ---------------------------------------------------------------------------
 
-variable "prevent_capacity_block_destroy" {
-  description = <<-EOT
-    Guard the reservation with prevent_destroy. A Capacity Block cannot be
-    cancelled once purchased: terraform destroy removes it from state only,
-    while billing continues to the end of the window. Keep this true unless you
-    are deliberately decommissioning the cluster.
-  EOT
-  type        = bool
-  default     = true
-}
+# NOTE: there is deliberately no `prevent_capacity_block_destroy` variable.
+# Terraform forbids variables in `lifecycle.prevent_destroy` ("Variables not
+# allowed / Variables may not be used here"), so the guard is hardcoded to
+# `true` in capacity.tf. Exposing it as a variable is not possible in that
+# position; making it switchable would require generating the block or
+# splitting the module.
 
 variable "ami_id" {
   description = <<-EOT

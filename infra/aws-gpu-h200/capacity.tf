@@ -36,7 +36,13 @@ resource "aws_ec2_capacity_block_reservation" "gpu" {
   lifecycle {
     # Deliberate: destroying this resource does NOT release the capacity or
     # stop the billing. Requiring an explicit state rm makes the loss visible.
-    prevent_destroy = var.prevent_capacity_block_destroy
+    #
+    # `true` MUST be a literal. Terraform rejects a variable here --
+    # "Variables not allowed / Variables may not be used here" -- because the
+    # decision has to be known at plan time. This previously read
+    # `var.prevent_capacity_block_destroy`, which made `terraform validate`
+    # fail for the whole module.
+    prevent_destroy = true
   }
 
   tags = {
@@ -46,16 +52,20 @@ resource "aws_ec2_capacity_block_reservation" "gpu" {
 }
 
 # ---------------------------------------------------------------------------
-# Placement
+# Placement — deliberately NO placement group
 # ---------------------------------------------------------------------------
-# A cluster placement group pins every node into one low-latency network
-# fabric, which is what makes 3,200 Gbps EFA and 900 GB/s NVSwitch actually
-# usable across nodes. Spreading the cluster across placement groups silently
-# destroys collective throughput.
-
-resource "aws_placement_group" "gpu" {
-  name     = "${var.name_prefix}-cluster"
-  strategy = "cluster"
-
-  tags = { Name = "${var.name_prefix}-placement" }
-}
+# AWS, Capacity Blocks for ML:
+#   "Capacity Blocks do not support placement groups. You can't specify a
+#    placement group when you launch instances into a Capacity Block, whether
+#    you target the Capacity Block by its reservation ID or through a Capacity
+#    Reservation Resource Group."
+#
+# This module buys a Capacity Block, so a placement group is not merely
+# redundant -- it makes the launch fail. Capacity Blocks are already placed
+# close together inside an EC2 UltraCluster, which is the low-latency fabric a
+# cluster placement group would have been trying to obtain.
+#
+# The two acquisition paths are mutually exclusive: on-demand/UltraCluster can
+# take a cluster placement group, Capacity Blocks cannot. Adding one back here
+# would require branching the instance on purchase mode, not just adding a
+# resource.

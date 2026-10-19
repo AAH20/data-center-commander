@@ -19,23 +19,10 @@ resource "aws_fsx_lustre_file_system" "gpu" {
   per_unit_storage_throughput = var.lustre_deployment_type == "PERSISTENT_2" ? 250 : null
   kms_key_id                  = var.kms_key_arn != "" ? var.kms_key_arn : null
   storage_type                = "SSD"
-  auto_import_policy          = "NEW_CHANGED_DELETED"
-  backup_id                   = null
-
-  # Import/export against the rollout-archive bucket so trajectories survive
-  # the filesystem's lifetime.
-  data_repository_association {
-    auto_export_policy {
-      events = ["NEW", "CHANGED", "DELETED"]
-    }
-
-    auto_import_policy {
-      events = ["NEW", "CHANGED", "DELETED"]
-    }
-
-    data_repository_path = "s3://${aws_s3_bucket.rollout_archive.id}/lustre/"
-    file_system_path     = "/rollouts"
-  }
+  # No FS-level auto_import_policy: the data repository association below owns
+  # import/export policy for this filesystem. Setting both creates two
+  # competing import rules against the same bucket.
+  backup_id = null
 
   log_configuration {
     level = "WARN_ERROR"
@@ -47,6 +34,38 @@ resource "aws_fsx_lustre_file_system" "gpu" {
   lifecycle {
     prevent_destroy = true
   }
+}
+
+# ---------------------------------------------------------------------------
+# Data repository association — a SEPARATE resource, not a nested block
+# ---------------------------------------------------------------------------
+# `data_repository_association` is not valid inside aws_fsx_lustre_file_system;
+# terraform validate rejects it with "Blocks of type
+# \"data_repository_association\" are not expected here." The AWS provider exposes
+# it as its own resource, aws_fsx_data_repository_association, and the
+# auto_export/auto_import policies nest under an `s3` block there.
+#
+# The link to the rollout-archive bucket is what lets trajectory shards outlive
+# the filesystem -- without it, replacing the FS loses the corpus.
+
+resource "aws_fsx_data_repository_association" "rollouts" {
+  count = var.enable_fsx_lustre ? 1 : 0
+
+  file_system_id       = aws_fsx_lustre_file_system.gpu[0].id
+  data_repository_path = "s3://${aws_s3_bucket.rollout_archive.id}/lustre/"
+  file_system_path     = "/rollouts"
+
+  s3 {
+    auto_export_policy {
+      events = ["NEW", "CHANGED", "DELETED"]
+    }
+
+    auto_import_policy {
+      events = ["NEW", "CHANGED", "DELETED"]
+    }
+  }
+
+  tags = { Name = "${var.name_prefix}-rollout-dra" }
 }
 
 # ---------------------------------------------------------------------------

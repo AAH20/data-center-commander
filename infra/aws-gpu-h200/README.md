@@ -122,7 +122,7 @@ infra/aws-gpu-h200/
 ├── versions.tf                 provider + S3 backend (state locking is mandatory here)
 ├── variables.tf                21 variables, validated
 ├── network.tf                  VPC, EFA subnet, NAT egress, flow logs, security group
-├── capacity.tf                 Capacity Block offering lookup + reservation + placement group
+├── capacity.tf                 Capacity Block offering lookup + reservation (no placement group: unsupported)
 ├── compute.tf                  launch template (33 interfaces) + instances bound to reservation
 ├── storage.tf                  FSx for Lustre + S3 rollout archive with lifecycle tiering
 ├── iam.tf                      least-privilege node role + flow-log role

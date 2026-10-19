@@ -102,7 +102,7 @@ resource "aws_launch_template" "gpu" {
 
   tag_specifications {
     resource_type = "volume"
-    tags = { Name = "${var.name_prefix}-root" }
+    tags          = { Name = "${var.name_prefix}-root" }
   }
 
   monitoring { enabled = true }
@@ -132,7 +132,9 @@ resource "aws_instance" "gpu" {
     }
   }
 
-  placement_group = aws_placement_group.gpu.name
+  # No placement_group here: Capacity Blocks do not support them and the
+  # launch is rejected if one is set. The block is already inside an
+  # UltraCluster, so nothing is lost.
 
   # Rollout buffers and NCCL graphs are memory-hungry; the node carries 2 TiB,
   # so do not let a stale AMI default cap it.
@@ -140,7 +142,6 @@ resource "aws_instance" "gpu" {
 
   depends_on = [
     aws_ec2_capacity_block_reservation.gpu,
-    aws_placement_group.gpu,
   ]
 
   tags = {

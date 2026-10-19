@@ -43,4 +43,3 @@ kms_key_arn = ""
 
 # --- Safety ------------------------------------------------------------------
 # Leave true. A Capacity Block cannot be cancelled; destroy only forgets it.
-prevent_capacity_block_destroy = true

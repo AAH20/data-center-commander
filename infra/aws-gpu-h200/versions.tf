@@ -32,8 +32,8 @@ provider "aws" {
       ManagedBy   = "terraform"
       # Cost-allocation tags — GPU spend is the single largest line item, so it
       # must be attributable per cluster and per workload team.
-      CostCenter  = var.cost_center
-      Workload    = var.workload_class
+      CostCenter = var.cost_center
+      Workload   = var.workload_class
     }
   }
 }
