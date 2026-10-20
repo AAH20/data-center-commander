@@ -16,10 +16,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .provenance.evidence import verify_evidence_chain
+from .economics.tco import quick_tco, tco_breakdown_by_category
+from .validation.schema import validate_currency_code
+from .validation.boundaries import validate_value_range
 from .optimization_kernels import (
     Asset,
     CapacityDimension,
@@ -773,6 +777,235 @@ async def verify_evidence_tenant_chain(
 
     result = verify_evidence_chain([dict(r) for r in rows])
     return {"tenant_id": tenant_id, **result}
+
+
+
+# ---------------------------------------------------------------------------
+# Economics — TCO, wired to dcc.economics
+# ---------------------------------------------------------------------------
+#
+# dcc/economics/ is 8,058 lines of TCO, tariff, allocation, budget and
+# reconciliation machinery that this API previously did not reach at all. A TCO
+# result the operator can act on is the clearest thing that code produces, so it
+# is exposed here rather than left as an unused library.
+#
+# The endpoint is a POST because a TCO model is a set of assumptions, not a
+# query parameter list: 27 cost and escalation inputs is a request body.
+
+# Accepted inputs, taken from quick_tco's own signature. An allowlist rather than
+# **body: passing arbitrary keys would raise TypeError out of the handler and leak
+# a traceback, and any future parameter added to quick_tco should be a deliberate
+# decision to expose, not an accident of using **kwargs.
+_TCO_FLOAT_FIELDS = frozenset({
+    "hardware_capex", "facility_capex", "design_capex", "commissioning_capex",
+    "migration_capex", "software_capex", "energy_annual", "maintenance_annual",
+    "labor_annual", "network_annual", "software_annual", "insurance_annual",
+    "tax_annual", "other_annual", "refresh_cost", "decommission_cost",
+    "residual_value", "annual_discount_rate", "energy_escalation_pct",
+    "maintenance_escalation_pct", "labor_escalation_pct", "other_escalation_pct",
+    "contingency_pct", "it_capacity_kw", "rack_count", "area_m2",
+    "annual_energy_kwh",
+})
+_TCO_INT_FIELDS = frozenset({"refresh_interval_years", "horizon_years"})
+_TCO_STR_FIELDS = frozenset({"currency", "name", "scenario_type"})
+
+# Inputs that cannot be negative. A negative capex or a negative energy bill
+# produces a negative TCO, which reads as a saving and is nonsense.
+_TCO_NON_NEGATIVE = _TCO_FLOAT_FIELDS - {
+    "annual_discount_rate", "energy_escalation_pct", "maintenance_escalation_pct",
+    "labor_escalation_pct", "other_escalation_pct", "contingency_pct",
+}
+
+
+def _coerce_tco_assumptions(body: dict[str, Any]) -> dict[str, Any]:
+    """Validate a TCO request body and return kwargs for quick_tco.
+
+    Raises HTTPException(400) with the offending field named, so a caller is told
+    which input is wrong rather than receiving a TypeError traceback.
+    """
+    unknown = set(body) - (_TCO_FLOAT_FIELDS | _TCO_INT_FIELDS | _TCO_STR_FIELDS)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unknown_field",
+                "fields": sorted(unknown),
+                "accepted": sorted(_TCO_FLOAT_FIELDS | _TCO_INT_FIELDS | _TCO_STR_FIELDS),
+            },
+        )
+
+    kwargs: dict[str, Any] = {}
+    for key, value in body.items():
+        if key in _TCO_STR_FIELDS:
+            if not isinstance(value, str):
+                raise HTTPException(400, detail={"error": "invalid_type", "field": key, "expected": "string"})
+            kwargs[key] = value
+        elif key in _TCO_INT_FIELDS:
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise HTTPException(400, detail={"error": "invalid_type", "field": key, "expected": "integer"})
+            kwargs[key] = value
+        else:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise HTTPException(400, detail={"error": "invalid_type", "field": key, "expected": "number"})
+            kwargs[key] = float(value)
+
+    if "currency" in kwargs:
+        # Delegated to the validation package rather than re-checked here. This is
+        # the one place the API and dcc/validation agree on what a currency is.
+        try:
+            kwargs["currency"] = validate_currency_code(kwargs["currency"])
+        except Exception as exc:
+            raise HTTPException(400, detail={"error": "invalid_currency", "detail": str(exc)}) from exc
+
+    for key in _TCO_NON_NEGATIVE & set(kwargs):
+        if kwargs[key] < 0:
+            raise HTTPException(400, detail={"error": "negative_value", "field": key, "value": kwargs[key]})
+
+    horizon = kwargs.get("horizon_years", 10)
+    # ValidationResult exposes `passed` and a list of findings, not a single message.
+    horizon_check = validate_value_range(float(horizon), 1.0, 50.0)
+    if not horizon_check.passed:
+        raise HTTPException(400, detail={
+            "error": "out_of_range",
+            "field": "horizon_years",
+            "detail": [f.message for f in horizon_check.findings],
+        })
+
+    rate = kwargs.get("annual_discount_rate", 0.08)
+    if not -0.5 <= rate <= 1.0:
+        raise HTTPException(400, detail={"error": "out_of_range", "field": "annual_discount_rate", "value": rate})
+
+    return kwargs
+
+
+def _tco_result_payload(result: Any, assumptions: dict[str, Any]) -> dict[str, Any]:
+    """Serialise a TCOResult.
+
+    The engine returns dataclasses; building the response explicitly keeps the wire
+    format a deliberate contract instead of whatever dataclasses.asdict emits today.
+    """
+    return {
+        "scenario_name": result.scenario_name,
+        "scenario_type": result.scenario_type,
+        "currency": result.currency,
+        "horizon_years": result.horizon_years,
+        "totals": {
+            "capex": round(result.total_capex, 2),
+            "opex": round(result.total_opex, 2),
+            "refresh": round(result.total_refresh, 2),
+            "terminal": round(result.total_terminal, 2),
+            "undiscounted": round(result.total_undiscounted, 2),
+            "present_value": round(result.total_pv, 2),
+            "equivalent_annual_cost": round(result.equivalent_annual_cost, 2),
+            "average_annual_cost": round(result.average_annual_cost, 2),
+            "year_zero_cash": round(result.year_zero_cash, 2),
+            "year_one_cash": round(result.year_one_cash, 2),
+        },
+        "unit_costs": {
+            "per_kw_year": None if result.cost_per_kw_year is None else round(result.cost_per_kw_year, 2),
+            "per_rack_year": None if result.cost_per_rack_year is None else round(result.cost_per_rack_year, 2),
+            "per_m2_year": None if result.cost_per_m2_year is None else round(result.cost_per_m2_year, 2),
+            "per_kwh": None if result.cost_per_kwh is None else round(result.cost_per_kwh, 4),
+        },
+        "breakdown_by_category": {k: round(v, 2) for k, v in tco_breakdown_by_category(result).items()},
+        "yearly_cash_flows": [
+            {
+                "year": cf.year,
+                "capex": round(cf.capex, 2),
+                "opex": round(cf.opex, 2),
+                "refresh": round(cf.refresh, 2),
+                "terminal": round(cf.terminal, 2),
+                "total_undiscounted": round(cf.total_undiscounted, 2),
+                "discount_factor": round(cf.discount_factor, 6),
+                "total_discounted": round(cf.total_discounted, 2),
+            }
+            for cf in result.yearly_cash_flows
+        ],
+        # Echoed so a stored result can be reproduced from the response alone.
+        "assumptions": assumptions,
+    }
+
+
+@app.post("/v2/economics/tco")
+async def economics_tco(request: Request):
+    """Total cost of ownership for one data-center scenario.
+
+    Returns undiscounted totals, present value, equivalent annual cost, per-unit
+    metrics, a category breakdown and the yearly cash flow series.
+    """
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, detail={"error": "invalid_json", "detail": str(exc)}) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, detail={"error": "expected_object"})
+
+    assumptions = _coerce_tco_assumptions(body)
+    # quick_tco is CPU-bound. Running it inline in an async handler would block the
+    # event loop for the duration and stall every other request on this worker.
+    result = await run_in_threadpool(quick_tco, **assumptions)
+    return _tco_result_payload(result, assumptions)
+
+
+@app.post("/v2/economics/tco/compare")
+async def economics_tco_compare(request: Request):
+    """Compare TCO across scenarios and report the delta against a baseline.
+
+    The operator question this answers is "which of these is cheaper over the
+    horizon, and by how much in present-value terms" -- build versus lease, Tier III
+    versus Tier IV, this site versus that one.
+    """
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, detail={"error": "invalid_json", "detail": str(exc)}) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, detail={"error": "expected_object"})
+
+    scenarios = body.get("scenarios")
+    if not isinstance(scenarios, list) or not 2 <= len(scenarios) <= 10:
+        raise HTTPException(400, detail={
+            "error": "invalid_scenarios",
+            "detail": "scenarios must be a list of 2 to 10 objects",
+        })
+
+    baseline_index = body.get("baseline_index", 0)
+    if not isinstance(baseline_index, int) or isinstance(baseline_index, bool)             or not 0 <= baseline_index < len(scenarios):
+        raise HTTPException(400, detail={
+            "error": "invalid_baseline_index",
+            "detail": f"baseline_index must be an integer in 0..{len(scenarios) - 1}",
+        })
+
+    results = []
+    for idx, scenario in enumerate(scenarios):
+        if not isinstance(scenario, dict):
+            raise HTTPException(400, detail={"error": "expected_object", "scenario_index": idx})
+        assumptions = _coerce_tco_assumptions(scenario)
+        result = await run_in_threadpool(quick_tco, **assumptions)
+        results.append((result, assumptions))
+
+    base = results[baseline_index][0]
+    comparison = []
+    for idx, (result, _assumptions) in enumerate(results):
+        comparison.append({
+            "index": idx,
+            "name": result.scenario_name,
+            "is_baseline": idx == baseline_index,
+            "present_value": round(result.total_pv, 2),
+            "equivalent_annual_cost": round(result.equivalent_annual_cost, 2),
+            "undiscounted": round(result.total_undiscounted, 2),
+            "pv_delta_vs_baseline": round(result.total_pv - base.total_pv, 2),
+            "eac_delta_vs_baseline": round(result.equivalent_annual_cost - base.equivalent_annual_cost, 2),
+        })
+
+    cheapest = min(comparison, key=lambda c: c["present_value"])
+    return {
+        "baseline_index": baseline_index,
+        "baseline_name": base.scenario_name,
+        "cheapest_by_present_value": {"index": cheapest["index"], "name": cheapest["name"],
+                                      "present_value": cheapest["present_value"]},
+        "scenarios": comparison,
+    }
 
 
 # ---------------------------------------------------------------------------
