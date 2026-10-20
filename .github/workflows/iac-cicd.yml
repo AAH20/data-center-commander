@@ -242,41 +242,49 @@ jobs:
       needs.discover.outputs.policy_only == 'true'
     steps:
       - uses: actions/checkout@v4
-      - name: Install Conftest
+
+      # OPA directly rather than Conftest. Conftest bundles its own OPA, and an older
+      # Conftest bundles an OPA old enough to reject Rego v1 -- which fails as a wall
+      # of parse errors that reads like a policy problem. One static binary with a
+      # pinned version removes that variable.
+      - name: Install OPA
         run: |
-          curl -sSL -o conftest.tar.gz \
-            https://github.com/open-policy-agent/conftest/releases/download/v0.71.1/conftest_0.71.1_Linux_x86_64.tar.gz
-          tar -xzf conftest.tar.gz conftest
-          sudo mv conftest /usr/local/bin/
-          conftest --version
-      - name: Assert the gate accepts a compliant plan
+          curl -sSL -o /usr/local/bin/opa \
+            https://open-policy-agent.github.io/gopa/releases/download/v1.21.1/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+          opa version | head -3
+
+      - name: Assert the gate accepts a compliant plan and rejects a violating one
+        run: bash policies/rego/selftest.sh
+
+      - name: Assert a default_tags-only plan is not reported as untagged
+        # infra/aws-gpu-h200 relies entirely on provider default_tags. Those do not
+        # appear in change.after.tags, so a resource-level-only check reports every
+        # resource in a correctly tagged module as untagged. This asserts the rule
+        # reads the provider configuration too.
         run: |
-          conftest test policies/rego/testdata/tfplan_governance/compliant.json \
-            --policy policies/rego/tfplan_governance.rego \
-            --namespace datacenter.tfplan_governance
-      - name: Assert the gate rejects a violating plan
-        run: |
-          if conftest test policies/rego/testdata/tfplan_governance/violating.json \
-               --policy policies/rego/tfplan_governance.rego \
-               --namespace datacenter.tfplan_governance; then
-            echo "::error::The governance gate accepted a plan that violates all four controls."
+          cat > /tmp/default-tags-plan.json <<'JSON'
+          {
+            "configuration": {"provider_config": {"aws": {"name": "aws", "expressions": {
+              "default_tags": {"tags": {
+                "Project":     {"constant_value": "data-center-commander"},
+                "Environment": {"references": ["var.environment"]},
+                "CostCenter":  {"references": ["var.cost_center"]}
+              }}}}}},
+            "resource_changes": [
+              {"address": "aws_vpc.this", "type": "aws_vpc",
+               "change": {"actions": ["create"], "after": {"Name": "dcc-h200-vpc"}}}
+            ]
+          }
+          JSON
+          out=$(opa eval -d policies/rego/tfplan_governance.rego \
+                  -i /tmp/default-tags-plan.json \
+                  data.datacenter.tfplan_governance.deny --format raw)
+          if echo "$out" | grep -q "missing mandatory tag"; then
+            echo "::error::A plan inheriting mandatory tags from default_tags was reported untagged."
             exit 1
           fi
-          echo "Gate correctly rejected the violating plan."
-      - name: Assert all four controls fire by name
-        run: |
-          conftest test policies/rego/testdata/tfplan_governance/violating.json \
-            --policy policies/rego/tfplan_governance.rego \
-            --namespace datacenter.tfplan_governance \
-            --output json > /tmp/out.json 2>&1 || true
-          for needle in "missing mandatory tag" "must set" "exposes port" "below the floor"; do
-            if grep -q "$needle" /tmp/out.json; then
-              echo "  fired: $needle"
-            else
-              echo "::error::control did not fire: $needle"
-              exit 1
-            fi
-          done
+          echo "default_tags correctly recognised."
 
   # ─────────────────────────────────────────────────────────────────────────
   # 5. Compliance Scan — OPA/Conftest with custom policies

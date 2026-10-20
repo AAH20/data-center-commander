@@ -1,4 +1,28 @@
 {
+  "format_version": "1.2",
+  "terraform_version": "1.6.6",
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "expressions": {
+          "default_tags": {
+            "tags": {
+              "Project": {
+                "constant_value": "data-center-commander"
+              },
+              "Environment": {
+                "constant_value": "prod"
+              },
+              "CostCenter": {
+                "constant_value": "agentic-ai-platform"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "resource_changes": [
     {
       "address": "aws_instance.ok",
@@ -7,13 +31,7 @@
         "actions": [
           "create"
         ],
-        "after": {
-          "tags": {
-            "owner": "platform",
-            "Environment": "prod",
-            "team": "infra"
-          }
-        }
+        "after": {}
       }
     },
     {
@@ -24,11 +42,6 @@
           "create"
         ],
         "after": {
-          "tags": {
-            "owner": "platform",
-            "Environment": "prod",
-            "team": "infra"
-          },
           "storage_encrypted": true,
           "backup_retention_period": 14
         }
@@ -42,11 +55,6 @@
           "create"
         ],
         "after": {
-          "tags": {
-            "owner": "platform",
-            "Environment": "prod",
-            "team": "infra"
-          },
           "ingress": [
             {
               "cidr_blocks": [

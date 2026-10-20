@@ -24,7 +24,12 @@ package datacenter.tfplan_governance
 
 # --- The four contracts, identical in intent to the Sentinel policy -------------
 
-mandatory_tags := {"owner", "Environment", "team"}
+# These are the keys infra/aws-gpu-h200 actually standardises on (see the provider
+# default_tags block in versions.tf). An earlier revision required owner/team, a
+# vocabulary nothing in this repository used -- which is the same class of mistake
+# as reading a normalised input shape: a rule that cannot be satisfied by correct
+# infrastructure is not a stricter rule, it is a broken one.
+mandatory_tags := {"Project", "Environment", "CostCenter"}
 
 encryption_attributes := {
 	"aws_db_instance": "storage_encrypted",
@@ -48,11 +53,29 @@ creations contains rc if {
 # Rego v1 does not allow one on a function anyway.
 tags_of(rc) := object.get(rc.change.after, "tags", {})
 
+# Keys declared in the provider's default_tags block.
+#
+# default_tags does NOT appear in change.after.tags -- the provider merges those tags
+# at apply time, after the plan is rendered. A per-resource check alone therefore
+# reports every resource in a correctly tagged repository as untagged, which is a
+# guaranteed false positive. The keys are readable from the plan's configuration
+# block, which is where this reads them from.
+default_tag_keys contains k if {
+	some _, provider in input.configuration.provider_config
+	some k, _ in object.get(object.get(provider.expressions, "default_tags", {}), "tags", {})
+}
+
+# A resource is tagged if the key is set on the resource itself or inherited from
+# default_tags. AWS merges the two, with the resource-level value winning.
+effective_tag_keys(rc) := merged if {
+	merged := {k | some k in object.keys(tags_of(rc))} | default_tag_keys
+}
+
 # --- 1. Mandatory accountability tags ------------------------------------------
 
 deny contains msg if {
 	some rc in creations
-	missing := {tag | some tag in mandatory_tags; not tag in object.keys(tags_of(rc))}
+	missing := {tag | some tag in mandatory_tags; not tag in effective_tag_keys(rc)}
 	count(missing) > 0
 	msg := sprintf("%s '%s' is missing mandatory tag(s): %v", [rc.type, rc.address, sort(missing)])
 }

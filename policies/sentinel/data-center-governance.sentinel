@@ -19,7 +19,17 @@ import "tfplan/v2" as tfplan
 # Mandatory accountability tags
 # ---------------------------------------------------------------------------
 
-mandatory_tags = ["owner", "Environment", "team"]
+# These are the keys this repository's infrastructure standardises on -- see the
+# provider default_tags block in infra/aws-gpu-h200/versions.tf. A rule that requires
+# a vocabulary no correct resource uses is not a stricter rule, it is a broken one.
+mandatory_tags = ["Project", "Environment", "CostCenter"]
+
+# NOTE: provider default_tags do not appear in a resource's plan-time tags; the
+# provider merges them at apply time. The Rego mirror therefore reads the mandatory
+# keys from configuration.provider_config.*.expressions.default_tags as well as from
+# the resource, so a correctly tagged repository is not reported as untagged.
+# Sentinel's tfplan/v2 exposes the same information only through the raw plan, so this
+# spec documents the intent and the Rego carries the executable detail.
 
 # `change.after` is the correct field. This previously read `resource.applied.tags`,
 # which is not part of tfplan/v2's resource change shape -- so the function returned
