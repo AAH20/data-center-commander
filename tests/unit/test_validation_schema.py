@@ -3,6 +3,14 @@ import unittest
 from datetime import date, datetime
 from decimal import Decimal
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# The payload table lives beside this file. pytest's rootdir handling does not put
+# tests/unit on sys.path, so import it explicitly rather than depending on invocation.
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+
+from schema_payloads import VALID  # noqa: E402
 from dcc.validation.schema import (
     ValidationError,
     ConstraintViolation,
@@ -190,7 +198,12 @@ class TestValidatePlacementSnapshotPayload(unittest.TestCase):
                 "onprem": {"type": "onprem", "reference": "r1", "observed_on": "2024-01-01"},
                 "cloud": {"type": "cloud", "reference": "r2", "observed_on": "2024-01-01"},
             },
-            "results": {},
+            # `results` was an empty dict; the validator requires a calculated result per
+            # source. The payload below is the minimum that satisfies it.
+            "results": {
+                "onprem": {"total_pv": 1000000.0, "currency": "USD"},
+                "cloud": {"total_pv": 1200000.0, "currency": "USD"},
+            },
         }
         result = validate_placement_snapshot_payload(payload)
         self.assertIsInstance(result, dict)
@@ -203,7 +216,7 @@ class TestValidatePlacementSnapshotPayload(unittest.TestCase):
 
 class TestValidateCostBook(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test", "currency": "USD"}
+        data = dict(VALID["validate_cost_book"])
         result = validate_cost_book(data)
         self.assertIsInstance(result, dict)
 
@@ -215,220 +228,187 @@ class TestValidateCostBook(unittest.TestCase):
 
 class TestValidatePriceObservation(unittest.TestCase):
     def test_valid(self):
-        data = {"item_code": "test", "unit_price": "10.00", "currency": "USD"}
+        data = dict(VALID["validate_price_observation"])
         result = validate_price_observation(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateEstimateProject(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test", "currency": "USD"}
+        data = dict(VALID["validate_estimate_project"])
         result = validate_estimate_project(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateEstimateLineItem(unittest.TestCase):
     def test_valid(self):
-        data = {"description": "test", "quantity": "10", "unit_cost": "100.00"}
+        data = dict(VALID["validate_estimate_line_item"])
         result = validate_estimate_line_item(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateCostActual(unittest.TestCase):
     def test_valid(self):
-        data = {"amount": "1000.00", "currency": "USD", "period": "2024-01"}
+        data = dict(VALID["validate_cost_actual"])
         result = validate_cost_actual(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateCostAllocation(unittest.TestCase):
     def test_valid(self):
-        data = {"workload_id": "w1", "amount": "100.00"}
+        data = dict(VALID["validate_cost_allocation"])
         result = validate_cost_allocation(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateSite(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-site", "address": "123 Main St"}
+        data = dict(VALID["validate_site"])
         result = validate_site(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateFacility(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-facility", "site_id": "s1"}
+        data = dict(VALID["validate_facility"])
         result = validate_facility(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateSpace(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-space", "facility_id": "f1"}
+        data = dict(VALID["validate_space"])
         result = validate_space(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateAsset(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-asset", "asset_type": "server"}
+        data = dict(VALID["validate_asset"])
         result = validate_asset(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateAssetRelationship(unittest.TestCase):
     def test_valid(self):
-        data = {"parent_id": "a1", "child_id": "a2"}
+        data = dict(VALID["validate_asset_relationship"])
         result = validate_asset_relationship(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateConnector(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-connector", "connector_type": "epms"}
+        data = dict(VALID["validate_connector"])
         result = validate_connector(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateConnectorRun(unittest.TestCase):
     def test_valid(self):
-        data = {"connector_id": "c1", "status": "success"}
+        data = dict(VALID["validate_connector_run"])
         result = validate_connector_run(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateTelemetryReading(unittest.TestCase):
     def test_valid(self):
-        data = {"asset_id": "a1", "value_numeric": 100.0, "observed_at": "2024-01-01T00:00:00Z"}
+        data = dict(VALID["validate_telemetry_reading"])
         result = validate_telemetry_reading(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateMeter(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-meter", "meter_type": "energy"}
+        data = dict(VALID["validate_meter"])
         result = validate_meter(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateMetricDefinition(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-metric", "unit": "kwh"}
+        data = dict(VALID["validate_metric_definition"])
         result = validate_metric_definition(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateTariff(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-tariff", "currency": "USD"}
+        data = dict(VALID["validate_tariff"])
         result = validate_tariff(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateCarbonFactor(unittest.TestCase):
     def test_valid(self):
-        data = {"region": "us-east", "factor": 0.5}
+        data = dict(VALID["validate_carbon_factor"])
         result = validate_carbon_factor(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateEnergyAllocation(unittest.TestCase):
     def test_valid(self):
-        data = {"workload_id": "w1", "energy_kwh": 100.0}
+        data = dict(VALID["validate_energy_allocation"])
         result = validate_energy_allocation(data)
         self.assertIsInstance(result, dict)
 
 
 class TestValidateCapacitySnapshot(unittest.TestCase):
     def test_valid(self):
-        data = {"facility_id": "f1", "usable": 100.0}
+        data = dict(VALID["validate_capacity_snapshot"])
         result = validate_capacity_snapshot(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateKpiDefinition(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-kpi", "unit": "kwh"}
+        data = dict(VALID["validate_kpi_definition"])
         result = validate_kpi_definition(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateKpiObservation(unittest.TestCase):
     def test_valid(self):
-        data = {"kpi_id": "k1", "value": 100.0}
+        data = dict(VALID["validate_kpi_observation"])
         result = validate_kpi_observation(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateWorkflow(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-workflow", "workflow_type": "maintenance"}
+        data = dict(VALID["validate_workflow"])
         result = validate_workflow(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateWorkflowTask(unittest.TestCase):
     def test_valid(self):
-        data = {"workflow_id": "w1", "task_type": "inspection"}
+        data = dict(VALID["validate_workflow_task"])
         result = validate_workflow_task(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateApproval(unittest.TestCase):
     def test_valid(self):
-        data = {"workflow_id": "w1", "approver": "user1"}
+        data = dict(VALID["validate_approval"])
         result = validate_approval(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateWorkOrder(unittest.TestCase):
     def test_valid(self):
-        data = {"title": "test-wo", "asset_id": "a1"}
+        data = dict(VALID["validate_work_order"])
         result = validate_work_order(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateIncident(unittest.TestCase):
     def test_valid(self):
-        data = {"title": "test-incident", "severity": "high"}
+        data = dict(VALID["validate_incident"])
         result = validate_incident(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateChangeRecord(unittest.TestCase):
     def test_valid(self):
-        data = {"title": "test-change", "change_type": "upgrade"}
+        data = dict(VALID["validate_change_record"])
         result = validate_change_record(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateProcedure(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-procedure", "procedure_type": "maintenance"}
+        data = dict(VALID["validate_procedure"])
         result = validate_procedure(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateWorkload(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-workload", "workload_type": "compute"}
+        data = dict(VALID["validate_workload"])
         result = validate_workload(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateDeployment(unittest.TestCase):
     def test_valid(self):
-        data = {"name": "test-deployment", "deployment_type": "new"}
+        data = dict(VALID["validate_deployment"])
         result = validate_deployment(data)
         self.assertIsInstance(result, dict)
 
-
 class TestValidateEvidenceEvent(unittest.TestCase):
     def test_valid(self):
-        data = {"event_type": "test", "description": "test event"}
+        data = dict(VALID["validate_evidence_event"])
         result = validate_evidence_event(data)
         self.assertIsInstance(result, dict)
-
-
-if __name__ == "__main__":
-    unittest.main()
