@@ -285,11 +285,11 @@ jobs:
     name: OPA Compliance Scan
     runs-on: ubuntu-latest
     needs: discover
-    # Policy gates re-run on a policy change even when no .tf file moved, otherwise
-    # editing a .rego or .sentinel file would never be validated by the job that reads it.
-    if: |
-      needs.discover.outputs.has_changes == 'true' ||
-      needs.discover.outputs.policy_only == 'true'
+    # Scans a directory, so it needs one. A policy-only change leaves `directories`
+    # empty, and a job whose `if:` is true but whose matrix is empty cannot expand --
+    # GitHub marks it skipped with zero steps and fails the whole run. Policy changes
+    # are validated by the policy-gate job instead.
+    if: needs.discover.outputs.has_changes == 'true'
     strategy:
       fail-fast: false
       matrix:
