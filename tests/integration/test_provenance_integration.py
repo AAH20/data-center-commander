@@ -7,6 +7,10 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
+# Fixed timestamp so step hashes are reproducible across runs.
+_TEST_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
 
 class TestProvenanceTrackerIntegration(unittest.TestCase):
     """Integration tests for provenance tracking."""
@@ -40,9 +44,12 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.AGGREGATION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2"],
+            transformation_type = TransformationType.AGGREGATION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         self.assertEqual(step.step_id, "s1")
 
@@ -107,10 +114,13 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.CALCULATION,
-            input_node_ids=["n1", "n2"],
-            output_node_ids=["n3"],
+            transformation_type = TransformationType.CALCULATION,
+            input_hashes = ["hash-n1", "hash-n2"],
+            output_hash = "hash-n3",
             metadata={"formula": "sum"},
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         self.assertEqual(step.metadata["formula"], "sum")
 
@@ -141,11 +151,14 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.INGESTION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2"],
+            transformation_type = TransformationType.INGESTION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
-        self.assertIsNotNone(step.created_at)
+        self.assertIsNotNone(step.occurred_at)
 
     def test_lineage_node_default_content_hash(self):
         from dcc.provenance.tracker import LineageNode, SourceType
@@ -185,9 +198,12 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.INGESTION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2"],
+            transformation_type = TransformationType.INGESTION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         self.assertEqual(step.metadata, {})
 
@@ -232,16 +248,22 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step1 = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.INGESTION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2"],
+            transformation_type = TransformationType.INGESTION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         step2 = LineageStep(
             step_id="s2",
             tenant_id="t2",
-            transformation=TransformationType.INGESTION,
-            input_node_ids=["n3"],
-            output_node_ids=["n4"],
+            transformation_type = TransformationType.INGESTION,
+            input_hashes = ["hash-n3"],
+            output_hash = "hash-n4",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         self.assertNotEqual(step1.tenant_id, step2.tenant_id)
 
@@ -275,11 +297,14 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
             step = LineageStep(
                 step_id=f"s-{transformation.value}",
                 tenant_id="t1",
-                transformation=transformation,
-                input_node_ids=["n1"],
-                output_node_ids=["n2"],
+                transformation_type = transformation,
+                input_hashes = ["hash-n1"],
+                output_hash = "hash-n2",
+                operation = "test",
+                actor_ref = "tester",
+                occurred_at = _TEST_TIME,
             )
-            self.assertEqual(step.transformation, transformation)
+            self.assertEqual(step.transformation_type, transformation)
 
     def test_lineage_node_multiple_metadata_keys(self):
         from dcc.provenance.tracker import LineageNode, SourceType
@@ -310,10 +335,13 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.INGESTION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2"],
+            transformation_type = TransformationType.INGESTION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
             metadata={"key1": "value1", "key2": "value2", "key3": "value3"},
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         self.assertEqual(len(step.metadata), 3)
 
@@ -322,22 +350,33 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.AGGREGATION,
-            input_node_ids=["n1", "n2", "n3"],
-            output_node_ids=["n4"],
+            transformation_type = TransformationType.AGGREGATION,
+            input_hashes = ["hash-n1", "hash-n2", "hash-n3"],
+            output_hash = "hash-n4",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
-        self.assertEqual(len(step.input_node_ids), 3)
+        self.assertEqual(len(step.input_hashes), 3)
 
-    def test_lineage_step_multiple_output_nodes(self):
+    def test_lineage_step_single_output_hash(self):
         from dcc.provenance.tracker import LineageStep, TransformationType
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.DERIVATION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2", "n3", "n4"],
+            transformation_type = TransformationType.DERIVATION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
-        self.assertEqual(len(step.output_node_ids), 3)
+        # LineageStep carries ONE output_hash. A transformation with several outputs
+        # is recorded as several steps -- record_transformation() takes a single
+        # output_node_id. This assertion previously expected output_node_ids to hold
+        # three entries, a shape the dataclass never had.
+        self.assertEqual(step.output_hash, "hash-n2")
+        self.assertIsInstance(step.output_hash, str)
 
     def test_lineage_node_content_hash_immutable(self):
         from dcc.provenance.tracker import LineageNode, SourceType
@@ -369,12 +408,15 @@ class TestProvenanceTrackerIntegration(unittest.TestCase):
         step = LineageStep(
             step_id="s1",
             tenant_id="t1",
-            transformation=TransformationType.INGESTION,
-            input_node_ids=["n1"],
-            output_node_ids=["n2"],
+            transformation_type = TransformationType.INGESTION,
+            input_hashes = ["hash-n1"],
+            output_hash = "hash-n2",
+            operation = "test",
+            actor_ref = "tester",
+            occurred_at = _TEST_TIME,
         )
         # created_at should not be directly mutable (frozen dataclass)
-        self.assertIsNotNone(step.created_at)
+        self.assertIsNotNone(step.occurred_at)
 
 
 if __name__ == "__main__":

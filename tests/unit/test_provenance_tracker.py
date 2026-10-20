@@ -2,6 +2,10 @@
 import unittest
 from datetime import datetime, timezone
 
+# Fixed timestamp so step hashes are reproducible across runs.
+_TEST_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
 from dcc.provenance.tracker import (
     SourceType,
     TransformationType,
@@ -88,6 +92,10 @@ class TestLineageStep(unittest.TestCase):
             tenant_id="t1",
             operation="test",
             transformation_type=TransformationType.CALCULATION,
+            input_hashes=["hash-n1"],
+            output_hash="hash-n2",
+            actor_ref="tester",
+            occurred_at=_TEST_TIME,
         )
         self.assertEqual(s.step_id, "s1")
 
@@ -97,7 +105,13 @@ class TestProvenanceRecord(unittest.TestCase):
         r = ProvenanceRecord(
             record_id="r1",
             tenant_id="t1",
-            node_id="n1",
+            artifact_type="kpi_observation",
+            artifact_id="n1",
+            source_type=SourceType.CALCULATED,
+            quality_status=QualityStatus.ESTIMATED,
+            lineage_steps=[],
+            source_refs=[],
+            created_at=_TEST_TIME,
         )
         self.assertEqual(r.record_id, "r1")
 
