@@ -10,6 +10,8 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from .provenance.evidence import verify_evidence_chain
+
 # ---------------------------------------------------------------------------
 # Database pool (shared with api_async)
 # ---------------------------------------------------------------------------
@@ -382,40 +384,24 @@ class EvidenceService:
 
     @staticmethod
     async def verify_chain(tenant_id: str) -> dict[str, Any]:
-        """Verify the evidence hash chain for a tenant."""
+        """Verify the evidence hash chain for a tenant.
+
+        Delegates to ``dcc.provenance.evidence`` so this service and the API route
+        cannot drift apart again -- they previously carried separate copies of a
+        hash that did not match what was written.
+        """
         pool = await get_db_pool()
         async with pool.connection() as conn, conn.transaction():
             await conn.execute("SET TRANSACTION READ ONLY")
             await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
             rows = await conn.fetch(
-                "SELECT sequence,event_type,occurred_at,event_hash FROM dcc.evidence_events "
+                "SELECT tenant_id,sequence,id,event_type,occurred_at,actor_ref,"
+                "subject_type,subject_id,payload,previous_hash,event_hash "
+                "FROM dcc.evidence_events "
                 "WHERE tenant_id=$1::uuid ORDER BY sequence",
                 tenant_id,
             )
 
-        import hashlib
-
-        previous_hash = ""
-        results = []
-        for row in rows:
-            computed = hashlib.sha256(
-                f"{previous_hash}{row['event_type']}{row['occurred_at']}".encode()
-            ).hexdigest()
-            results.append(
-                {
-                    "sequence": row["sequence"],
-                    "event_type": row["event_type"],
-                    "occurred_at": row["occurred_at"],
-                    "is_valid": computed == row["event_hash"],
-                }
-            )
-            previous_hash = row["event_hash"]
-
-        return {
-            "tenant_id": tenant_id,
-            "total_events": len(results),
-            "valid_events": sum(1 for r in results if r["is_valid"]),
-            "invalid_events": sum(1 for r in results if not r["is_valid"]),
-            "chain_valid": all(r["is_valid"] for r in results),
-        }
+        result = verify_evidence_chain([dict(r) for r in rows])
+        return {"tenant_id": tenant_id, **result}

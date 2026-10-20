@@ -43,8 +43,17 @@ INSERT INTO dcc.operational_workflows(id,tenant_id,facility_id,workflow_type,sta
 ('dcc00000-0000-4000-8000-000000000020','dcc00000-0000-4000-8000-000000000001','dcc00000-0000-4000-8000-000000000003','commissioning','integrated_test','open','normal','Synthetic integrated UPS/cooling commissioning review','demo-operator','{"synthetic":true}','{"synthetic":true,"label":"NOT LIVE"}') ON CONFLICT DO NOTHING;
 INSERT INTO dcc.capacity_snapshots(id,tenant_id,facility_id,observed_at,scenario,dimension,usable,reserved,policy_reserve,forecast_peak,unit,quality_status,forecast_version,provenance) VALUES
 ('dcc00000-0000-4000-8000-000000000021','dcc00000-0000-4000-8000-000000000001','dcc00000-0000-4000-8000-000000000003',now(),'synthetic-n-minus-one','power_kw',1200,720,120,860,'kW','estimated','demo-v1','{"synthetic":true,"label":"NOT LIVE","failure_case_not_validated":true}') ON CONFLICT DO NOTHING;
-INSERT INTO dcc.evidence_events(tenant_id,sequence,event_type,actor_ref,subject_type,subject_id,payload,event_hash) VALUES
-('dcc00000-0000-4000-8000-000000000001',1,'demo.fixture.seeded','demo-seed-script','tenant','dcc-demo-lab','{"synthetic":true,"label":"NOT LIVE","fixture":"dcc-demo-v1"}','synthetic-demo-event-hash-v1') ON CONFLICT DO NOTHING;
+-- Evidence events must carry a real hash. This row previously stored the literal
+-- string 'synthetic-demo-event-hash-v1', which is not a SHA-256 -- so /v2/evidence/verify
+-- reported the seed tenant's chain as invalid even before the route's own hash defect.
+--
+-- `id` and `occurred_at` are pinned explicitly because both defaulted to
+-- gen_random_uuid()/now(); a hash over a value that changes per insert can never be
+-- verified. The hash below is compute_event_hash() from dcc/provenance/evidence.py over
+-- exactly these fields. If any of them changes, the hash must be recomputed:
+--     python -c "from dcc.provenance.evidence import compute_event_hash; ..."
+INSERT INTO dcc.evidence_events(tenant_id,sequence,id,event_type,occurred_at,actor_ref,subject_type,subject_id,payload,previous_hash,event_hash) VALUES
+('dcc00000-0000-4000-8000-000000000001',1,'dcc00000-0000-4000-8000-0000000000e1','demo.fixture.seeded','2026-01-01T00:00:00.000000+00:00','demo-seed-script','tenant','dcc-demo-lab','{"synthetic":true,"label":"NOT LIVE","fixture":"dcc-demo-v1"}',NULL,'6f4f827d71afe71c1ce9ab34b02e9628e3b0867f183d5abc1990753d3f559453') ON CONFLICT DO NOTHING;
 -- Illustrative cost workbook. Values are synthetic assumptions, not quotations or market prices.
 INSERT INTO dcc.cost_books(id,tenant_id,name,version,status,currency,geography,price_basis,valid_from,source_policy,approved_by,approved_at)
 VALUES ('dcc00000-0000-4000-8000-000000000022','dcc00000-0000-4000-8000-000000000001','Demo planning assumptions','2026.1','approved','USD','EG','benchmark',current_date-30,'{"synthetic":true,"label":"NOT LIVE; replace with sourced quotes/tariffs"}','demo-reviewer',now()) ON CONFLICT DO NOTHING;

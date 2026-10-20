@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .provenance.evidence import verify_evidence_chain
 from .optimization_kernels import (
     Asset,
     CapacityDimension,
@@ -746,46 +747,32 @@ async def optimize_energy_allocation(request: Request):
 
 
 @app.get("/v2/evidence/verify")
-async def verify_evidence_chain(
+async def verify_evidence_tenant_chain(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
 ):
+    """Verify the evidence hash chain for one tenant.
+
+    This endpoint previously recomputed the hash inline over
+    ``previous_hash + event_type + occurred_at`` while the chain is written over a
+    much larger payload, so no stored row could ever validate. It now delegates to
+    the single canonical implementation in ``dcc.provenance.evidence``, which the
+    writer also uses. See that module for why the payload is defined as it is.
+    """
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
         await conn.execute("SET TRANSACTION READ ONLY")
         await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
 
         rows = await conn.fetch(
-            "SELECT sequence,event_type,occurred_at,event_hash FROM dcc.evidence_events "
+            "SELECT tenant_id,sequence,id,event_type,occurred_at,actor_ref,"
+            "subject_type,subject_id,payload,previous_hash,event_hash "
+            "FROM dcc.evidence_events "
             "WHERE tenant_id=$1::uuid ORDER BY sequence",
             tenant_id,
         )
 
-    # Verify hash chain
-    previous_hash = ""
-    results = []
-    for row in rows:
-        # Recompute hash (simplified — full implementation would use dcc.verify_evidence_chain)
-        computed = hashlib.sha256(
-            f"{previous_hash}{row['event_type']}{row['occurred_at']}".encode()
-        ).hexdigest()
-        results.append(
-            {
-                "sequence": row["sequence"],
-                "event_type": row["event_type"],
-                "occurred_at": row["occurred_at"],
-                "is_valid": computed == row["event_hash"],
-            }
-        )
-        previous_hash = row["event_hash"]
-
-    return {
-        "tenant_id": tenant_id,
-        "total_events": len(results),
-        "valid_events": sum(1 for r in results if r["is_valid"]),
-        "invalid_events": sum(1 for r in results if not r["is_valid"]),
-        "chain_valid": all(r["is_valid"] for r in results),
-        "events": results,
-    }
+    result = verify_evidence_chain([dict(r) for r in rows])
+    return {"tenant_id": tenant_id, **result}
 
 
 # ---------------------------------------------------------------------------
