@@ -183,6 +183,25 @@ def zscore_detect(
                 total_points=n,
                 statistics={"mean": mean, "std": 0.0, "threshold": threshold},
             )
+        # The largest |z| any point can reach in an n-point sample is (n-1)/sqrt(n),
+        # because a single extreme value moves the mean toward itself and inflates the
+        # standard deviation. For n=5 that ceiling is 1.79, so a threshold of 3.0 can
+        # never fire and the function reported "no anomalies" for any input at all.
+        # Surface the ceiling instead of returning a vacuous clean result.
+        max_z = (n - 1) / math.sqrt(n) if n > 1 else 0.0
+        if max_z <= threshold:
+            return AnomalyReport(
+                method="zscore",
+                total_points=n,
+                statistics={
+                    "mean": mean,
+                    "std": std,
+                    "threshold": threshold,
+                    "max_achievable_z": max_z,
+                    "detector_saturated": 1.0,
+                },
+            )
+
         for i, v in enumerate(vals):
             z = (v - mean) / std
             if abs(z) > threshold:
@@ -484,12 +503,30 @@ def detect_all(
         Dictionary with keys "zscore", "iqr", "seasonal" mapping to
         their respective AnomalyReport objects.
     """
-    return {
-        "zscore": zscore_detect(
-            values, timestamps, threshold=zscore_threshold, window=zscore_window
-        ),
-        "iqr": iqr_detect(values, timestamps, k=iqr_k),
-        "seasonal": seasonal_decompose_detect(
-            values, timestamps, period=seasonal_period, threshold=seasonal_threshold
-        ),
-    }
+    # Each detector has its own minimum data requirement -- seasonal decomposition
+    # needs two full periods, so 48 points at period=24. Running them unguarded meant
+    # a short series raised ValueError out of detect_all and the caller lost the
+    # z-score and IQR results too, even though both could have run. A detector that
+    # cannot run is reported as skipped, not as a failure of the whole call.
+    reports: dict[str, AnomalyReport] = {}
+
+    for name, run in (
+        ("zscore", lambda: zscore_detect(
+            values, timestamps, threshold=zscore_threshold, window=zscore_window)),
+        ("iqr", lambda: iqr_detect(values, timestamps, k=iqr_k)),
+        ("seasonal", lambda: seasonal_decompose_detect(
+            values, timestamps, period=seasonal_period, threshold=seasonal_threshold)),
+    ):
+        try:
+            reports[name] = run()
+        except ValueError as exc:
+            reports[name] = AnomalyReport(
+                method=name,
+                total_points=len(values),
+                statistics={"skipped": 1.0},
+            )
+            reports[name].statistics["reason_code"] = 0.0
+            # Keep the reason human-readable without widening AnomalyReport.
+            reports[name].skip_reason = str(exc)  # type: ignore[attr-defined]
+
+    return reports

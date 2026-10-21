@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any, Iterable, Mapping, Sequence
@@ -66,7 +66,20 @@ class ConsistencyReport:
 
     @property
     def passed(self) -> bool:
-        return all(f.severity in (Severity.PASS, Severity.SKIP) for f in self.findings)
+        """True when nothing BLOCKING was found.
+
+        Only FAIL is blocking. WARN is advisory by definition, and treating it as a
+        failure made a report that merely warned indistinguishable from one that
+        found a real inconsistency -- the caller could not tell them apart, and
+        execution was refused for advisory findings. SKIP means the check could not
+        run (no data), which is not a finding about the data either way.
+        """
+        return not any(f.severity is Severity.FAIL for f in self.findings)
+
+    @property
+    def failed(self) -> bool:
+        """True when at least one finding is blocking. Explicit counterpart to passed."""
+        return any(f.severity is Severity.FAIL for f in self.findings)
 
     @property
     def failures(self) -> list[Finding]:
@@ -134,6 +147,35 @@ def _to_str(value: Any) -> str | None:
         return None
     s = str(value).strip()
     return s or None
+
+
+def _utcnow() -> datetime:
+    """Naive UTC now, for comparing against naive timestamps.
+
+    Kept naive on purpose: this module receives timestamps from JSON payloads and
+    database rows that are frequently naive, and subtracting an aware datetime from
+    a naive one raises TypeError. Callers normalise the OTHER side with
+    _as_naive_utc() rather than relying on both being aware.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _as_naive_utc(value):
+    """Coerce a datetime to naive UTC so it can be compared with _utcnow().
+
+    Aware values are converted to UTC and stripped. Naive values are assumed UTC.
+    Without this, any timestamp carrying a timezone -- which is what ISO-8601 with
+    a Z or +00:00 suffix parses to -- raised
+    "can't subtract offset-naive and offset-aware datetimes" and took down the
+    whole freshness check for that tenant.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+    return value
 
 
 def _to_datetime(value: Any) -> datetime | None:
@@ -658,7 +700,7 @@ def validate_temporal_consistency(
             source_a=source_name,
         )]
 
-    now = datetime.now()
+    now = _utcnow()
     stale_count = 0
     future_count = 0
     checked = 0
@@ -668,7 +710,7 @@ def validate_temporal_consistency(
         if ts is None:
             continue
         checked += 1
-        age_days = (now - ts).total_seconds() / 86400.0
+        age_days = (now - _as_naive_utc(ts)).total_seconds() / 86400.0
         if age_days > max_age_days:
             stale_count += 1
         if age_days < -1:  # more than 1 day in the future
@@ -878,7 +920,7 @@ def validate_price_freshness(
             source_a=source_name,
         )]
 
-    now = datetime.now()
+    now = _utcnow()
     stale_count = 0
     checked = 0
 
@@ -887,7 +929,7 @@ def validate_price_freshness(
         if observed is None:
             continue
         checked += 1
-        age_days = (now - observed).total_seconds() / 86400.0
+        age_days = (now - _as_naive_utc(observed)).total_seconds() / 86400.0
         if age_days > max_age_days:
             stale_count += 1
 
@@ -1086,7 +1128,7 @@ def validate_connector_data_freshness(
             source_b=source_b_name,
         )]
 
-    now = datetime.now()
+    now = _utcnow()
     stale_connectors: list[str] = []
 
     for conn in connectors:

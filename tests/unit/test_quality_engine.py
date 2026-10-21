@@ -126,8 +126,11 @@ class TestConsistencyScore(unittest.TestCase):
 
 class TestAccuracyScore(unittest.TestCase):
     def test_accurate(self):
+        # reference_values is keyed by FIELD NAME, not by record id. Keying it by id
+        # made every record miss every field and scored a perfectly accurate payload
+        # at 0.
         records = [{"id": 1, "value": 100.0}]
-        reference = {1: 100.0}
+        reference = {"value": 100.0}
         result = accuracy_score(records, reference)
         self.assertGreater(result.score, 0.9)
 

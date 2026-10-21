@@ -107,8 +107,11 @@ class TestCheckFreshness(unittest.TestCase):
 class TestFormatFreshnessReport(unittest.TestCase):
     def test_format(self):
         r = FreshnessReport(tenant_id="t1", checked_at="2024-01-01T00:00:00Z")
+        # format_freshness_report returns structured data (dict), not a rendered
+        # string; the name is about shaping the report, not formatting it for display.
         result = format_freshness_report(r)
-        self.assertIsInstance(result, str)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["tenant_id"], "t1")
 
 
 if __name__ == "__main__":

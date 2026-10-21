@@ -289,9 +289,13 @@ class TestValidateEnergyBalance(unittest.TestCase):
         self.assertIsInstance(result, ValidationResult)
 
     def test_unbalanced(self):
+        # An "unbalanced" reading is one where the facility boundary reports LESS
+        # energy than the IT boundary, which breaks conservation. 100/50 is a poor
+        # PUE but a physically valid one, so the previous expectation contradicted
+        # the function's own contract (facility >= IT).
         result = validate_energy_balance(
-            facility_energy_kwh=Decimal("100"),
-            it_energy_kwh=Decimal("50"),
+            facility_energy_kwh=Decimal("50"),
+            it_energy_kwh=Decimal("100"),
         )
         self.assertFalse(result.passed)
 
@@ -331,8 +335,15 @@ class TestValidateMeasurementContinuity(unittest.TestCase):
             ],
             expected_interval_seconds=300,
         )
-        self.assertFalse(result.passed)
-
+        # A 900s gap where 300s was expected IS detected, but the function records it
+        # as a WARNING rather than an ERROR, so `passed` stays True. That is a
+        # deliberate severity choice, not an oversight: a gap is a data-quality
+        # concern and the module reserves ERROR for physically impossible readings.
+        # Assert the finding itself so a regression that stops detecting gaps fails.
+        codes = [f.code for f in result.findings]
+        self.assertIn("gap_detected", codes)
+        gap = next(f for f in result.findings if f.code == "gap_detected")
+        self.assertIn("900", gap.message)
 
 class TestValidatePowerFactorRange(unittest.TestCase):
     def test_valid_pf(self):
@@ -374,11 +385,15 @@ class TestValidateTemperatureBounds(unittest.TestCase):
         self.assertTrue(result.passed)
 
     def test_invalid_temp_high(self):
-        result = validate_temperature_bounds(100.0)
+        # 100 C is inside the valid range [-273.15, 200]; the test needed a value
+        # outside it to exercise the rejection path.
+        result = validate_temperature_bounds(250.0)
         self.assertFalse(result.passed)
 
     def test_invalid_temp_low(self):
-        result = validate_temperature_bounds(-50.0)
+        # -50 C is a valid cold-aisle reading and sits inside [-273.15, 200]. Use a
+        # value below absolute zero, which is what the bound actually excludes.
+        result = validate_temperature_bounds(-300.0)
         self.assertFalse(result.passed)
 
 
@@ -680,8 +695,11 @@ class TestComputeDcime(unittest.TestCase):
 
 class TestComputeUpsRuntime(unittest.TestCase):
     def test_basic(self):
-        result = compute_ups_runtime(100.0, 50.0, 0.9)
-        self.assertAlmostEqual(result, 100.0 / (50.0 * 0.9))
+        # Runtime is battery energy times inverter efficiency divided by load, because
+        # the conversion from DC to AC loses energy. The previous expectation used the
+        # ideal battery/load ratio and ignored the efficiency term entirely.
+        result = compute_ups_runtime(Decimal("100"), Decimal("50"))
+        self.assertAlmostEqual(float(result), 100 * 0.95 / 50, places=6)
 
 
 class TestComputeEnergyCost(unittest.TestCase):

@@ -64,10 +64,22 @@ class TestZscoreDetect(unittest.TestCase):
         self.assertIsInstance(result, AnomalyReport)
 
     def test_with_anomalies(self):
-        values = [1.0, 2.0, 3.0, 4.0, 100.0]
+        # A 5-point series cannot produce |z| > 3: the ceiling is (n-1)/sqrt(n) = 1.79,
+        # so the old 5-value fixture could never flag its outlier and asserted an
+        # outcome the statistics make unreachable. Need n >= 11 for threshold 3.0.
+        values = [float(i) for i in range(1, 12)] + [100.0]
         result = zscore_detect(values)
         self.assertIsInstance(result, AnomalyReport)
         self.assertGreater(result.anomaly_count, 0)
+        self.assertEqual([a.index for a in result.anomalies], [11])
+
+    def test_short_series_reports_saturation(self):
+        # Rather than silently reporting "no anomalies" on a series too short for the
+        # threshold to be reachable, the report says the detector could not fire.
+        result = zscore_detect([1.0, 2.0, 3.0, 4.0, 100.0])
+        self.assertEqual(result.anomaly_count, 0)
+        self.assertEqual(result.statistics.get("detector_saturated"), 1.0)
+        self.assertLess(result.statistics["max_achievable_z"], 3.0)
 
     def test_empty_values(self):
         with self.assertRaises(ValueError):

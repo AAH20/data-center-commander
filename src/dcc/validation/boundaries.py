@@ -1258,14 +1258,29 @@ def validate_pue_range(pue: float) -> ValidationResult:
     return result
 
 
-def validate_cooling_efficiency(cop: float) -> ValidationResult:
-    """Validate cooling efficiency (COP)."""
+def validate_cooling_efficiency(cop: float, *, min_cop: float = 1.5) -> ValidationResult:
+    """Validate cooling efficiency (COP).
+
+    A chiller whose COP is at or below 1.0 removes less heat than the energy it
+    consumes, which is not a usable cooling plant. Only rejecting cop <= 0 let a COP
+    of 0.001 pass validation. min_cop defaults to 1.5, below which a data-centre
+    chiller is a fault rather than a reading; callers validating other equipment can
+    lower it explicitly.
+    """
     result = ValidationResult(passed=True)
     if cop <= 0:
         result.add(Finding(
             code="invalid_cop",
             severity=Severity.ERROR,
             message=f"COP {cop} must be positive",
+        ))
+    elif cop < min_cop:
+        result.add(Finding(
+            code="implausible_cop",
+            severity=Severity.ERROR,
+            message=f"COP {cop} is below the plausible floor of {min_cop}; "
+                    "a cooling plant cannot remove less heat than it consumes",
+            field="cop",
         ))
     return result
 
@@ -1561,9 +1576,23 @@ def compute_dcime(it: float, total: float) -> float:
 
 
 def compute_ups_runtime(battery: float, load: float, efficiency: float = 0.95) -> float:
-    """Compute UPS runtime."""
+    """Compute UPS runtime in hours.
+
+    Runtime is battery energy times inverter efficiency divided by load: the DC-to-AC
+    conversion loses energy, so the ideal battery/load ratio is not achievable.
+
+    Inputs are coerced to float first. Every other validator in this module accepts
+    Decimal or float, so a caller following that convention passed Decimal and hit
+    "unsupported operand type(s) for *: 'decimal.Decimal' and 'float'".
+    """
+    battery = float(battery)
+    load = float(load)
+    efficiency = float(efficiency)
+
     if load == 0:
         raise ValueError("Load must be non-zero")
+    if efficiency <= 0 or efficiency > 1:
+        raise ValueError(f"Efficiency {efficiency} must be in (0, 1]")
     return (battery * efficiency) / load
 
 

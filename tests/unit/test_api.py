@@ -44,7 +44,20 @@ class TestValidatePlacementSnapshot(unittest.TestCase):
                     "onprem": {"type": "onprem", "reference": "r1", "observed_on": "2024-01-01"},
                     "cloud": {"type": "cloud", "reference": "r2", "observed_on": "2024-01-01"},
                 },
-                "results": {},
+                # The validator requires a calculated on-prem result; an empty
+                # results block is genuinely incomplete, so the test has to supply one.
+                "results": {
+                    "onprem": {
+                        "calculated": True,
+                        "total_pv": 1000000.0,
+                        "currency": "USD",
+                    },
+                    "cloud": {
+                        "calculated": True,
+                        "total_pv": 1200000.0,
+                        "currency": "USD",
+                    },
+                },
             },
         }
         result = validate_placement_snapshot(body)
@@ -60,7 +73,20 @@ class TestValidatePlacementSnapshot(unittest.TestCase):
                     "onprem": {"type": "onprem", "reference": "r1", "observed_on": "2024-01-01"},
                     "cloud": {"type": "cloud", "reference": "r2", "observed_on": "2024-01-01"},
                 },
-                "results": {},
+                # The validator requires a calculated on-prem result; an empty
+                # results block is genuinely incomplete, so the test has to supply one.
+                "results": {
+                    "onprem": {
+                        "calculated": True,
+                        "total_pv": 1000000.0,
+                        "currency": "USD",
+                    },
+                    "cloud": {
+                        "calculated": True,
+                        "total_pv": 1200000.0,
+                        "currency": "USD",
+                    },
+                },
             },
         }
         with self.assertRaises(ValueError):
@@ -76,7 +102,20 @@ class TestValidatePlacementSnapshot(unittest.TestCase):
                     "onprem": {"type": "onprem", "reference": "r1", "observed_on": "2024-01-01"},
                     "cloud": {"type": "cloud", "reference": "r2", "observed_on": "2024-01-01"},
                 },
-                "results": {},
+                # The validator requires a calculated on-prem result; an empty
+                # results block is genuinely incomplete, so the test has to supply one.
+                "results": {
+                    "onprem": {
+                        "calculated": True,
+                        "total_pv": 1000000.0,
+                        "currency": "USD",
+                    },
+                    "cloud": {
+                        "calculated": True,
+                        "total_pv": 1200000.0,
+                        "currency": "USD",
+                    },
+                },
             },
         }
         with self.assertRaises(ValueError):
@@ -92,7 +131,20 @@ class TestValidatePlacementSnapshot(unittest.TestCase):
                     "onprem": {"type": "onprem", "reference": "r1", "observed_on": "2024-01-01"},
                     "cloud": {"type": "cloud", "reference": "r2", "observed_on": "2024-01-01"},
                 },
-                "results": {},
+                # The validator requires a calculated on-prem result; an empty
+                # results block is genuinely incomplete, so the test has to supply one.
+                "results": {
+                    "onprem": {
+                        "calculated": True,
+                        "total_pv": 1000000.0,
+                        "currency": "USD",
+                    },
+                    "cloud": {
+                        "calculated": True,
+                        "total_pv": 1200000.0,
+                        "currency": "USD",
+                    },
+                },
             },
         }
         with self.assertRaises(ValueError):
@@ -108,7 +160,20 @@ class TestValidatePlacementSnapshot(unittest.TestCase):
                     "onprem": {"type": "onprem", "reference": "r1", "observed_on": "2024-01-01"},
                     "cloud": {"type": "cloud", "reference": "r2", "observed_on": "2024-01-01"},
                 },
-                "results": {},
+                # The validator requires a calculated on-prem result; an empty
+                # results block is genuinely incomplete, so the test has to supply one.
+                "results": {
+                    "onprem": {
+                        "calculated": True,
+                        "total_pv": 1000000.0,
+                        "currency": "USD",
+                    },
+                    "cloud": {
+                        "calculated": True,
+                        "total_pv": 1200000.0,
+                        "currency": "USD",
+                    },
+                },
             },
         }
         with self.assertRaises(ValueError):
