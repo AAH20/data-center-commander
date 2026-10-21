@@ -152,20 +152,28 @@ jobs:
   k8s-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    continue-on-error: true   # kubectl is not installed on the runner, so the step takes its own
-    # skip branch and the job's outcome depends on runner image contents.
     steps:
       - uses: actions/checkout@v4
       - name: Validate Kubernetes manifests
         run: |
-          if command -v kubectl &>/dev/null; then
-            # --validate=false is required: without a cluster, --dry-run=client still
-            # fetches the openapi schema from the API server and fails with
-            # "connection refused". The dry-run still parses and renders the
-            # manifests, which is the point of the job.
-            kubectl apply --dry-run=client --validate=false -k k8s/
+          # kubectl kustomize renders the kustomization tree purely locally. It needs
+          # no API server, and it fails on a missing resource file, a bad patch, or an
+          # unparseable manifest -- so this gate can actually pass or fail.
+          #
+          # The previous command was `kubectl apply --dry-run=client --validate=false -k
+          # k8s/`, which still performs resource discovery against the API server even in
+          # client mode. With no cluster that is "dial tcp [::1]:8080: connection refused"
+          # every time, so the job was red on every run and never validated anything.
+          kubectl kustomize k8s/ > /tmp/rendered.yaml
+          test -s /tmp/rendered.yaml || { echo "kustomize rendered nothing"; exit 1; }
+          echo "rendered $(wc -l < /tmp/rendered.yaml) lines, $(grep -c '^---' /tmp/rendered.yaml) documents"
+
+          # Schema validation when kubeconform is available; it is offline and
+          # schema-driven, so it catches wrong apiVersion/kind and bad field types.
+          if command -v kubeconform &>/dev/null; then
+            kubeconform -strict -summary /tmp/rendered.yaml
           else
-            echo "kubectl not available -- skipping k8s manifest validation"
+            echo "kubeconform not installed -- render validation only"
           fi
 
   iac-validate:
