@@ -188,7 +188,11 @@ class TestBias(unittest.TestCase):
         self.assertEqual(bias([1.0, 2.0], [1.0, 2.0]), 0.0)
 
     def test_positive_bias(self):
-        self.assertAlmostEqual(bias([2.0, 3.0], [1.0, 2.0]), 1.0)
+        # bias() is mean(predicted - actual): over-forecasting yields positive bias.
+        self.assertAlmostEqual(bias([1.0, 2.0], [2.0, 3.0]), 1.0)
+
+    def test_under_forecast_is_negative(self):
+        self.assertAlmostEqual(bias([2.0, 3.0], [1.0, 2.0]), -1.0)
 
 
 class TestVarianceRatio(unittest.TestCase):
@@ -208,15 +212,24 @@ class TestEvaluateForecast(unittest.TestCase):
 class TestWalkForward(unittest.TestCase):
     def test_walk_forward(self):
         values = [float(i) for i in range(20)]
-        result = walk_forward(values, min_train_size=10, step_size=5, horizon=3)
+
+        def model(train):
+            return [train[-1]] * 3  # persist-last, 3 steps ahead
+
+        result = walk_forward(values, model, min_train_size=10, step_size=5, horizon=3)
         self.assertIsInstance(result, WalkForwardResult)
         self.assertGreater(len(result.folds), 0)
+        self.assertEqual(result.horizon, 3)
 
 
 class TestCrossValidate(unittest.TestCase):
     def test_cross_validate(self):
         values = [float(i) for i in range(20)]
-        result = cross_validate(values, n_splits=3)
+
+        def model(train):
+            return [train[-1]]
+
+        result = cross_validate(values, model, n_splits=3)
         self.assertIsInstance(result, CrossValidationResult)
         self.assertEqual(len(result.folds), 3)
 

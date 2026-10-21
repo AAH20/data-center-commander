@@ -126,7 +126,7 @@ class TestForecastResult(unittest.TestCase):
             average_rate=ZERO,
             peak_rate=ZERO,
             off_peak_rate=ZERO,
-            monthly_fixed_charge=ZERO,
+            monthly_fixed_cost=ZERO,
             annual_projected_cost=ZERO,
             currency="USD",
             generated_at=dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc),
@@ -138,16 +138,33 @@ class TestForecastResult(unittest.TestCase):
 
 class TestValidateTariffSpec(unittest.TestCase):
     def test_valid(self):
-        t = TariffSpec(currency="USD", timezone="America/New_York")
-        result = validate_tariff_spec(t)
-        self.assertIsInstance(result, bool)
+        # validate_tariff_spec parses a raw dict into a TariffSpec (it does not
+        # type-check an existing TariffSpec and return a bool).
+        result = validate_tariff_spec({
+            "currency": "USD",
+            "timezone": "America/New_York",
+            "energy_rates": {"flat": "0.12"},
+        })
+        self.assertIsInstance(result, TariffSpec)
+        self.assertEqual(result.currency, "USD")
+        self.assertEqual(result.energy_rates["flat"], Decimal("0.12"))
+
+    def test_rejects_non_dict(self):
+        with self.assertRaises(ValueError):
+            validate_tariff_spec(TariffSpec(currency="USD", timezone="America/New_York"))  # type: ignore[arg-type]
 
 
 class TestForecastPrices(unittest.TestCase):
     def test_flat(self):
-        t = TariffSpec(currency="USD", timezone="America/New_York")
-        result = forecast_prices(t, energy_kwh=Decimal("1000"), days=30)
+        t = build_flat_tariff(
+            currency="USD",
+            timezone="America/New_York",
+            rate=Decimal("0.12"),
+        )
+        result = forecast_prices(t, daily_kwh=Decimal("1000"), days=30)
         self.assertIsInstance(result, ForecastResult)
+        self.assertEqual(result.method, "flat")
+        self.assertEqual(len(result.points), 30 * HOURS_PER_DAY)
 
 
 class TestBuildFlatTariff(unittest.TestCase):
@@ -166,20 +183,26 @@ class TestBuildTouTariff(unittest.TestCase):
         t = build_tou_tariff(
             currency="USD",
             timezone="America/New_York",
-            peak_rate=Decimal("0.25"),
-            off_peak_rate=Decimal("0.10"),
+            rates={"on_peak": Decimal("0.25"), "off_peak": Decimal("0.10")},
         )
         self.assertIsInstance(t, TariffSpec)
+        self.assertEqual(t.energy_rates["on_peak"], Decimal("0.25"))
+        self.assertEqual(t.energy_rates["off_peak"], Decimal("0.10"))
 
 
 class TestBuildTieredTariff(unittest.TestCase):
     def test_build(self):
+        # Tiers are expressed as N thresholds + N+1 rates (no (threshold, rate)
+        # pairs, and no open-ended None threshold -- the final rate is implicit).
         t = build_tiered_tariff(
             currency="USD",
             timezone="America/New_York",
-            tiers=[(Decimal("1000"), Decimal("0.10")), (None, Decimal("0.08"))],
+            tier_thresholds=[Decimal("1000")],
+            tier_rates=[Decimal("0.10"), Decimal("0.08")],
         )
         self.assertIsInstance(t, TariffSpec)
+        self.assertEqual(t.tier_thresholds, [Decimal("1000")])
+        self.assertEqual(t.tier_rates, [Decimal("0.10"), Decimal("0.08")])
 
 
 if __name__ == "__main__":

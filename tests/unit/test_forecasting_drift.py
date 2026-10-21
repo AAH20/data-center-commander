@@ -102,27 +102,55 @@ class TestDriftDetector(unittest.TestCase):
         d = DriftDetector()
         reference = [float(i) for i in range(100)]
         current = [float(i) + 10 for i in range(100)]
-        result = d.detect(reference, current)
+        # detect() only takes the incoming window; the baseline is installed
+        # separately via set_reference().
+        d.set_reference(reference)
+        result = d.detect(current)
         self.assertIsInstance(result, list)
+        self.assertTrue(all(isinstance(r, DriftResult) for r in result))
+        self.assertTrue(any(r.detected for r in result))
 
 
 class TestPerformanceTracker(unittest.TestCase):
     def test_creation(self):
-        t = PerformanceTracker()
+        # PerformanceTracker is per-model/tenant, so both ids are required.
+        t = PerformanceTracker(model_id="m1", tenant_id="t1")
         self.assertIsNotNone(t)
+        self.assertIsNone(t.reference)
 
     def test_record(self):
-        t = PerformanceTracker()
-        t.record("m1", [1.0, 2.0], [1.1, 2.1])
-        self.assertEqual(t.snapshot_count(), 1)
+        t = PerformanceTracker(model_id="m1", tenant_id="t1", reference_windows=2)
+        t.record(
+            ModelPerformanceSnapshot(
+                model_id="m1",
+                tenant_id="t1",
+                window_start=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                window_end=datetime(2024, 1, 2, tzinfo=timezone.utc),
+                predictions=2,
+                actuals=2,
+                errors=[0.1, 0.1],
+            )
+        )
+        # snapshot_count is a property, not a method.
+        self.assertEqual(t.snapshot_count, 1)
 
 
 class TestDetectDrift(unittest.TestCase):
     def test_detect(self):
         reference = [float(i) for i in range(100)]
         current = [float(i) for i in range(100)]
+        # Module-level detect_drift runs every enabled method and returns one
+        # DriftResult per method.
         result = detect_drift(reference, current)
-        self.assertIsInstance(result, DriftResult)
+        self.assertIsInstance(result, list)
+        self.assertGreater(len(result), 0)
+        self.assertTrue(all(isinstance(r, DriftResult) for r in result))
+        # Identical distributions: the distribution-comparing methods must stay
+        # quiet. CUSUM is deliberately order-sensitive and does alarm on a
+        # monotone ramp, so it is excluded from this check.
+        by_method = {r.method: r for r in result}
+        self.assertFalse(by_method[DriftMethod.MEAN_SHIFT].detected)
+        self.assertFalse(by_method[DriftMethod.PSI].detected)
 
 
 class TestComputePsi(unittest.TestCase):
@@ -137,8 +165,14 @@ class TestComputeKsStatistic(unittest.TestCase):
     def test_ks(self):
         reference = [float(i) for i in range(100)]
         current = [float(i) for i in range(100)]
+        # Returns a (statistic, p_value) tuple.
         result = compute_ks_statistic(reference, current)
-        self.assertGreaterEqual(result, 0)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
+        statistic, p_value = result
+        self.assertGreaterEqual(statistic, 0.0)
+        self.assertGreaterEqual(p_value, 0.0)
+        self.assertLessEqual(p_value, 1.0)
 
 
 if __name__ == "__main__":

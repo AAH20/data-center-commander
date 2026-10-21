@@ -151,7 +151,9 @@ class TestExponentialSmoothingForecaster(unittest.TestCase):
 
 class TestHoltWintersForecaster(unittest.TestCase):
     def test_forecast(self):
-        f = HoltWintersForecaster(season_length=3)
+        # Holt-Winters here is double exponential smoothing (level + trend):
+        # it takes alpha/beta, not a season_length.
+        f = HoltWintersForecaster(alpha=0.3, beta=0.1)
         obs = [
             LoadObservation(timestamp=datetime(2024, 1, 1, i, tzinfo=timezone.utc), value=float(i % 3 + 1))
             for i in range(1, 13)
@@ -178,8 +180,14 @@ class TestSelectBestModel(unittest.TestCase):
             LoadObservation(timestamp=datetime(2024, 1, 1, i, tzinfo=timezone.utc), value=float(i))
             for i in range(1, 11)
         ]
-        result = select_best_model(obs, horizon=3)
-        self.assertIsInstance(result, str)
+        # select_best_model returns (model_name, ForecastResult); the horizon is
+        # not a parameter -- validation_split / interval_minutes are.
+        result = select_best_model(obs)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
+        name, forecast = result
+        self.assertIsInstance(name, str)
+        self.assertIsInstance(forecast, ForecastResult)
 
 
 if __name__ == "__main__":

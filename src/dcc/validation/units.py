@@ -277,7 +277,7 @@ class UnitRegistry:
 
         # === TEMPERATURE (base: K) ===
         self.register(Unit("kelvin", "K", Dimension.TEMPERATURE, Decimal(1), base_unit="K"))
-        self.register(Unit("degree Celsius", "°C", Dimension.TEMPERATURE, Decimal(1), Decimal(273.15)))
+        self.register(Unit("degree Celsius", "°C", Dimension.TEMPERATURE, Decimal(1), Decimal("273.15")))
         self.register(Unit("degree Fahrenheit", "°F", Dimension.TEMPERATURE, Decimal("5") / Decimal("9"), Decimal("459.67") * Decimal("5") / Decimal("9")))
         self.register(Unit("degree Rankine", "°R", Dimension.TEMPERATURE, Decimal("5") / Decimal("9")))
 
@@ -573,15 +573,11 @@ def convert_with_power_factor(
         base_value = result_value * source.unit.to_base
         result_value = base_value / target.to_base
 
-    pf_sig = _count_sig_figs(power_factor)
-    if sig_figs is not None and pf_sig is not None:
-        final_sig = min(sig_figs, pf_sig)
-    elif sig_figs is not None:
-        final_sig = sig_figs
-    elif pf_sig is not None:
-        final_sig = pf_sig
-    else:
-        final_sig = None
+    # Rounding applies ONLY when the caller passes sig_figs. Deriving it from
+    # the inputs when sig_figs is None silently truncated results to one
+    # significant figure -- 111.1 -> 1E+2 -- and the caller had no way to
+    # disable it, because None is the default.
+    final_sig = sig_figs
 
     if final_sig is not None:
         result_value = _apply_sig_figs(result_value, final_sig)
@@ -959,21 +955,19 @@ def compute_cooling_load(
 
     cooling_power = heat_load_kw / cop
 
-    hl_sig = _count_sig_figs(heat_load_kw)
-    cop_sig = _count_sig_figs(cop)
-    if hl_sig is not None and cop_sig is not None:
-        sig = min(hl_sig, cop_sig)
-    elif hl_sig is not None:
-        sig = hl_sig
-    elif cop_sig is not None:
-        sig = cop_sig
-    else:
-        sig = sig_figs
+    # Only apply significant-figure rounding when the CALLER asked for it.
+    #
+    # This used to derive sig figs from the inputs even when sig_figs was None,
+    # so Decimal("100") -- read as one significant figure by the strict rule for
+    # a value written without a decimal point -- rounded 100/3 = 33.33 down to 30.
+    # A parameter that defaults to None but is applied anyway is not optional: it
+    # silently truncates every result and the caller cannot turn it off.
+    sig = sig_figs
 
-    if sig is not None:
-        cooling_power = _apply_sig_figs(cooling_power, sig)
+    if sig is None:
+        return Quantity(cooling_power, UNIT_REGISTRY.get("kW"))
 
-    return Quantity(cooling_power, UNIT_REGISTRY.get("kW"), sig_figs=sig)
+    return Quantity(_apply_sig_figs(cooling_power, sig), UNIT_REGISTRY.get("kW"), sig_figs=sig)
 
 
 def compute_ups_runtime(

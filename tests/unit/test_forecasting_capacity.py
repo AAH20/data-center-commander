@@ -131,16 +131,18 @@ class TestForecastCapacity(unittest.TestCase):
 
 class TestForecastFromSnapshots(unittest.TestCase):
     def test_forecast(self):
-        points = [
-            CapacityDataPoint(
-                observed_at=datetime(2024, 1, i, tzinfo=timezone.utc),
-                usable=100.0 + i,
-                reserved=50.0,
-                policy_reserve=10.0,
-                forecast_peak=None,
-                quality_status="good",
-                scenario="base",
-            )
+        # forecast_from_snapshots is the raw-dict adapter: it parses snapshot
+        # dicts (not CapacityDataPoint objects) and hands them to forecast_capacity.
+        snapshots = [
+            {
+                "observed_at": datetime(2024, 1, i, tzinfo=timezone.utc),
+                "usable": 100.0 + i,
+                "reserved": 50.0,
+                "policy_reserve": 10.0,
+                "forecast_peak": None,
+                "quality_status": "good",
+                "scenario": "base",
+            }
             for i in range(1, 11)
         ]
         result = forecast_from_snapshots(
@@ -148,10 +150,11 @@ class TestForecastFromSnapshots(unittest.TestCase):
             dimension="power_kw",
             unit="kW",
             scenario="base",
-            snapshots=points,
+            snapshots=snapshots,
             horizon_days=30,
         )
         self.assertIsInstance(result, CapacityForecast)
+        self.assertEqual(result.data_points_used, len(snapshots))
 
 
 class TestSelectBestMethod(unittest.TestCase):
@@ -186,8 +189,22 @@ class TestComputeCapacityAtRisk(unittest.TestCase):
             )
             for i in range(1, 11)
         ]
-        result = compute_capacity_at_risk(points)
-        self.assertIsInstance(result, float)
+        forecast = forecast_capacity(
+            facility_id="f1",
+            dimension="power_kw",
+            unit="kW",
+            scenario="base",
+            data_points=points,
+            horizon_days=30,
+        )
+        # compute_capacity_at_risk takes an existing forecast plus the capacity
+        # threshold to breach, and returns a report dict (not a scalar float).
+        result = compute_capacity_at_risk(forecast, threshold=110.0)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["threshold"], 110.0)
+        self.assertEqual(result["dimension"], "power_kw")
+        self.assertIn(result["severity"], {"none", "low", "medium", "high"})
+        self.assertFalse(result["execution_permitted"])
 
 
 if __name__ == "__main__":

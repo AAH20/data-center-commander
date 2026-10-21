@@ -119,12 +119,17 @@ class TestOptimizeMaintenanceWindows(unittest.TestCase):
             for i in range(24)
         ]
         constraints = MaintenanceConstraint()
+        # Signature is keyword-only and tenant-scoped: tenant_id + risk_profiles
+        # (not "assets"). Anchor "now" to the forecast window.
         result = optimize_maintenance_windows(
-            assets=assets,
+            tenant_id="t1",
+            risk_profiles=assets,
             forecast_points=forecast,
             constraints=constraints,
+            now=datetime(2024, 1, 1, tzinfo=timezone.utc),
         )
         self.assertIsInstance(result, MaintenanceSchedule)
+        self.assertEqual(result.tenant_id, "t1")
 
 
 class TestScheduleToDict(unittest.TestCase):

@@ -137,7 +137,8 @@ class TestExtractFeatures(unittest.TestCase):
 
     def test_with_seasonality(self):
         values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
-        result = extract_features(values, seasonality=3)
+        # The seasonal cycle length is called `period`, not `seasonality`.
+        result = extract_features(values, period=3)
         self.assertIsInstance(result, dict)
 
 

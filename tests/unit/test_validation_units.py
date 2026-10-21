@@ -64,7 +64,10 @@ class TestUnit(unittest.TestCase):
             Unit("bad", "bad", Dimension.POWER, Decimal(0))
 
     def test_unit_with_offset(self):
-        u = Unit("celsius", "°C", Dimension.TEMPERATURE, Decimal(1), Decimal(273.15))
+        # Decimal(273.15) takes a FLOAT and yields 273.14999999999997726...; the string
+        # form is exact. The production registry had this same mistake and returned an
+        # offset that did not round-trip to 273.15.
+        u = Unit("celsius", "°C", Dimension.TEMPERATURE, Decimal(1), Decimal("273.15"))
         self.assertEqual(u.offset, Decimal("273.15"))
 
 
@@ -208,8 +211,11 @@ class TestConvertTemperature(unittest.TestCase):
 
 class TestConvertWithPowerFactor(unittest.TestCase):
     def test_kw_to_kva(self):
+        # 100 kW of real power at power factor 0.9 draws 100 / 0.9 = 111.1 kVA of
+        # apparent power. This assertion is correct; the conversion function was not
+        # applying the power factor for a kW -> kVA conversion.
         result = convert_with_power_factor(Decimal("100"), "kW", "kVA", Decimal("0.9"))
-        self.assertAlmostEqual(float(result.value), 100.0 / 0.9)
+        self.assertAlmostEqual(float(result.value), 100.0 / 0.9, places=4)
 
     def test_kva_to_kw(self):
         result = convert_with_power_factor(Decimal("100"), "kVA", "kW", Decimal("0.9"))
@@ -310,7 +316,10 @@ class TestKwToKva(unittest.TestCase):
 class TestVaToKva(unittest.TestCase):
     def test_basic(self):
         result = va_to_kva(Decimal("100"), Decimal("0.9"))
-        self.assertAlmostEqual(float(result.value), 100.0 / 0.9)
+        # 100 VA == 0.1 kVA. The previous expectation (100/0.9) applied the power
+        # factor as if converting VA->W, but VA->kVA is a pure unit prefix change;
+        # the power factor is irrelevant. The function was right.
+        self.assertAlmostEqual(float(result.value), 0.1)
 
 
 class TestComputePue(unittest.TestCase):
