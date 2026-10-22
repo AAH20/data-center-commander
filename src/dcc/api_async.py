@@ -266,6 +266,12 @@ async def get_pool():
             timeout=5,
             kwargs={"row_factory": dict_row, "prepare_threshold": None},
         )
+        # The queries in this module are asyncpg-style ($1 placeholders, fetch/fetchrow)
+        # while the pool is psycopg3. Without this wrapper nothing in the module can
+        # execute. See dcc.pgcompat for why the queries were not rewritten instead.
+        from .pgcompat import PgPool
+
+        _pool = PgPool(_pool)
         try:
             await _pool.open()
             await _pool.wait(timeout=5)
@@ -1329,6 +1335,145 @@ async def list_procedures(
         has_more=has_more,
         next_cursor=encode_cursor(offset + limit) if has_more else None,
     ).__dict__
+
+
+@app.get("/v2/dr/policies")
+async def list_backup_policies(
+    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    enabled: bool | None = None,
+    limit: int = Query(100, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    """Backup policies for a tenant.
+
+    next_run_at is returned because it is the scheduler's only input: a policy with no
+    next run is not scheduled, however enabled it looks.
+    """
+    offset = decode_cursor(cursor) if cursor else 0
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        clause = "tenant_id=$1::uuid"
+        args: list = [tenant_id]
+        if enabled is not None:
+            args.append(enabled)
+            clause += f" AND enabled=${len(args)}"
+
+        rows = await conn.fetch(
+            "SELECT policy_id::text,name,policy_type,schedule,custom_cron,retention_days,"
+            "tables,compression,verify_after,enabled,status,tags,"
+            "created_at,updated_at,last_run_at,next_run_at "
+            f"FROM dcc.backup_policies WHERE {clause} "
+            "ORDER BY name LIMIT $%d OFFSET $%d" % (len(args) + 1, len(args) + 2),
+            *args,
+            limit + 1,
+            offset,
+        )
+
+    has_more = len(rows) > limit
+    items = [dict(r) for r in rows[:limit]]
+    return Page(
+        items=items,
+        total=len(items),
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_cursor=encode_cursor(offset + limit) if has_more else None,
+    ).__dict__
+
+
+@app.get("/v2/dr/summary")
+async def dr_summary(tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$")):
+    """Disaster-recovery readiness for a tenant, computed from stored state.
+
+    RTO and RPO compliance are read from dr_metric_measurements, which records the
+    target in force at the time of each measurement. A measurement whose actual was
+    never recorded is excluded rather than counted as zero -- an unmeasured RTO
+    reported as 0 seconds would read as an excellent result and inflate the
+    compliance rate it is supposed to prove.
+
+    Failover counts are absent because failover procedures are not modelled in this
+    schema. Reporting 0 would be indistinguishable from "none configured".
+    """
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        policy = await conn.fetchrow(
+            "SELECT count(*) AS total, "
+            "count(*) FILTER (WHERE enabled) AS active, "
+            "count(*) FILTER (WHERE enabled AND next_run_at IS NOT NULL "
+            "               AND next_run_at <= now()) AS due "
+            "FROM dcc.backup_policies WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
+        plans = await conn.fetchrow(
+            "SELECT count(*) AS total, count(*) FILTER (WHERE enabled) AS active "
+            "FROM dcc.dr_test_plans WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
+        executions = await conn.fetchrow(
+            "SELECT count(*) AS total, "
+            "count(*) FILTER (WHERE status='succeeded') AS succeeded, "
+            "count(*) FILTER (WHERE status='failed') AS failed, "
+            "max(completed_at) AS last_run "
+            "FROM dcc.dr_test_executions WHERE tenant_id=$1::uuid",
+            tenant_id,
+        )
+        metrics = await conn.fetch(
+            "SELECT metric_type, "
+            "count(*) AS samples, "
+            "count(*) FILTER (WHERE status='compliant') AS compliant, "
+            "count(*) FILTER (WHERE status='warning') AS warning, "
+            "count(*) FILTER (WHERE status='breach') AS breach, "
+            "avg(value_seconds) AS avg_seconds, "
+            "percentile_cont(0.95) WITHIN GROUP (ORDER BY value_seconds) AS p95_seconds "
+            "FROM dcc.dr_metric_measurements WHERE tenant_id=$1::uuid "
+            "GROUP BY metric_type",
+            tenant_id,
+        )
+
+    by_metric = {
+        r["metric_type"]: {
+            "samples": r["samples"],
+            "compliant": r["compliant"],
+            "warning": r["warning"],
+            "breach": r["breach"],
+            "avg_seconds": float(r["avg_seconds"]) if r["avg_seconds"] is not None else None,
+            "p95_seconds": float(r["p95_seconds"]) if r["p95_seconds"] is not None else None,
+            "compliance_rate": (
+                round(r["compliant"] / r["samples"], 4) if r["samples"] else None
+            ),
+        }
+        for r in metrics
+    }
+
+    total_exec = executions["total"] or 0
+    pass_rate = round(executions["succeeded"] / total_exec, 4) if total_exec else None
+
+    return {
+        "tenant_id": tenant_id,
+        "evaluation_basis": "stored_state",
+        "backup_policies": {
+            "total": policy["total"],
+            "active": policy["active"],
+            "due": policy["due"],
+        },
+        "test_plans": {"total": plans["total"], "active": plans["active"]},
+        "test_executions": {
+            "total": total_exec,
+            "succeeded": executions["succeeded"],
+            "failed": executions["failed"],
+            "pass_rate": pass_rate,
+            "last_run_at": _jsonable(executions["last_run"]),
+        },
+        "rto": by_metric.get("rto"),
+        "rpo": by_metric.get("rpo"),
+        "not_modelled": ["failover_procedures", "failover_executions"],
+    }
 
 
 @app.get("/v2/connectors")
