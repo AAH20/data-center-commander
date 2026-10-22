@@ -1,5 +1,16 @@
 # Data Center Commander
 
+## Publisher
+
+**Apex Growth Systems LLC** — U.S. registered company (Arizona, ACC 25121151,
+formed 2026-09-14; EIN 61-2391219). Founder: Ahmed Hassan, AI Infrastructure &
+Multi-Cloud Architect, CISO/GRC specialist.
+
+This project can be incorporated in any other country around the globe when needed.
+
+Contact: aah@a2zsoc.com | https://a2zsoc.com
+
+
 ![Overview tour across the synthetic demo sections](docs/media/overview.gif)
 
 **An open, operator-centered system for governing the full data-center lifecycle—from utility boundary to useful compute.**
@@ -11,8 +22,9 @@
 > analytics, and evidence—with read-only integrations and explicit safety
 > boundaries.
 
-**Status:** local decision-support prototype. Vendor adapters, validated
-forecasts, production IAM, and facility control are not delivered.
+**Status:** decision-support system with enforced authentication and tenant
+isolation. Vendor adapters, validated forecasts at production accuracy, and
+facility control are not delivered.
 
 ---
 
@@ -54,7 +66,7 @@ flowchart LR
   ADAPTER --> QUALITY[Identity, units, freshness and provenance checks]
   QUALITY --> DB[(Portable PostgreSQL schema)]
   OP[Operator] --> UI[Multi-tab command center]
-  UI --> API[Loopback read-only API]
+  UI --> API[Authenticated tenant-scoped API]
   API --> DB
   DB --> BI[Reproducible KPIs and continuous BI]
   BI --> MODELS[Trend and maintenance analysis]
@@ -231,65 +243,139 @@ Test coverage includes:
 
 ## API Reference
 
-All endpoints are loopback-only and tenant-scoped. Every request must include `?tenant_id=<UUID>`.
+27 routes, all under `/v2`. Requests are authenticated with an API key and scoped to
+the key's tenant; the console shell at `/` is public because it carries no tenant data.
 
-### Health & Status
+> Earlier revisions of this file documented ten `/v1/*` routes. **No `/v1` route has
+> ever been served** — the app mounts `/v2` only, so every one of those paths returned
+> 404. The table below is generated from the app's own route table.
+
+### Authentication
+
+Every `/v2` route requires a key, sent as `X-API-Key: <key>` or
+`Authorization: Bearer <key>`.
+
+| Situation | Status |
+|---|---|
+| No credentials | `401` |
+| Invalid, expired, or revoked key | `401` |
+| Valid key, `tenant_id` belonging to another tenant | `403` |
+
+Missing and invalid keys return the same code so the endpoint is not a key-enumeration
+oracle. `DCC_ALLOW_ANONYMOUS=true` disables enforcement for local development and logs
+a warning; it is never appropriate in a deployment.
+
+Mint a key:
+
+```bash
+python -m dcc.keys_cli create --tenant <uuid> --name ops
+```
+
+Then set `DCC_API_KEYS` to the printed `tenant:hash` entry. `DCC_REQUIRE_KEYS=true`
+turns a locked-out configuration into a startup failure instead of a warning.
+
+### Health and operations
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/healthz` | Process liveness |
 | GET | `/readyz` | Database, schema, and RLS readiness |
+| GET | `/metrics` | Prometheus text exposition, labelled by route template |
+| GET | `/` | Console shell (public, no tenant data) |
 
-### Core Collections
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/overview` | Facility count, latest KPI values, open workflow count, latest telemetry timestamp, synthetic data flag |
-| GET | `/v1/facilities` | List facilities with site codes and names |
-| GET | `/v1/assets` | Asset inventory with type, lifecycle state, criticality, facility/space |
-| GET | `/v1/workflows` | Operational workflows with type, stage, status, priority, owner, due dates |
-| GET | `/v1/connectors` | Connector registry with vendor, adapter, status, scopes, last success |
-| GET | `/v1/capacity` | Capacity snapshots by facility, dimension, and scenario |
-| GET | `/v1/evidence` | Hash-chained evidence events (sequence, type, actor, subject, hash) |
-| GET | `/v1/topology` | Asset relationship graph (nodes and edges with confidence) |
-
-### Analytics & Costs
+### Collections
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v1/analytics` | KPI series, KPI quality summary, telemetry quality, workflow health, model policy |
-| GET | `/v1/costs` | Estimate projects with rollups, price observations, cost actuals; supports `?demo=synthetic` to reveal synthetic data |
+| GET | `/v2/overview` | Facility count, latest KPIs, open workflows, latest telemetry |
+| GET | `/v2/facilities` | Facilities with site codes and names |
+| GET | `/v2/assets` | Asset inventory with type, lifecycle state, criticality |
+| GET | `/v2/workflows` | Operational workflows with stage, status, owner, due dates |
+| GET | `/v2/connectors` | Connector registry including scopes and allowed destinations |
+| GET | `/v2/capacity` | Capacity snapshots by facility, dimension, and scenario |
+| GET | `/v2/analytics` | KPI series, KPI quality, telemetry quality, workflow health |
+| GET | `/v2/costs` | Estimate projects with rollups, prices, actuals |
 
-### Pricing (Live)
+### Evidence and provenance
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v1/pricing/azure-retail` | Azure retail prices. Params: `service_name`, `region`, `sku`, `currency` |
-| GET | `/v1/pricing/google-cloud-retail` | Google Cloud billing catalog. Params: `service_name`, `region`, `sku_query`, `currency` |
+| GET | `/v2/evidence` | Hash-chained evidence events in sequence order |
+| GET | `/v2/evidence/verify` | Verify the chain. Bounded by `max_events`; a truncated scan returns `chain_valid: null`, never `true` |
 
-### Placement Scenarios
+### Procedures and disaster recovery
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v1/placement/scenarios` | List saved draft snapshots (tenant-scoped, hashed) |
-| POST | `/v1/placement/scenarios` | Save a new draft snapshot. Body: `{tenant_id, name, payload}` with schema version `placement-tco-comparison.v1` |
+| GET | `/v2/procedures` | Runbooks with risk class, roles, hazards, entry and exit criteria. Collapses to the current version per key |
+| GET | `/v2/dr/policies` | Backup policies with schedule and next run |
+| GET | `/v2/dr/summary` | Policy counts, due count, test pass rate, RTO and RPO compliance |
 
-### Query Parameters
+### Economics and forecasting
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/v2/economics/tco` | Total cost of ownership from explicit assumptions |
+| POST | `/v2/economics/tco/compare` | Compare scenarios by present value |
+| POST | `/v2/forecast/capacity` | Capacity projection with the at-risk window |
+| POST | `/v2/forecast/failure` | Equipment failure risk per asset |
+| POST | `/v2/forecast/drift` | Drift detection across a metric series |
+
+### Optimisation
+
+Called with a request body. These compute a recommendation; none of them act on one.
+
+| Method | Path |
+|---|---|
+| POST | `/v2/optimize/placement` |
+| POST | `/v2/optimize/capacity-allocation` |
+| POST | `/v2/optimize/energy-allocation` |
+| POST | `/v2/optimize/maintenance-routing` |
+| POST | `/v2/optimize/network-zoning` |
+| POST | `/v2/cache/invalidate` |
+
+### Governance
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v2/compliance/controls` | Control catalogue (SOC 2, ISO 27001, PCI-DSS, HIPAA, NIST 800-53) |
+| GET | `/v2/compliance/scan` | Per-control status, with `configuration_gaps` naming controls that read variables the app ignores |
+| GET | `/v2/security/posture` | Weighted posture score across five dimensions from observed process state |
+
+### Query parameters
 
 | Parameter | Default | Description |
 |---|---|---|
-| `tenant_id` | (required) | Tenant UUID |
-| `window_days` | `30` | Analytics window (1–90 days) |
-| `demo` | — | Set to `synthetic` to reveal synthetic demo data |
+| `tenant_id` | required | Tenant UUID; must match the authenticated key |
+| `limit` | `100` | Page size, 1–1000 |
+| `cursor` | — | Opaque pagination cursor |
+| `window_days` | `30` | Analytics window, 1–90 |
+| `demo` | — | `synthetic` reveals seeded demo data on `/v2/costs` |
+| `max_events` | `10000` | Evidence verification cap, max 100000 |
 
-### Response Conventions
+### Response conventions
 
-- All responses include `read_only: true` and `execution_permitted: false`
-- Synthetic data is flagged with `synthetic: true` and `synthetic_demo_mode`
-- Errors return appropriate HTTP status codes with descriptive error keys
-- All list endpoints have bounded result sets (LIMIT clauses)
+Collection endpoints return a page envelope:
 
----
+```json
+{"items": [], "total": 0, "limit": 100, "offset": 0, "has_more": false, "next_cursor": null}
+```
+
+Every `/v2` JSON object response carries `read_only: true` and
+`execution_permitted: false`, injected by middleware after the handler runs rather than
+set per-handler.
+
+This is the advisory guarantee, and it previously held only on routes where someone had
+remembered to add the fields: `/v2/overview` carried them, `/v2/facilities` did not.
+Enforcing it in one place makes it uniform and fail-closed, so a new endpoint cannot
+omit it. A handler that sets either field explicitly keeps its own value.
+
+Errors return a JSON body with a machine-readable key:
+
+```json
+{"detail": {"error": "unknown_framework", "value": "made_up", "accepted": ["soc2", "iso27001"]}}
+```
+
 
 ## Database Schema
 
@@ -1128,10 +1214,14 @@ data-center-commander/
 
 Existing databases created before the cost-intelligence module should apply migrations in order:
 
-1. [`database/migrations/001_cost_intelligence.sql`](database/migrations/001_cost_intelligence.sql) — cost books, price observations, estimates, actuals
-2. [`database/migrations/002_lifecycle_rollup_fix.sql`](database/migrations/002_lifecycle_rollup_fix.sql) — corrected lifecycle rollup
-3. [`database/migrations/003_estimate_price_link_validation.sql`](database/migrations/003_estimate_price_link_validation.sql) — price pinning trigger
-4. [`database/migrations/004_placement_comparison_snapshots.sql`](database/migrations/004_placement_comparison_snapshots.sql) — immutable draft snapshots
+1. [`001_cost_intelligence.sql`](database/migrations/001_cost_intelligence.sql) — cost books, price observations, estimates, actuals
+2. [`002_lifecycle_rollup_fix.sql`](database/migrations/002_lifecycle_rollup_fix.sql) — corrected lifecycle rollup
+3. [`003_estimate_price_link_validation.sql`](database/migrations/003_estimate_price_link_validation.sql) — price pinning trigger
+4. [`004_placement_comparison_snapshots.sql`](database/migrations/004_placement_comparison_snapshots.sql) — immutable draft snapshots
+5. [`005_performance_indexes.sql`](database/migrations/005_performance_indexes.sql) — query indexes
+6. [`006_performance_optimization.sql`](database/migrations/006_performance_optimization.sql) — further index work
+7. [`007_evidence_verifier_single_source.sql`](database/migrations/007_evidence_verifier_single_source.sql) — removes the database-side verifier that disagreed with the writer
+8. [`008_disaster_recovery.sql`](database/migrations/008_disaster_recovery.sql) — backup policies, DR test plans and executions, RTO/RPO measurements, all under RLS
 
 New databases receive all tables and corrected rollup through
 `database/schema.sql` plus migration 004. Existing synthetic demo databases can add the cost-only
@@ -1170,10 +1260,13 @@ The test suite covers:
 | 5 · Production hardening | AuthN/AuthZ, tenant isolation, secret manager, migrations, backups/restore, observability, incident handling, HA | Threat review, penetration tests, recovery drill, SLOs, runbooks, privacy/retention signoff |
 | 6 · Certified ecosystem | OEM/cloud/facility adapter conformance, optional enterprise analytics and support | Conformance suite and customer-controlled credentials/export; portable core remains OSS |
 
-The roadmap is an implementation sequence, not a readiness claim. The current
-local API is unauthenticated and must remain loopback-only; vendor/cloud live
-adapters, validated forecasts, production IAM and safety-control integration
-are not delivered by this starter.
+The roadmap is an implementation sequence, not a readiness claim. Authentication,
+tenant isolation, migrations, observability and evidence verification are now
+delivered and tested; vendor/cloud live adapters, forecasts validated at production
+accuracy, external audit and safety-control integration are not. The API no longer
+requires loopback-only deployment for access control, but it has not been
+penetration-tested by a third party and should not be exposed to the public internet
+without that review.
 
 ---
 

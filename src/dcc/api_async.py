@@ -1476,6 +1476,50 @@ async def dr_summary(tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$")):
     }
 
 
+@app.middleware("http")
+async def safety_contract(request: Request, call_next):
+    """Guarantee the advisory contract on every /v2 JSON object response.
+
+    The system's premise is that recommendations stay advisory: nothing the API
+    returns authorizes action. That was expressed per-handler, so /v2/overview carried
+    read_only and execution_permitted while /v2/facilities did not -- the guarantee
+    held on whichever routes someone remembered.
+
+    Enforcing it here makes the invariant uniform and makes it fail closed: a new
+    endpoint cannot forget it, because it is applied after the handler runs.
+
+    A handler that sets these explicitly keeps its value; the middleware only fills
+    them in when absent. Non-object JSON (lists), streaming responses and non-/v2
+    paths are passed through untouched.
+    """
+    response = await call_next(request)
+
+    if not request.url.path.startswith("/v2"):
+        return response
+    if not response.headers.get("content-type", "").startswith("application/json"):
+        return response
+    if hasattr(response, "body_iterator"):
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        headers = dict(response.headers)
+        status = response.status_code
+        media_type = response.media_type
+    else:
+        return response
+
+    try:
+        payload = __import__("json").loads(body)
+    except Exception:
+        return Response(content=body, status_code=status, headers=headers, media_type=media_type)
+
+    if isinstance(payload, dict):
+        payload.setdefault("read_only", True)
+        payload.setdefault("execution_permitted", False)
+        body = __import__("json").dumps(payload).encode()
+        headers.pop("content-length", None)
+
+    return Response(content=body, status_code=status, headers=headers, media_type=media_type)
+
+
 @app.get("/v2/connectors")
 async def list_connectors(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
