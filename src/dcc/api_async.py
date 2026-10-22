@@ -1227,6 +1227,110 @@ async def compliance_scan(framework: str | None = None):
     }
 
 
+def _select_current_versions(rows: list[dict], *, latest_only: bool) -> list[dict]:
+    """Mark each row is_current and optionally collapse to the current version.
+
+    Pure function over rows so the selection rule can be tested without a database --
+    the rule is the part that can be wrong, and "which runbook version is in force" is
+    not something to verify by reading.
+    """
+    by_key: dict[str, list[dict]] = {}
+    for row in rows:
+        item = dict(row)
+        by_key.setdefault(item["procedure_key"], []).append(item)
+
+    selected: list[dict] = []
+    for versions in by_key.values():
+        versions.sort(key=lambda r: _version_sort_key(r["version"]), reverse=True)
+        current_id = versions[0]["id"]
+        for item in versions:
+            item["is_current"] = item["id"] == current_id
+        selected.extend([versions[0]] if latest_only else versions)
+
+    selected.sort(key=lambda r: (r["procedure_key"], _version_sort_key(r["version"])))
+    return selected
+
+
+def _version_sort_key(version: str):
+    """Natural sort key for a free-text version.
+
+    ORDER BY version DESC compares text, so "1.9" sorts above "1.10" and the current
+    version of a runbook would be the wrong one -- for a document whose whole purpose is
+    to be followed during an incident, that is a safety issue, not a cosmetic one.
+
+    Splitting on digit runs and comparing ints where both sides are numeric gives the
+    expected order: 1.9 < 1.10. Non-numeric segments compare as text, so "v2-beta" and
+    "2" still sort deterministically rather than raising.
+    """
+    key = []
+    for part in __import__("re").split(r"(\d+)", (version or "").strip()):
+        if not part:
+            continue
+        key.append((1, int(part), "") if part.isdigit() else (0, 0, part.lower()))
+    return tuple(key)
+
+
+@app.get("/v2/procedures")
+async def list_procedures(
+    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    domain: str | None = None,
+    risk_class: str | None = None,
+    status: str | None = None,
+    latest_only: bool = True,
+    limit: int = Query(100, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    """Operational procedures (runbooks) for a tenant.
+
+    Every version is stored under the same procedure_key, so a naive list returns a
+    procedure several times with no indication of which version is in force. latest_only
+    (the default) collapses each key to its current version, chosen by a numeric-aware
+    comparison of the version string rather than a text sort.
+
+    There is no created_at on this table: ordering by insertion time is not available,
+    so "current" means highest version number, which is the only ordering the schema
+    supports and is what the UNIQUE(tenant_id, procedure_key, version) constraint implies.
+    """
+    offset = decode_cursor(cursor) if cursor else 0
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        clauses = ["tenant_id = $1::uuid"]
+        args: list = [tenant_id]
+        if domain is not None:
+            args.append(domain)
+            clauses.append(f"domain = ${len(args)}")
+        if risk_class is not None:
+            args.append(risk_class)
+            clauses.append(f"risk_class = ${len(args)}")
+        if status is not None:
+            args.append(status)
+            clauses.append(f"status = ${len(args)}")
+
+        rows = await conn.fetch(
+            "SELECT id::text, procedure_key, version, title, domain, risk_class, "
+            "required_roles, hazards, entry_criteria, steps, exit_criteria, "
+            "approval_policy, status "
+            f"FROM dcc.procedures WHERE {' AND '.join(clauses)}",
+            *args,
+        )
+
+    selected = _select_current_versions([dict(r) for r in rows], latest_only=latest_only)
+    has_more = len(selected) > offset + limit
+    page_items = selected[offset:offset + limit]
+
+    return Page(
+        items=page_items,
+        total=len(page_items),
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_cursor=encode_cursor(offset + limit) if has_more else None,
+    ).__dict__
+
+
 @app.get("/v2/connectors")
 async def list_connectors(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
