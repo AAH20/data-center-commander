@@ -1722,6 +1722,8 @@ async def optimize_energy_allocation(request: Request):
 @app.get("/v2/evidence/verify")
 async def verify_evidence_tenant_chain(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    max_events: int = Query(10_000, ge=1, le=100_000),
+    include_events: bool = False,
 ):
     """Verify the evidence hash chain for one tenant.
 
@@ -1730,6 +1732,20 @@ async def verify_evidence_tenant_chain(
     much larger payload, so no stored row could ever validate. It now delegates to
     the single canonical implementation in ``dcc.provenance.evidence``, which the
     writer also uses. See that module for why the payload is defined as it is.
+
+    Two bounds, because a verifier is a denial-of-service target as much as an
+    assurance check. The previous version loaded every event for the tenant into
+    memory and echoed every event's hashes back, so a tenant with a long history
+    could exhaust a worker with one request, and the response grew without limit.
+
+    ``max_events`` caps the scan. When the chain is longer than the cap, ``complete``
+    is false and ``chain_valid`` is null -- NOT true. A verified prefix says nothing
+    about the rest of the chain, and reporting a prefix as a valid chain is exactly
+    the false assurance this module exists to prevent.
+
+    ``include_events`` returns the per-event detail. Off by default: the actionable
+    content is the summary plus the break point, and the default path returns only
+    the events that failed.
     """
     pool = await get_pool()
     async with pool.connection() as conn, conn.transaction():
@@ -1740,12 +1756,40 @@ async def verify_evidence_tenant_chain(
             "SELECT tenant_id,sequence,id,event_type,occurred_at,actor_ref,"
             "subject_type,subject_id,payload,previous_hash,event_hash "
             "FROM dcc.evidence_events "
-            "WHERE tenant_id=$1::uuid ORDER BY sequence",
+            "WHERE tenant_id=$1::uuid ORDER BY sequence LIMIT $2",
             tenant_id,
+            max_events + 1,
         )
 
-    result = verify_evidence_chain([dict(r) for r in rows])
-    return {"tenant_id": tenant_id, **result}
+    truncated = len(rows) > max_events
+    result = verify_evidence_chain([dict(r) for r in rows[:max_events]])
+
+    events = result.pop("events", [])
+    failed = [e for e in events if not e["is_valid"]]
+
+    payload = {
+        "tenant_id": tenant_id,
+        **result,
+        "complete": not truncated,
+        "scanned_events": len(events),
+        "max_events": max_events,
+    }
+
+    if truncated:
+        # A valid prefix is not a valid chain.
+        payload["chain_valid"] = None
+        payload["note"] = (
+            f"Chain exceeds max_events ({max_events}); only the first {max_events} events "
+            "were verified. chain_valid is null because the remainder is unverified -- "
+            "raise max_events to complete the check."
+        )
+
+    if include_events:
+        payload["events"] = events
+    else:
+        payload["invalid_event_details"] = failed
+
+    return payload
 
 
 
