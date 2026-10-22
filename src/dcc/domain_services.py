@@ -36,6 +36,12 @@ async def get_db_pool():
             kwargs={"row_factory": dict_row, "prepare_threshold": None},
         )
         await _pool.wait(timeout=5)
+        # Same driver mismatch as dcc.api_async: these services are written in asyncpg
+        # style ($1 placeholders, conn.fetch/fetchrow) over a psycopg3 pool. See
+        # dcc.pgcompat.
+        from .pgcompat import PgPool
+
+        _pool = PgPool(_pool)
     return _pool
 
 
