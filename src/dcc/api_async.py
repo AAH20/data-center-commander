@@ -413,6 +413,44 @@ from .security.api_keys import ApiKeyRevokedError as _ApiKeyRevoked  # noqa: E40
 from .security.api_keys import ApiKeyStore as _ApiKeyStore  # noqa: E402
 
 _API_KEYS = _ApiKeyStore()
+
+
+def _bootstrap_api_keys() -> int:
+    """Load durable keys from DCC_API_KEYS at process start.
+
+    Format: comma-separated "tenant_id:sha256hex" entries:
+
+        DCC_API_KEYS="<tenant-uuid>:<64-hex>,<tenant-uuid>:<64-hex>"
+
+    Hashes, not plaintext, so the secret never sits in the environment. The store is
+    in-memory and per-process, so without this every restart forgot every key and each
+    worker held a different set, making enforced authentication unusable in any
+    multi-worker deployment.
+
+    Mint an entry with:  python -m dcc.keys_cli create --tenant <uuid> --name ops
+    """
+    raw = os.getenv("DCC_API_KEYS", "").strip()
+    if not raw:
+        return 0
+
+    loaded = 0
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        tenant_id, _, key_hash = entry.partition(":")
+        tenant_id, key_hash = tenant_id.strip(), key_hash.strip()
+        if not tenant_id or not key_hash:
+            # Fail loudly: a silently skipped entry presents as "my key stopped
+            # working" with no clue why.
+            raise RuntimeError(f"DCC_API_KEYS entry is not 'tenant_id:hash': {entry[:24]!r}")
+        _API_KEYS.register_hash(tenant_id=tenant_id, key_hash=key_hash)
+        loaded += 1
+    return loaded
+
+
+_BOOTSTRAPPED_KEYS = _bootstrap_api_keys()
+
 _AUTH_PUBLIC_PATHS = {
     "/healthz", "/readyz", "/metrics", "/openapi.json", "/docs",
     "/docs/oauth2-redirect", "/redoc",

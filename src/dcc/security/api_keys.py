@@ -175,6 +175,51 @@ class ApiKeyStore:
         self._hash_to_id: dict[str, str] = {}  # key_hash -> id
         self._lock = __import__("threading").RLock()
 
+    def register_hash(
+        self,
+        *,
+        tenant_id: str,
+        key_hash: str,
+        name: str = "env-bootstrap",
+        scopes: list[str] | None = None,
+        expires_at: float | None = None,
+    ) -> ApiKey:
+        """Register an already-hashed key.
+
+        Exists so keys can be loaded from configuration at process start. Without a
+        durable source every restart forgot every key, and each worker kept its own
+        in-memory registry -- so a key minted in one worker was invalid for the next
+        request handled by a sibling.
+
+        The plaintext key is never supplied here; the caller hashes it beforehand.
+        """
+        import time as _time
+        import uuid as _uuid
+
+        if not key_hash or len(key_hash) < 32:
+            raise ValueError("key_hash must be a hex digest")
+        if not tenant_id:
+            raise ValueError("tenant_id is required")
+
+        with self._lock:
+            existing = self._hash_to_id.get(key_hash)
+            if existing is not None:
+                return self._keys[existing]
+
+            key_id = _uuid.uuid4().hex[:16]
+            record = ApiKey(
+                id=key_id,
+                name=name,
+                key_hash=key_hash,
+                tenant_id=tenant_id,
+                created_at=_time.time(),
+                expires_at=expires_at,
+                scopes=list(scopes or []),
+            )
+            self._keys[key_id] = record
+            self._hash_to_id[key_hash] = key_id
+            return record
+
     def create(
         self,
         *,
