@@ -731,6 +731,220 @@ async def list_facilities(
     ).__dict__
 
 
+@app.get("/v2/costs")
+async def list_costs(
+    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    demo: str | None = None,
+):
+    """Cost intelligence: estimate projects, observed prices and actuals.
+
+    This query was already written -- in src/dcc/api.py, a stdlib HTTP server that is
+    never mounted, which is why the console's cost panel called a route that did not
+    exist. Ported here rather than rewritten.
+
+    Synthetic demo data is withheld unless demo=synthetic is passed explicitly. Seeded
+    fixtures must never render as if they were sourced prices: an estimate built on
+    synthetic unit rates looks identical to a real one in the response shape, so the
+    gate is here and not in the UI.
+    """
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        estimates = await conn.fetch(
+            "SELECT e.id::text,e.project_code,e.name,e.lifecycle_phase,e.status,e.currency,e.geography,"
+            "e.price_as_of,e.horizon_months,e.it_capacity_kw,e.facility_area_m2,e.rack_count,"
+            "e.annual_it_energy_kwh,e.annual_useful_work,e.discount_rate,e.contingency_pct,"
+            "e.assumptions,e.calculation_version,"
+            "coalesce(r.lifecycle_pv,0) AS lifecycle_pv,coalesce(r.low_pv,0) AS low_pv,"
+            "coalesce(r.high_pv,0) AS high_pv,coalesce(r.first_period_cost,0) AS first_period_cost,"
+            "coalesce(r.line_count,0) AS line_count,coalesce(r.unpriced_lines,0) AS unpriced_lines,"
+            "coalesce(r.synthetic_lines,0) AS synthetic_lines "
+            "FROM dcc.estimate_projects e LEFT JOIN (SELECT tenant_id,estimate_id,currency,"
+            "sum(present_value_base) AS lifecycle_pv,sum(present_value_low) AS low_pv,"
+            "sum(present_value_high) AS high_pv,sum(first_period_cost) AS first_period_cost,"
+            "sum(line_count) AS line_count,sum(unpriced_lines) AS unpriced_lines,"
+            "sum(synthetic_lines) AS synthetic_lines "
+            "FROM dcc.estimate_cost_rollup GROUP BY tenant_id,estimate_id,currency) r "
+            "ON r.tenant_id=e.tenant_id AND r.estimate_id=e.id "
+            "WHERE e.tenant_id=$1::uuid ORDER BY e.created_at DESC LIMIT 100",
+            tenant_id,
+        )
+
+        prices = await conn.fetch(
+            "SELECT p.item_code,p.description,p.category,p.quantity_unit,p.unit_price,p.currency,"
+            "p.normalized_unit_price,b.currency AS book_currency,p.currency_basis_date,p.fx_to_book,"
+            "p.geography,p.delivery_basis,p.observed_at,p.valid_from,p.valid_to,p.source_kind,"
+            "p.source_name,p.source_ref,p.confidence,p.quality_status,p.provenance "
+            "FROM dcc.price_observations p "
+            "JOIN dcc.cost_books b ON b.tenant_id=p.tenant_id AND b.id=p.cost_book_id "
+            "WHERE p.tenant_id=$1::uuid ORDER BY p.observed_at DESC LIMIT 500",
+            tenant_id,
+        )
+
+        actuals = await conn.fetch(
+            "SELECT accounting_period,cost_type,currency,sum(amount) AS actual_amount,"
+            "count(*)::int AS entries,bool_or(provenance->>'synthetic'='true') AS synthetic "
+            "FROM dcc.cost_actuals WHERE tenant_id=$1::uuid "
+            "GROUP BY accounting_period,cost_type,currency "
+            "ORDER BY accounting_period DESC,cost_type LIMIT 500",
+            tenant_id,
+        )
+
+    estimate_rows = [dict(r) for r in estimates]
+    price_rows = [dict(r) for r in prices]
+    actual_rows = [dict(r) for r in actuals]
+
+    synthetic_present = (
+        any(
+            r.get("source_kind") == "synthetic_demo"
+            or (r.get("provenance") or {}).get("synthetic") is True
+            for r in price_rows
+        )
+        or any(int(r.get("synthetic_lines") or 0) > 0 for r in estimate_rows)
+        or any(r.get("synthetic") is True for r in actual_rows)
+    )
+    show_synthetic = demo == "synthetic" and synthetic_present
+    withhold = synthetic_present and not show_synthetic
+
+    return {
+        "tenant_id": tenant_id,
+        "estimates": [] if withhold else estimate_rows,
+        "prices": [] if withhold else price_rows,
+        "actuals": [] if withhold else actual_rows,
+        "read_only": True,
+        "synthetic": synthetic_present,
+        "synthetic_demo_mode": show_synthetic,
+    }
+
+
+@app.get("/v2/connectors")
+async def list_connectors(
+    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    limit: int = Query(100, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    """Registered data connectors and their access posture.
+
+    Scopes and allowed destinations are returned because they are the actual security
+    boundary of a connector: a source that is "active" but scoped to nothing is not
+    contributing data, and an operator needs to see that.
+    """
+    offset = decode_cursor(cursor) if cursor else 0
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        rows = await conn.fetch(
+            "SELECT id::text,name,vendor,product,adapter_id,adapter_version,status,access_mode,"
+            "scopes,allowed_destinations,last_success_at "
+            "FROM dcc.connectors WHERE tenant_id=$1::uuid "
+            "ORDER BY name LIMIT $2 OFFSET $3",
+            tenant_id,
+            limit + 1,
+            offset,
+        )
+
+    has_more = len(rows) > limit
+    items = [dict(r) for r in rows[:limit]]
+    return Page(
+        items=items,
+        total=len(items),
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_cursor=encode_cursor(offset + limit) if has_more else None,
+    ).__dict__
+
+
+@app.get("/v2/capacity")
+async def list_capacity(
+    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    dimension: str | None = None,
+    limit: int = Query(200, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    """Observed capacity snapshots, newest first per dimension.
+
+    `forecast_peak` is whatever the forecast run wrote at the time. It is returned
+    alongside `policy_reserve` rather than compared here, because "is this at risk"
+    depends on the reserve policy in force when the snapshot was taken.
+    """
+    offset = decode_cursor(cursor) if cursor else 0
+    where = "WHERE tenant_id=$1::uuid"
+    args: list = [tenant_id]
+    if dimension:
+        args.append(dimension)
+        where += f" AND dimension=${len(args)}"
+
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        args.extend([limit + 1, offset])
+        rows = await conn.fetch(
+            "SELECT id::text,facility_id::text,observed_at,scenario,dimension,usable,reserved,"
+            "policy_reserve,forecast_peak,unit,quality_status,forecast_version "
+            f"FROM dcc.capacity_snapshots {where} "
+            f"ORDER BY observed_at DESC,dimension LIMIT ${len(args) - 1} OFFSET ${len(args)}",
+            *args,
+        )
+
+    has_more = len(rows) > limit
+    items = [dict(r) for r in rows[:limit]]
+    return Page(
+        items=items,
+        total=len(items),
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_cursor=encode_cursor(offset + limit) if has_more else None,
+    ).__dict__
+
+
+@app.get("/v2/evidence")
+async def list_evidence(
+    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    limit: int = Query(200, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    """The evidence chain in sequence order.
+
+    Ordered by sequence, not by time: the hash chain is defined over sequence, so any
+    other ordering would present the chain as broken to a reader. Use
+    POST /v2/evidence/verify to check the chain itself.
+    """
+    offset = decode_cursor(cursor) if cursor else 0
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        rows = await conn.fetch(
+            "SELECT sequence,id::text,event_type,occurred_at,actor_ref,subject_type,subject_id,"
+            "previous_hash,event_hash "
+            "FROM dcc.evidence_events WHERE tenant_id=$1::uuid "
+            "ORDER BY sequence LIMIT $2 OFFSET $3",
+            tenant_id,
+            limit + 1,
+            offset,
+        )
+
+    has_more = len(rows) > limit
+    items = [dict(r) for r in rows[:limit]]
+    return Page(
+        items=items,
+        total=len(items),
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        next_cursor=encode_cursor(offset + limit) if has_more else None,
+    ).__dict__
+
+
 @app.get("/v2/workflows")
 async def list_workflows(
     tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
