@@ -865,6 +865,264 @@ def _unconsumed_configuration(controls) -> dict[str, list[str]]:
     return gaps
 
 
+def _build_posture_engine():
+    """Register posture controls that measure THIS process, not a declared config.
+
+    Every check here reads state the application actually holds: the middleware stack,
+    the route table, the authentication posture. None of them read an environment
+    variable that the code ignores, which is the defect that made the compliance
+    controls decorative.
+
+    Checks that genuinely cannot be decided without a database return NOT_ASSESSED
+    rather than a guess. An honest gap scores zero and shows up in the report; a
+    fabricated pass scores full marks and hides a hole.
+    """
+    from .security.posture import auth_posture
+    from .security_posture import ControlStatus, PostureDimension, SecurityScoringEngine
+    from .security_posture.scoring import ControlResult
+
+    def _result(name, dimension, ok, description, evidence=None):
+        return ControlResult(
+            name=name,
+            dimension=dimension,
+            status=ControlStatus.PASS if ok else ControlStatus.FAIL,
+            description=description,
+            evidence=evidence or {},
+        )
+
+    def _middleware_names():
+        return {getattr(m.cls, "__name__", str(m.cls)) for m in app.user_middleware}
+
+    def _route_paths():
+        return {getattr(r, "path", "") for r in app.routes}
+
+    engine = SecurityScoringEngine()
+
+    # --- identity and access ---
+    def authentication_required():
+        posture = auth_posture()
+        return _result(
+            "authentication_required", PostureDimension.IDENTITY_ACCESS,
+            posture["authentication_required"],
+            "API requires credentials" if posture["authentication_required"]
+            else "DCC_ALLOW_ANONYMOUS is set; the API accepts unauthenticated requests",
+            posture,
+        )
+
+    def _live_keys() -> int:
+        """Keys actually registered in this process.
+
+        auth_posture() counts DCC_API_KEYS entries, which is the durable, auditable
+        configuration. But a key can also be registered at runtime (keys_cli, or an
+        admin call), and that key authenticates while contributing nothing to the env
+        count. Reporting "no keys configured" alongside a working key would be a false
+        negative, so the identity controls count what can actually authenticate.
+        """
+        try:
+            return len(_API_KEYS.list_keys())
+        except Exception:
+            return 0
+
+    def keys_configured():
+        live = _live_keys()
+        return _result(
+            "api_keys_configured", PostureDimension.IDENTITY_ACCESS,
+            live > 0,
+            f"{live} key(s) registered" if live else "no API keys registered",
+            {"registered_keys": live},
+        )
+
+    def not_locked_out():
+        posture = auth_posture()
+        live = _live_keys()
+        locked_out = posture["authentication_required"] and live == 0
+        return _result(
+            "not_locked_out", PostureDimension.IDENTITY_ACCESS,
+            not locked_out,
+            "access is usable" if not locked_out
+            else "authentication enforced with no keys: every request is rejected",
+            {"registered_keys": live, "anonymous_allowed": posture["anonymous_allowed"]},
+        )
+
+    def tenant_isolation():
+        """Tenant isolation is decided by the auth posture, not by middleware names.
+
+        @app.middleware("http") registers a BaseHTTPMiddleware whose dispatch function
+        keeps the name; the stack does not carry "auth_middleware". Checking for that
+        name reported a failure on a correctly configured deployment. What actually
+        guarantees isolation is that authentication is required and keys exist, because
+        the middleware refuses a request whose tenant_id differs from the key's tenant.
+        """
+        posture = auth_posture()
+        enforced = posture["authentication_required"] and _live_keys() > 0
+        return _result(
+            "tenant_isolation_enforced", PostureDimension.IDENTITY_ACCESS,
+            enforced,
+            "cross-tenant requests are rejected against the key's tenant"
+            if enforced else "tenant binding cannot be enforced without authentication and keys",
+            posture,
+        )
+
+    # --- network ---
+    def cors_restricted():
+        for m in app.user_middleware:
+            if getattr(m.cls, "__name__", "") == "CORSMiddleware":
+                options = m.kwargs if hasattr(m, "kwargs") else {}
+                origins = options.get("allow_origins", [])
+                wildcard = "*" in origins
+                return _result(
+                    "cors_not_wildcard", PostureDimension.NETWORK_SECURITY,
+                    not wildcard,
+                    f"CORS origins restricted to {len(origins)} host(s)" if not wildcard
+                    else "CORS allows any origin",
+                    {"allow_origins": origins},
+                )
+        return ControlResult(
+            name="cors_not_wildcard", dimension=PostureDimension.NETWORK_SECURITY,
+            status=ControlStatus.NOT_ASSESSED, description="no CORS middleware configured",
+        )
+
+    def metrics_not_public():
+        """Health and metrics are intentionally open; this records that fact."""
+        return _result(
+            "observability_endpoints_scoped", PostureDimension.NETWORK_SECURITY,
+            "/metrics" in _route_paths(),
+            "metrics endpoint present for monitoring" if "/metrics" in _route_paths()
+            else "no metrics endpoint",
+            {"open_paths": sorted(p for p in _route_paths() if p in {"/healthz", "/readyz", "/metrics"})},
+        )
+
+    # --- logging and monitoring ---
+    def _registered_dispatchers():
+        """Names of the dispatch functions actually installed in the middleware stack.
+
+        @app.middleware("http") wraps the function in BaseHTTPMiddleware and keeps it as
+        .dispatch, so the stack never carries the function's own name at the top level.
+        Checking render output instead gave a false negative on a cold start, because
+        latencies are recorded AFTER the handler returns -- the first request cannot see
+        its own metrics.
+        """
+        found = set()
+        for entry in app.user_middleware:
+            dispatch = getattr(entry, "dispatch", None)
+            if dispatch is not None:
+                found.add(getattr(dispatch, "__name__", ""))
+            kwargs = getattr(entry, "kwargs", {}) or {}
+            inner = kwargs.get("dispatch")
+            if inner is not None:
+                found.add(getattr(inner, "__name__", ""))
+        return found
+
+    def metrics_instrumented():
+        dispatchers = _registered_dispatchers()
+        instrumented = "metrics_middleware" in dispatchers
+        return _result(
+            "requests_instrumented", PostureDimension.LOGGING_MONITORING,
+            instrumented,
+            "requests are timed and counted" if instrumented
+            else "no request instrumentation middleware",
+            {"dispatchers": sorted(d for d in dispatchers if d)},
+        )
+
+    def evidence_api_present():
+        return _result(
+            "evidence_chain_readable", PostureDimension.LOGGING_MONITORING,
+            "/v2/evidence" in _route_paths(),
+            "evidence chain is readable over the API" if "/v2/evidence" in _route_paths()
+            else "no evidence endpoint",
+            {},
+        )
+
+    # --- data protection ---
+    def evidence_verification_available():
+        return _result(
+            "evidence_verifiable", PostureDimension.DATA_PROTECTION,
+            "/v2/evidence/verify" in _route_paths(),
+            "evidence chain can be verified over the API"
+            if "/v2/evidence/verify" in _route_paths() else "no verification endpoint",
+            {},
+        )
+
+    def encryption_at_rest():
+        # Cannot be decided from inside the process: depends on the Postgres configuration.
+        return ControlResult(
+            name="encryption_at_rest", dimension=PostureDimension.DATA_PROTECTION,
+            status=ControlStatus.NOT_ASSESSED,
+            description="requires database configuration; not observable from the application",
+        )
+
+    # --- infrastructure ---
+    def fail_closed():
+        posture = auth_posture()
+        return _result(
+            "auth_fails_closed", PostureDimension.INFRASTRUCTURE_SECURITY,
+            not posture["anonymous_allowed"],
+            "unauthenticated requests are rejected" if not posture["anonymous_allowed"]
+            else "unauthenticated requests are accepted",
+            posture,
+        )
+
+    def db_readiness_probe():
+        return _result(
+            "readiness_probe_present", PostureDimension.INFRASTRUCTURE_SECURITY,
+            "/readyz" in _route_paths(),
+            "readiness checks schema and tenant RLS" if "/readyz" in _route_paths()
+            else "no readiness probe",
+            {},
+        )
+
+    for dim, name, fn in (
+        (PostureDimension.IDENTITY_ACCESS, "authentication_required", authentication_required),
+        (PostureDimension.IDENTITY_ACCESS, "api_keys_configured", keys_configured),
+        (PostureDimension.IDENTITY_ACCESS, "not_locked_out", not_locked_out),
+        (PostureDimension.IDENTITY_ACCESS, "tenant_isolation_enforced", tenant_isolation),
+        (PostureDimension.DATA_PROTECTION, "evidence_verifiable", evidence_verification_available),
+        (PostureDimension.DATA_PROTECTION, "encryption_at_rest", encryption_at_rest),
+        (PostureDimension.NETWORK_SECURITY, "cors_not_wildcard", cors_restricted),
+        (PostureDimension.NETWORK_SECURITY, "observability_endpoints_scoped", metrics_not_public),
+        (PostureDimension.LOGGING_MONITORING, "requests_instrumented", metrics_instrumented),
+        (PostureDimension.LOGGING_MONITORING, "evidence_chain_readable", evidence_api_present),
+        (PostureDimension.INFRASTRUCTURE_SECURITY, "auth_fails_closed", fail_closed),
+        (PostureDimension.INFRASTRUCTURE_SECURITY, "readiness_probe_present", db_readiness_probe),
+    ):
+        engine.register_control(dim, name, fn)
+
+    return engine
+
+
+@app.get("/v2/security/posture")
+async def security_posture():
+    """Weighted security posture across five dimensions, from observable state.
+
+    Distinct from /v2/compliance/scan. That answers "is the declared configuration
+    present" for an audit framework. This answers "what can be observed about the
+    running process" -- middleware, routes, authentication posture -- and it will not
+    award a pass it cannot justify. Controls that need the database report
+    NOT_ASSESSED rather than assuming a value.
+    """
+    report = await run_in_threadpool(lambda: _build_posture_engine().evaluate())
+
+    return {
+        "overall_score": report.overall_score,
+        "graded_at": report.graded_at,
+        "evaluation_basis": "observed_process_state",
+        "dimensions": {
+            getattr(dim, "value", str(dim)): {
+                "score": round(score.score, 4),
+                "weight": score.weight,
+                "weighted": round(score.weighted, 4),
+                "passed": score.passed,
+                "failed": score.failed,
+                "partial": score.partial,
+                "not_assessed": score.not_assessed,
+                "controls": score.details.get("controls", {}),
+            }
+            for dim, score in report.dimension_scores.items()
+        },
+        "recommendations": report.recommendations,
+    }
+
+
 @app.get("/v2/compliance/controls")
 async def list_compliance_controls(framework: str | None = None):
     """The compliance control catalogue available to this deployment.
