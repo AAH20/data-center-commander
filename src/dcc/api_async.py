@@ -826,6 +826,45 @@ async def list_costs(
     }
 
 
+def _unconsumed_configuration(controls) -> dict[str, list[str]]:
+    """Environment variables a control reads that the application never consults.
+
+    All 16 built-in evaluators read at least one variable that appears nowhere in the
+    served code: DCC_MFA_ENABLED, DCC_LOG_LEVEL, DCC_TLS_ENFORCED and so on. A control
+    that reports pass because such a variable is set to "true" is asserting a
+    configuration the running system ignores -- the operator can change it and nothing
+    happens.
+
+    This is determined by reading each evaluator's source for os.environ.get(...) calls
+    and checking whether the application references the name at all. It is deliberately
+    conservative and cheap: it answers "does the app know this variable exists", which
+    is the question that separates a real control from a decorative one.
+    """
+    import inspect as _inspect
+    import re as _re
+    from pathlib import Path as _Path
+
+    try:
+        app_source = _Path(__file__).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+
+    gaps: dict[str, list[str]] = {}
+    for control in controls:
+        evaluator = getattr(control, "evaluator", None)
+        if evaluator is None:
+            continue
+        try:
+            source = _inspect.getsource(evaluator)
+        except (OSError, TypeError):
+            continue
+        names = set(_re.findall(r'os\.environ\.get\(["\']([A-Z_]+)["\']', source))
+        unconsumed = sorted(n for n in names if n not in app_source)
+        if unconsumed:
+            gaps[control.control_id] = unconsumed
+    return gaps
+
+
 @app.get("/v2/compliance/controls")
 async def list_compliance_controls(framework: str | None = None):
     """The compliance control catalogue available to this deployment.
@@ -903,6 +942,8 @@ async def compliance_scan(framework: str | None = None):
         key = getattr(result.status, "value", str(result.status))
         counts[key] = counts.get(key, 0) + 1
 
+    gaps = _unconsumed_configuration(controls)
+
     return {
         "report_id": report.report_id,
         "framework": getattr(report.framework, "value", str(report.framework)) if report.framework else framework,
@@ -913,6 +954,16 @@ async def compliance_scan(framework: str | None = None):
             "Results reflect configuration, not observed system behaviour, and are not "
             "an audit. A pass means the configuration a control checks is present."
         ),
+        "configuration_gaps": {
+            "affected_controls": len(gaps),
+            "detail": gaps,
+            "impact": (
+                "These controls read environment variables the served application never "
+                "consults. Their result describes a declared configuration this system "
+                "does not honour, so a pass must not be reported as an operational "
+                "control being in place."
+            ),
+        },
         "summary": {"total": len(report.results), "by_status": counts},
         "results": _jsonable(report.results),
     }

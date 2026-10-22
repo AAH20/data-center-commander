@@ -134,3 +134,36 @@ class TestScan:
 
     def test_scan_rejects_unknown_framework(self, client):
         assert client.get("/v2/compliance/scan?framework=nope").status_code == 400
+
+
+class TestConfigurationGaps:
+    """Every built-in evaluator reads at least one variable the app never consults.
+
+    Reporting a pass on such a variable is decorative: an operator can set it and the
+    running system does nothing differently. The scan must say so.
+    """
+
+    def test_scan_names_the_gap(self):
+        client = TestClient(app)
+        gaps = client.get("/v2/compliance/scan").json()["configuration_gaps"]
+        assert gaps["affected_controls"] > 0
+        assert gaps["detail"], "the gap report must name the controls and their variables"
+        assert "must not be reported as an operational control" in gaps["impact"]
+
+    def test_the_fixed_control_has_no_gap(self):
+        """SOC2-CC6.1 was repointed at the real configuration, so it must be clean.
+
+        This is the test that proves the fix rather than describing it: the same
+        mechanism that flags the other controls must find nothing to flag here.
+        """
+        client = TestClient(app)
+        gaps = client.get("/v2/compliance/scan").json()["configuration_gaps"]
+        assert "SOC2-CC6.1" not in gaps["detail"]
+
+    def test_gap_entries_name_an_environment_variable(self):
+        client = TestClient(app)
+        detail = client.get("/v2/compliance/scan").json()["configuration_gaps"]["detail"]
+        for control_id, variables in detail.items():
+            assert variables, f"{control_id} listed with no variables"
+            for variable in variables:
+                assert variable.isupper() and variable.startswith("DCC_"), variable
