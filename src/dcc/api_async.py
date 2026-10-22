@@ -493,8 +493,15 @@ _AUTH_PUBLIC_PATHS = {
 
 
 def _auth_is_open() -> bool:
-    """True only when anonymity was explicitly requested via the environment."""
-    return os.getenv("DCC_ALLOW_ANONYMOUS", "").strip().lower() in {"1", "true", "yes", "on"}
+    """True only when anonymity was explicitly requested via the environment.
+
+    Delegated to dcc.security.posture so the application and the compliance controls
+    read the same configuration. They previously disagreed on what "authentication is
+    enabled" means, and the compliance side was reading a variable nothing consumed.
+    """
+    from .security.posture import anonymous_allowed
+
+    return anonymous_allowed()
 
 
 def _presented_key(request: Request) -> str | None:
@@ -816,6 +823,98 @@ async def list_costs(
         "read_only": True,
         "synthetic": synthetic_present,
         "synthetic_demo_mode": show_synthetic,
+    }
+
+
+@app.get("/v2/compliance/controls")
+async def list_compliance_controls(framework: str | None = None):
+    """The compliance control catalogue available to this deployment.
+
+    Read-only metadata: which controls exist, what framework they belong to and how
+    severe a failure is. It makes no claim about whether they pass.
+    """
+    from .compliance.controls import Framework, get_builtin_controls
+
+    controls = get_builtin_controls()
+    if framework is not None:
+        try:
+            wanted = Framework(framework)
+        except ValueError as exc:
+            raise HTTPException(400, detail={
+                "error": "unknown_framework",
+                "value": framework,
+                "accepted": [f.value for f in Framework],
+            }) from exc
+        controls = [c for c in controls if c.framework is wanted]
+
+    return {
+        "count": len(controls),
+        "controls": [
+            {
+                "control_id": c.control_id,
+                "framework": getattr(c.framework, "value", str(c.framework)),
+                "title": c.title,
+                "description": c.description,
+                "severity": getattr(c.severity, "value", str(c.severity)),
+                "tags": list(c.tags or []),
+                "version": c.version,
+            }
+            for c in controls
+        ],
+    }
+
+
+@app.get("/v2/compliance/scan")
+async def compliance_scan(framework: str | None = None):
+    """Evaluate the control set and report per-control status.
+
+    The basis is DECLARED CONFIGURATION, not observed traffic: these controls read
+    environment and file configuration to answer "is this deployment set up to meet the
+    control". A passing result here is not an audit and not evidence that the control
+    operates in practice -- it means the configuration is present.
+
+    Synthetic or seeded data plays no part in the result; every finding cites the
+    configuration value it was derived from.
+    """
+    from .compliance.controls import Framework, get_builtin_controls
+    from .compliance.scanner import ComplianceScanner
+
+    controls = get_builtin_controls()
+    if framework is not None:
+        try:
+            wanted = Framework(framework)
+        except ValueError as exc:
+            raise HTTPException(400, detail={
+                "error": "unknown_framework",
+                "value": framework,
+                "accepted": [f.value for f in Framework],
+            }) from exc
+        controls = [c for c in controls if c.framework is wanted]
+
+    if not controls:
+        raise HTTPException(404, detail={"error": "no_controls", "framework": framework})
+
+    # Scanning runs evaluators that touch the filesystem and environment; keep it off
+    # the event loop.
+    report = await run_in_threadpool(lambda: ComplianceScanner(controls).scan())
+
+    counts: dict[str, int] = {}
+    for result in report.results:
+        key = getattr(result.status, "value", str(result.status))
+        counts[key] = counts.get(key, 0) + 1
+
+    return {
+        "report_id": report.report_id,
+        "framework": getattr(report.framework, "value", str(report.framework)) if report.framework else framework,
+        "started_at": _jsonable(report.started_at),
+        "completed_at": _jsonable(report.completed_at),
+        "evaluation_basis": "declared_configuration",
+        "note": (
+            "Results reflect configuration, not observed system behaviour, and are not "
+            "an audit. A pass means the configuration a control checks is present."
+        ),
+        "summary": {"total": len(report.results), "by_status": counts},
+        "results": _jsonable(report.results),
     }
 
 

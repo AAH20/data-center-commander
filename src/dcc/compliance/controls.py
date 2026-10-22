@@ -97,31 +97,54 @@ def _eval_soc2_cc6_1() -> list[Finding]:
     findings: list[Finding] = []
     evidence: list[Evidence] = []
 
-    # Check if authentication is configured
-    auth_enabled = os.environ.get("DCC_AUTH_ENABLED", "true").lower() == "true"
+    # Check the access configuration the APPLICATION actually enforces.
+    #
+    # This previously read DCC_AUTH_ENABLED, a variable the served application never
+    # consults; it defaulted to "true" and so reported authentication as enabled even
+    # when DCC_ALLOW_ANONYMOUS left the API open to unauthenticated callers. A control
+    # that reports on a knob nobody turns is a false assurance, which is worse than
+    # having no control at all.
+    from ..security.posture import auth_posture
+
+    posture = auth_posture()
     evidence.append(
         _collect_evidence(
             EvidenceType.CONFIG,
             "environment",
-            {"auth_enabled": auth_enabled},
+            {
+                "authentication_required": posture["authentication_required"],
+                "anonymous_allowed": posture["anonymous_allowed"],
+                "configured_keys": posture["configured_keys"],
+            },
         )
     )
 
-    if not auth_enabled:
+    if posture["anonymous_allowed"]:
         findings.extend(
             _fail_finding(
                 "SOC2-CC6.1",
-                "Authentication is not enabled",
+                "Anonymous access is enabled; the API accepts unauthenticated requests",
                 Severity.CRITICAL,
                 evidence,
-                "Set DCC_AUTH_ENABLED=true and configure authentication providers",
+                "Unset DCC_ALLOW_ANONYMOUS and configure DCC_API_KEYS with at least one key",
+            )
+        )
+    elif not posture["keys_available"]:
+        findings.extend(
+            _fail_finding(
+                "SOC2-CC6.1",
+                "Authentication is required but no API keys are configured, so every "
+                "request will be rejected (lockout rather than access control)",
+                Severity.HIGH,
+                evidence,
+                "Mint a key with 'python -m dcc.keys_cli create' and set DCC_API_KEYS",
             )
         )
     else:
         findings.extend(
             _pass_finding(
                 "SOC2-CC6.1",
-                "Authentication is enabled",
+                f"Authentication is required and {posture['configured_keys']} key(s) are configured",
                 evidence,
             )
         )
