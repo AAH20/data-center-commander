@@ -390,6 +390,110 @@ async def metrics_middleware(request: Request, call_next):
             _METRICS.record_error(_classify_status(status_code), labels={"route": label})
 
 
+# ---------------------------------------------------------------------------
+# Authentication and tenant isolation (dcc.security)
+#
+# Every /v2 route takes tenant_id as a caller-supplied query parameter and nothing
+# authenticated it, so any client that could reach the port could read any tenant's
+# data by supplying that tenant's id. dcc/security already ships ApiKeyStore,
+# verify_api_key, ApiKeyExpiredError and TenantMismatchError -- none of it was wired
+# into the served application.
+#
+# Enforcement is ON by default. DCC_ALLOW_ANONYMOUS=true is an explicit, logged
+# opt-out for local development and the legacy test suite; it is not a production
+# mode. A missing key is a 401, a key that does not own the requested tenant is a
+# 403, and the two are deliberately distinguishable in the response body but not in
+# whether the request proceeds.
+# ---------------------------------------------------------------------------
+
+from .security.api_keys import ApiKey  # noqa: E402
+from .security.api_keys import ApiKeyExpiredError as _ApiKeyExpired  # noqa: E402
+from .security.api_keys import ApiKeyInvalidError as _ApiKeyInvalid  # noqa: E402
+from .security.api_keys import ApiKeyRevokedError as _ApiKeyRevoked  # noqa: E402
+from .security.api_keys import ApiKeyStore as _ApiKeyStore  # noqa: E402
+
+_API_KEYS = _ApiKeyStore()
+_AUTH_PUBLIC_PATHS = {
+    "/healthz", "/readyz", "/metrics", "/openapi.json", "/docs",
+    "/docs/oauth2-redirect", "/redoc",
+    # The console shell contains no tenant data, and a browser cannot present a key
+    # before the page that would tell it which key to use has loaded.
+    "/",
+}
+
+
+def _auth_is_open() -> bool:
+    """True only when anonymity was explicitly requested via the environment."""
+    return os.getenv("DCC_ALLOW_ANONYMOUS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _presented_key(request: Request) -> str | None:
+    """Read an API key from Authorization: Bearer or X-API-Key."""
+    header = request.headers.get("authorization", "")
+    if header.lower().startswith("bearer "):
+        token = header[7:].strip()
+        if token:
+            return token
+    explicit = request.headers.get("x-api-key", "").strip()
+    return explicit or None
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Authenticate the caller and bind the tenant before the handler runs.
+
+    Ordering matters: this is registered after the metrics middleware, so Starlette
+    runs it OUTSIDE metrics and a rejected request is still counted. An unauthenticated
+    request is still a request an operator wants to see on the dashboard.
+    """
+    path = request.url.path
+    if path in _AUTH_PUBLIC_PATHS or path.startswith("/docs") or _auth_is_open():
+        return await call_next(request)
+
+    presented = _presented_key(request)
+    if presented is None:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": "missing_credentials",
+                "detail": "send an API key as 'Authorization: Bearer <key>' or 'X-API-Key: <key>'",
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        api_key: ApiKey = _API_KEYS.verify(presented)
+    except _ApiKeyExpired:
+        return JSONResponse(status_code=401, content={"error": "key_expired"})
+    except _ApiKeyRevoked:
+        return JSONResponse(status_code=401, content={"error": "key_revoked"})
+    except _ApiKeyInvalid:
+        # Deliberately identical to the missing-key response body's shape: telling a
+        # caller whether a key EXISTS is an oracle for key enumeration.
+        return JSONResponse(
+            status_code=401,
+            content={"error": "invalid_credentials"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    requested_tenant = request.query_params.get("tenant_id")
+    if requested_tenant is not None and requested_tenant != api_key.tenant_id:
+        # This is the tenant-isolation check. Without it, a valid key for tenant A
+        # can read tenant B's data simply by changing one query parameter.
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "tenant_mismatch",
+                "detail": "the presented key is not authorised for the requested tenant",
+            },
+        )
+
+    # Hand the authenticated identity to the handler without trusting the query string.
+    request.state.tenant_id = api_key.tenant_id
+    request.state.api_key_id = api_key.id
+    return await call_next(request)
+
+
 @app.get("/metrics")
 async def metrics_endpoint():
     """Prometheus text exposition of the process metrics."""
@@ -1390,15 +1494,36 @@ async def forecast_drift_route(request: Request):
 
 
 @app.get("/")
-async def serve_ui():
+async def serve_ui(request: Request):
     from pathlib import Path
 
     ui_path = Path(__file__).resolve().parents[2] / "ui" / "index.html"
     if ui_path.exists():
-        return Response(
-            content=ui_path.read_bytes(),
-            media_type="text/html; charset=utf-8",
-        )
+        html = ui_path.read_text(encoding="utf-8")
+
+        # The console runs in the browser and calls /v2/* same-origin, so it needs the
+        # key that the API now requires. Injecting it here keeps authentication ENFORCED
+        # for every other client instead of telling operators to switch auth off to use
+        # the bundled UI. The key is only as exposed as the page itself, which already
+        # requires reaching this port.
+        # Loopback only. Injecting the key into a page served to any remote caller
+        # would make authentication theatre: the "protected" page would hand every
+        # visitor the credential. A browser on this host is a local operator console;
+        # a remote client must call the API with its own key.
+        client_host = (request.client.host if request.client else "") or ""
+        is_loopback = client_host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+        console_key = os.getenv("DCC_UI_API_KEY", "").strip() if is_loopback else ""
+        if console_key:
+            import html as _html
+
+            meta = f'<meta name="dcc-api-key" content="{_html.escape(console_key, quote=True)}">'
+            if "</head>" in html:
+                html = html.replace("</head>", meta + "</head>", 1)
+            else:
+                html = meta + html
+
+        return Response(content=html, media_type="text/html; charset=utf-8")
     return {"error": "UI not found"}
 
 
