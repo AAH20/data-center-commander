@@ -1026,6 +1026,300 @@ async def invalidate_cache(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Forecasting (dcc.forecasting)
+#
+# The forecasting package is 4,769 lines of capacity, failure and drift modelling
+# that no route could reach. These endpoints expose the three questions a data
+# centre operator actually asks: when do I run out of capacity, which equipment is
+# about to fail, and has my forecast model drifted away from reality.
+# ---------------------------------------------------------------------------
+
+from datetime import datetime as _dt  # noqa: E402
+from datetime import timezone as _tz  # noqa: E402
+
+
+def _parse_utc(value: Any, field: str) -> _dt:
+    """Parse an ISO-8601 timestamp into an aware UTC datetime.
+
+    Naive input is rejected rather than assumed to be UTC: a capacity series that
+    silently means "local time" produces a forecast shifted by the operator's
+    offset, which is the kind of error that only surfaces during an incident.
+    """
+    if not isinstance(value, str):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": field, "expected": "iso8601 string"})
+    text = value.strip().replace("Z", "+00:00")
+    try:
+        parsed = _dt.fromisoformat(text)
+    except ValueError as exc:
+        raise HTTPException(400, detail={"error": "invalid_timestamp", "field": field, "value": value}) from exc
+    if parsed.tzinfo is None:
+        raise HTTPException(400, detail={
+            "error": "naive_timestamp",
+            "field": field,
+            "detail": "include a UTC offset, for example 2026-01-01T00:00:00Z",
+        })
+    return parsed.astimezone(_tz.utc)
+
+
+def _jsonable(obj: Any) -> Any:
+    """Convert dataclasses, datetimes and Decimals into JSON-safe values."""
+    from dataclasses import asdict, is_dataclass
+    from decimal import Decimal
+
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {k: _jsonable(v) for k, v in asdict(obj).items()}
+    if isinstance(obj, dict):
+        return {str(k): _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_jsonable(v) for v in obj]
+    if isinstance(obj, _dt):
+        return obj.astimezone(_tz.utc).isoformat().replace("+00:00", "Z")
+    if isinstance(obj, Decimal):
+        return float(obj)
+    return obj
+
+
+_CAPACITY_POINT_FIELDS = {"observed_at", "usable", "reserved", "policy_reserve",
+                          "forecast_peak", "quality_status", "scenario"}
+_CAPACITY_BODY_FIELDS = {"facility_id", "dimension", "unit", "scenario", "data_points",
+                         "horizon_days", "method"}
+_CAPACITY_METHODS = {"linear", "moving_average", "exponential_smoothing"}
+
+
+def _build_capacity_points(raw: Any) -> list:
+    """Validate and build CapacityDataPoint objects from a JSON array."""
+    from .forecasting.capacity import CapacityDataPoint
+
+    if not isinstance(raw, list):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": "data_points", "expected": "array"})
+    if not raw:
+        raise HTTPException(400, detail={"error": "empty_series", "field": "data_points"})
+
+    points = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise HTTPException(400, detail={"error": "invalid_type", "field": f"data_points[{index}]", "expected": "object"})
+        unknown = set(item) - _CAPACITY_POINT_FIELDS
+        if unknown:
+            raise HTTPException(400, detail={
+                "error": "unknown_field",
+                "field": f"data_points[{index}]",
+                "fields": sorted(unknown),
+                "accepted": sorted(_CAPACITY_POINT_FIELDS),
+            })
+        for required in ("observed_at", "usable"):
+            if required not in item:
+                raise HTTPException(400, detail={
+                    "error": "missing_field", "field": f"data_points[{index}].{required}",
+                })
+        for numeric in ("usable", "reserved", "policy_reserve", "forecast_peak"):
+            if numeric in item and item[numeric] is not None:
+                # bool is a subclass of int; True must not be read as 1.0 usable units.
+                if isinstance(item[numeric], bool) or not isinstance(item[numeric], (int, float)):
+                    raise HTTPException(400, detail={
+                        "error": "invalid_type", "field": f"data_points[{index}].{numeric}", "expected": "number",
+                    })
+        points.append(CapacityDataPoint(
+            observed_at=_parse_utc(item["observed_at"], f"data_points[{index}].observed_at"),
+            usable=float(item["usable"]),
+            reserved=float(item.get("reserved", 0.0)),
+            policy_reserve=float(item.get("policy_reserve", 0.0)),
+            forecast_peak=None if item.get("forecast_peak") is None else float(item["forecast_peak"]),
+            quality_status=str(item.get("quality_status", "ok")),
+            scenario=str(item.get("scenario", "base")),
+        ))
+    return points
+
+
+@app.post("/v2/forecast/capacity")
+async def forecast_capacity_route(request: Request):
+    """Project capacity exhaustion and report when the reserve is breached.
+
+    Returns the forecast series plus an at-risk summary: whether the projected
+    usable capacity crosses the reserve policy inside the horizon, and on which day.
+    """
+    from .forecasting.capacity import compute_capacity_at_risk, forecast_capacity
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, detail={"error": "invalid_json", "detail": str(exc)}) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, detail={"error": "expected_object"})
+
+    unknown = set(body) - _CAPACITY_BODY_FIELDS
+    if unknown:
+        raise HTTPException(400, detail={
+            "error": "unknown_field", "fields": sorted(unknown), "accepted": sorted(_CAPACITY_BODY_FIELDS),
+        })
+
+    for required in ("facility_id", "dimension", "unit", "data_points"):
+        if required not in body:
+            raise HTTPException(400, detail={"error": "missing_field", "field": required})
+
+    method = body.get("method", "linear")
+    if method not in _CAPACITY_METHODS:
+        raise HTTPException(400, detail={
+            "error": "invalid_method", "field": "method", "value": method, "accepted": sorted(_CAPACITY_METHODS),
+        })
+
+    # Derive the accepted set from the library rather than restating it here, so a
+    # new forecastable dimension does not require an API change to become reachable.
+    from .forecasting.capacity import FORECASTABLE_DIMENSIONS
+
+    if body["dimension"] not in FORECASTABLE_DIMENSIONS:
+        raise HTTPException(400, detail={
+            "error": "invalid_dimension",
+            "field": "dimension",
+            "value": body["dimension"],
+            "accepted": sorted(FORECASTABLE_DIMENSIONS),
+        })
+
+    horizon = body.get("horizon_days", 30)
+    if isinstance(horizon, bool) or not isinstance(horizon, int):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": "horizon_days", "expected": "integer"})
+    if not 1 <= horizon <= 3650:
+        raise HTTPException(400, detail={"error": "out_of_range", "field": "horizon_days", "value": horizon})
+
+    points = _build_capacity_points(body["data_points"])
+
+    # Capacity fitting is CPU-bound; inline it and the event loop stalls for every
+    # other request on this worker.
+    # The library signals bad input with ValueError. Letting it escape produces a 500
+    # and a traceback for what is a caller mistake; translate it into a 400 that names
+    # the reason the library gave.
+    try:
+        forecast = await run_in_threadpool(
+            forecast_capacity,
+            facility_id=str(body["facility_id"]),
+            dimension=str(body["dimension"]),
+            unit=str(body["unit"]),
+            scenario=str(body.get("scenario", "base")),
+            data_points=points,
+            horizon_days=horizon,
+            method=method,
+        )
+        risk = await run_in_threadpool(compute_capacity_at_risk, forecast, 0.0)
+    except ValueError as exc:
+        raise HTTPException(400, detail={"error": "invalid_input", "detail": str(exc)}) from exc
+    return {"forecast": _jsonable(forecast), "at_risk": _jsonable(risk)}
+
+
+@app.post("/v2/forecast/failure")
+async def forecast_failure_route(request: Request):
+    """Predict equipment failure risk from asset inventory and telemetry."""
+    from .forecasting.failure import predict_equipment_failures
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, detail={"error": "invalid_json", "detail": str(exc)}) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, detail={"error": "expected_object"})
+
+    allowed = {"tenant_id", "assets", "telemetry_rows", "window_days"}
+    unknown = set(body) - allowed
+    if unknown:
+        raise HTTPException(400, detail={
+            "error": "unknown_field", "fields": sorted(unknown), "accepted": sorted(allowed),
+        })
+    for required in ("tenant_id", "assets"):
+        if required not in body:
+            raise HTTPException(400, detail={"error": "missing_field", "field": required})
+    if not isinstance(body["assets"], list):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": "assets", "expected": "array"})
+
+    # The forecasting library reads asset["id"] and asset["asset_type"], while its own
+    # response reports them as asset_id/asset_name. A caller passing asset_id therefore
+    # got a risk profile with an empty identifier and no error at all. Require the keys
+    # the library actually reads, and name them in the rejection.
+    for index, asset in enumerate(body["assets"]):
+        if not isinstance(asset, dict):
+            raise HTTPException(400, detail={"error": "invalid_type", "field": f"assets[{index}]", "expected": "object"})
+        missing = {"id", "asset_type"} - set(asset)
+        if missing:
+            raise HTTPException(400, detail={
+                "error": "missing_field",
+                "field": f"assets[{index}]",
+                "missing": sorted(missing),
+                "accepted": ["id", "name", "asset_type", "criticality", "lifecycle_state"],
+            })
+    if not isinstance(body.get("telemetry_rows", []), list):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": "telemetry_rows", "expected": "array"})
+
+    window = body.get("window_days", 30)
+    if isinstance(window, bool) or not isinstance(window, int):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": "window_days", "expected": "integer"})
+
+    try:
+        result = await run_in_threadpool(
+            predict_equipment_failures,
+            tenant_id=str(body["tenant_id"]),
+            assets=body["assets"],
+            telemetry_rows=body.get("telemetry_rows", []),
+            window_days=window,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail={"error": "invalid_input", "detail": str(exc)}) from exc
+    return _jsonable(result)
+
+
+@app.post("/v2/forecast/drift")
+async def forecast_drift_route(request: Request):
+    """Detect distribution drift between a reference and an incoming series.
+
+    Answers "is the model still valid": each detector reports its statistic, the
+    threshold it was compared against, and whether it fired.
+    """
+    from .forecasting.drift import detect_drift
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(400, detail={"error": "invalid_json", "detail": str(exc)}) from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, detail={"error": "expected_object"})
+
+    allowed = {"reference", "incoming", "min_samples"}
+    unknown = set(body) - allowed
+    if unknown:
+        raise HTTPException(400, detail={
+            "error": "unknown_field", "fields": sorted(unknown), "accepted": sorted(allowed),
+        })
+
+    series = {}
+    for key in ("reference", "incoming"):
+        raw = body.get(key)
+        if not isinstance(raw, list):
+            raise HTTPException(400, detail={"error": "invalid_type", "field": key, "expected": "array"})
+        for index, value in enumerate(raw):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise HTTPException(400, detail={
+                    "error": "invalid_type", "field": f"{key}[{index}]", "expected": "number",
+                })
+        series[key] = [float(v) for v in raw]
+
+    min_samples = body.get("min_samples", 30)
+    if isinstance(min_samples, bool) or not isinstance(min_samples, int):
+        raise HTTPException(400, detail={"error": "invalid_type", "field": "min_samples", "expected": "integer"})
+    if min_samples < 2:
+        raise HTTPException(400, detail={"error": "out_of_range", "field": "min_samples", "value": min_samples})
+
+    try:
+        results = await run_in_threadpool(
+            detect_drift, series["reference"], series["incoming"], min_samples=min_samples,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail={"error": "invalid_input", "detail": str(exc)}) from exc
+    fired = [r for r in results if getattr(r, "detected", getattr(r, "is_drift", False))]
+    return {
+        "drift_detected": bool(fired),
+        "detectors_fired": [getattr(r, "method", "") for r in fired],
+        "results": _jsonable(results),
+    }
+
+
 @app.get("/")
 async def serve_ui():
     from pathlib import Path
