@@ -328,6 +328,75 @@ async def rate_limit_middleware(request: Request, call_next):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Metrics (dcc.observability)
+#
+# The observability package is ~5,000 lines of counters, gauges, histograms and a
+# Prometheus text renderer with no consumer at all. This wires it into the served
+# app so the process can actually be monitored: request latency, throughput and
+# error rate, exported in Prometheus text format at /metrics.
+# ---------------------------------------------------------------------------
+
+from .observability.metrics import ErrorType as _ErrorType  # noqa: E402
+from .observability.metrics import MetricsEngine as _MetricsEngine  # noqa: E402
+
+_METRICS = _MetricsEngine()
+_METRICS_EXCLUDED = {"/metrics", "/healthz", "/readyz"}
+
+
+def _classify_status(status_code: int) -> _ErrorType:
+    """Map an HTTP status onto the engine's error taxonomy."""
+    if status_code == 429:
+        return _ErrorType.RATE_LIMIT
+    if status_code in (401, 403):
+        return _ErrorType.AUTHENTICATION
+    if status_code in (400, 422):
+        return _ErrorType.VALIDATION
+    if status_code == 404:
+        return _ErrorType.UNKNOWN
+    if status_code == 504:
+        return _ErrorType.TIMEOUT
+    if status_code >= 500:
+        return _ErrorType.INTERNAL
+    return _ErrorType.UNKNOWN
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Time every request and record its outcome.
+
+    The label is the matched ROUTE TEMPLATE ("/v2/assets/{asset_id}"), never the
+    concrete path. Labelling on the request path creates a new time series per
+    distinct identifier, so a tenant scanning by id would grow the registry without
+    bound and eventually take the process down. Using scope["route"] after routing
+    keeps cardinality equal to the number of routes.
+    """
+    if request.url.path in _METRICS_EXCLUDED:
+        return await call_next(request)
+
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        route = request.scope.get("route")
+        label = getattr(route, "path", None) or "unmatched"
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        _METRICS.record_latency(label, elapsed_ms)
+        _METRICS.increment_throughput("api_requests_total", labels={"route": label})
+        if status_code >= 400:
+            _METRICS.record_error(_classify_status(status_code), labels={"route": label})
+
+
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus text exposition of the process metrics."""
+    body = _METRICS.render()
+    return Response(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
 @app.get("/healthz")
 async def healthz():
     return {"service": "data-center-commander", "mode": "read_only", "execution_permitted": False}
