@@ -283,6 +283,7 @@ async def get_pool():
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
+    _warn_if_locked_out()
     with suppress(Exception):
         await get_pool()
     yield
@@ -450,6 +451,37 @@ def _bootstrap_api_keys() -> int:
 
 
 _BOOTSTRAPPED_KEYS = _bootstrap_api_keys()
+
+
+def _warn_if_locked_out() -> None:
+    """Announce a deployment that enforces auth but holds no keys.
+
+    Enforced authentication with an empty key store is a lockout: every request gets
+    401 and nothing in the logs says why. DCC_REQUIRE_KEYS=true turns that into a
+    startup failure for production; otherwise it is a loud warning, because a
+    developer running locally without keys should still get a working process.
+    """
+    if _auth_is_open():
+        return
+    try:
+        existing = len(_API_KEYS.list_keys())
+    except Exception:
+        existing = 0
+    if existing or _BOOTSTRAPPED_KEYS:
+        return
+
+    message = (
+        "Authentication is enforced but no API keys are configured: every request "
+        "will be rejected with 401. Mint one with "
+        "'python -m dcc.keys_cli create --tenant <uuid> --name ops' and set "
+        "DCC_API_KEYS to the printed entry. For local development only, set "
+        "DCC_ALLOW_ANONYMOUS=true."
+    )
+    if os.getenv("DCC_REQUIRE_KEYS", "").strip().lower() in {"1", "true", "yes", "on"}:
+        raise RuntimeError(message)
+    import logging
+
+    logging.getLogger("dcc.auth").warning("NO API KEYS CONFIGURED. %s", message)
 
 _AUTH_PUBLIC_PATHS = {
     "/healthz", "/readyz", "/metrics", "/openapi.json", "/docs",

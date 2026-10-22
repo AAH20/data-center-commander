@@ -121,3 +121,56 @@ class TestKeyCli:
         )
         assert "DCC_API_KEYS=" in result.stdout
         assert "shown ONCE" in result.stdout
+
+
+class TestLockoutGuard:
+    """Enforced auth with an empty store rejects everything and says nothing.
+
+    That failure mode is silent by construction -- every request is a plain 401 -- so
+    the process has to announce it at startup or an operator has no thread to pull.
+    """
+
+    def _clear(self, monkeypatch):
+        monkeypatch.delenv("DCC_ALLOW_ANONYMOUS", raising=False)
+        monkeypatch.delenv("DCC_API_KEYS", raising=False)
+        monkeypatch.delenv("DCC_REQUIRE_KEYS", raising=False)
+        monkeypatch.setattr(api, "_BOOTSTRAPPED_KEYS", 0, raising=False)
+        store = api._API_KEYS
+        store._keys.clear()
+        store._hash_to_id.clear()
+
+    def test_warns_when_enforced_with_no_keys(self, monkeypatch, caplog):
+        self._clear(monkeypatch)
+        with caplog.at_level("WARNING", logger="dcc.auth"):
+            api._warn_if_locked_out()
+        assert any("NO API KEYS" in r.message for r in caplog.records), caplog.text
+
+    def test_warning_names_the_remediation(self, monkeypatch, caplog):
+        """A warning that does not say how to fix it is just noise."""
+        self._clear(monkeypatch)
+        with caplog.at_level("WARNING", logger="dcc.auth"):
+            api._warn_if_locked_out()
+        text = " ".join(r.message for r in caplog.records)
+        assert "keys_cli" in text
+        assert "DCC_API_KEYS" in text
+
+    def test_require_keys_makes_it_fatal(self, monkeypatch):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("DCC_REQUIRE_KEYS", "true")
+        with pytest.raises(RuntimeError, match="no API keys"):
+            api._warn_if_locked_out()
+
+    def test_silent_when_anonymous(self, monkeypatch, caplog):
+        self._clear(monkeypatch)
+        monkeypatch.setenv("DCC_ALLOW_ANONYMOUS", "1")
+        with caplog.at_level("WARNING", logger="dcc.auth"):
+            api._warn_if_locked_out()
+        assert not [r for r in caplog.records if "NO API KEYS" in r.message]
+
+    def test_silent_when_keys_exist(self, monkeypatch, caplog):
+        self._clear(monkeypatch)
+        raw = generate_api_key()
+        api._API_KEYS.register_hash(tenant_id=TENANT_A, key_hash=hash_api_key(raw))
+        with caplog.at_level("WARNING", logger="dcc.auth"):
+            api._warn_if_locked_out()
+        assert not [r for r in caplog.records if "NO API KEYS" in r.message]
