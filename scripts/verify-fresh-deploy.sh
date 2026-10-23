@@ -24,23 +24,39 @@ cd "$ROOT"
 
 SCRATCH_DB="dcc_fresh_deploy_check"
 CREATED_DB=0
+ADMIN_DSN=""
 
 cleanup() {
   if [ "$CREATED_DB" -eq 1 ]; then
-    dropdb --if-exists "$SCRATCH_DB" >/dev/null 2>&1 || true
+    psql "$ADMIN_DSN" -q -c "DROP DATABASE IF EXISTS $SCRATCH_DB" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
 
+# Database selection. Three cases, because CI and a developer machine are different:
+#
+#   DCC_VERIFY_DSN     an empty database handed to us; use it as-is
+#   DCC_DATABASE_URL   a server we can reach (CI service container). createdb/dropdb
+#                      use a local socket by default, which does not exist there, so
+#                      the sibling database is created through psql over the same DSN.
+#   neither            local machine; createdb on the default socket
 if [ -n "${DCC_VERIFY_DSN:-}" ]; then
   DSN="$DCC_VERIFY_DSN"
   echo "==> using supplied database"
+elif [ -n "${DCC_DATABASE_URL:-}" ]; then
+  ADMIN_DSN="$DCC_DATABASE_URL"
+  echo "==> creating scratch database $SCRATCH_DB through DCC_DATABASE_URL"
+  psql "$ADMIN_DSN" -q -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS $SCRATCH_DB"
+  psql "$ADMIN_DSN" -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE $SCRATCH_DB"
+  CREATED_DB=1
+  DSN="${ADMIN_DSN%/*}/$SCRATCH_DB"
 else
   echo "==> creating scratch database $SCRATCH_DB"
   dropdb --if-exists "$SCRATCH_DB"
   createdb "$SCRATCH_DB"
   CREATED_DB=1
-  DSN="postgresql:///${SCRATCH_DB}"
+  ADMIN_DSN="postgresql:///${SCRATCH_DB}"
+  DSN="$ADMIN_DSN"
 fi
 
 # ON_ERROR_STOP is the whole point. Without it psql prints ERROR and exits 0.
