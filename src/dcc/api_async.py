@@ -2565,3 +2565,74 @@ async def serve_ui(request: Request):
 
 
 from fastapi.responses import Response as FastAPIResponse  # noqa: E402,F401
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI response schemas
+# ---------------------------------------------------------------------------
+# Every route returned a bare dict, so /openapi.json documented 31 paths and zero
+# response shapes -- an integrator could see that GET /v2/procedures exists and
+# nothing about what comes back. The advisories below describe the envelope the
+# safety-contract middleware guarantees, without constraining the payload, which
+# varies per route and is still evolving.
+_ADVISORY_ENVELOPE = {
+    "type": "object",
+    "description": (
+        "Advisory payload. read_only and execution_permitted are injected on every "
+        "successful /v2 response by middleware and cannot be omitted by a handler."
+    ),
+    "properties": {
+        "read_only": {"type": "boolean", "const": True},
+        "execution_permitted": {"type": "boolean", "const": False},
+    },
+    "required": ["read_only", "execution_permitted"],
+    "additionalProperties": True,
+}
+
+_PAGED_ENVELOPE = {
+    "type": "object",
+    "description": "Cursor-paged advisory payload.",
+    "properties": {
+        "items": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+        "next_cursor": {"type": ["string", "null"]},
+        "read_only": {"type": "boolean", "const": True},
+        "execution_permitted": {"type": "boolean", "const": False},
+    },
+    "required": ["items", "read_only", "execution_permitted"],
+    "additionalProperties": True,
+}
+
+_PAGED_PATHS = (
+    "/v2/connectors",
+    "/v2/capacity",
+    "/v2/evidence",
+    "/v2/procedures",
+    "/v2/dr/policies",
+)
+
+
+def _declare_response_schemas() -> None:
+    """Attach the envelope schema to every /v2 GET route.
+
+    Runs after all routes are registered, then drops the cached OpenAPI document so
+    the next /openapi.json request regenerates it with these schemas included.
+    """
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        if not path.startswith("/v2"):
+            continue
+        # POST compute routes carry the same advisory envelope: the middleware runs
+        # on every /v2 path, so their responses are arms-length results too.
+        if not {"GET", "POST"} & set(getattr(route, "methods", None) or ()):
+            continue
+        schema = _PAGED_ENVELOPE if path in _PAGED_PATHS else _ADVISORY_ENVELOPE
+        responses = getattr(route, "responses", None)
+        if responses is None:
+            continue
+        responses.setdefault(200, {})
+        responses[200].setdefault("content", {})
+        responses[200]["content"]["application/json"] = {"schema": schema}
+    app.openapi_schema = None
+
+
+_declare_response_schemas()
