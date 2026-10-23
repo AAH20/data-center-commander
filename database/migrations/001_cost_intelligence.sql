@@ -83,9 +83,20 @@ CREATE OR REPLACE VIEW dcc.estimate_cost_rollup AS SELECT e.tenant_id,e.id AS es
  GROUP BY e.tenant_id,e.id,l.currency,l.phase;
 DO $$ DECLARE t record; BEGIN
  FOR t IN SELECT unnest(ARRAY['cost_books','price_observations','estimate_projects','estimate_line_items','cost_actuals','cost_allocations']) AS table_name LOOP
+  -- Guarded: schema.sql already creates these foreign keys, so an unconditional
+  -- ADD CONSTRAINT aborted the whole migration run on any fresh database.
+  IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint c
+      JOIN pg_class r ON r.oid = c.conrelid
+      JOIN pg_namespace n ON n.oid = r.relnamespace
+      WHERE n.nspname = 'dcc' AND r.relname = t.table_name
+        AND c.conname = t.table_name || '_tenant_fk'
+  ) THEN
   EXECUTE format('ALTER TABLE dcc.%I ADD CONSTRAINT %I FOREIGN KEY (tenant_id) REFERENCES dcc.tenants(id) ON DELETE CASCADE',t.table_name,t.table_name||'_tenant_fk');
+  END IF;
   EXECUTE format('ALTER TABLE dcc.%I ENABLE ROW LEVEL SECURITY',t.table_name);
   EXECUTE format('ALTER TABLE dcc.%I FORCE ROW LEVEL SECURITY',t.table_name);
+  EXECUTE format('DROP POLICY IF EXISTS tenant_scope ON dcc.%I',t.table_name);
   EXECUTE format('CREATE POLICY tenant_scope ON dcc.%I USING (tenant_id = nullif(current_setting(''dcc.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id = nullif(current_setting(''dcc.tenant_id'',true),'''')::uuid)',t.table_name);
  END LOOP;
 END $$;

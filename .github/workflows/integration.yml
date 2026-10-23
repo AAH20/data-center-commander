@@ -49,10 +49,23 @@ jobs:
         env:
           DCC_DATABASE_URL: postgresql://dcc_test:dcc_test_password@localhost:5432/dcc_test
         run: |
-          psql "$DCC_DATABASE_URL" -f database/schema.sql
+          # ON_ERROR_STOP is not optional. Without it psql prints ERROR, skips the
+          # failing statement and exits 0 -- so three migrations that aborted on a
+          # fresh database, and a materialized view left in the wrong shape, all
+          # reported success. A gate that cannot fail is indistinguishable from one
+          # that does not run.
+          psql "$DCC_DATABASE_URL" -v ON_ERROR_STOP=1 -f database/schema.sql
           for f in database/migrations/*.sql; do
-            psql "$DCC_DATABASE_URL" -f "$f"
+            echo "  applying $(basename "$f")"
+            psql "$DCC_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
+      - name: Verify a fresh database builds and serves
+        # Proves the schema loads AND that the application can read it: every GET
+        # /v2 route is exercised against the migrated database with a real key.
+        env:
+          DCC_DATABASE_URL: postgresql://dcc_test:dcc_test_password@localhost:5432/dcc_test
+          PYTHONPATH: src
+        run: scripts/verify-fresh-deploy.sh
       - name: Seed demo data
         env:
           DCC_DATABASE_URL: postgresql://dcc_test:dcc_test_password@localhost:5432/dcc_test

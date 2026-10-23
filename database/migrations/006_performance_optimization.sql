@@ -64,7 +64,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS mv_daily_kpi_rollup_pk
     ON dcc.mv_daily_kpi_rollup(tenant_id, metric_key, bucket);
 
 -- Workflow health summary
-CREATE MATERIALIZED VIEW IF NOT EXISTS dcc.mv_workflow_health AS
+-- 005 defines this same view with different column names (item_count/overdue_count).
+-- Both used IF NOT EXISTS, so whichever ran first won and the other silently did
+-- nothing -- on a fresh database 005 won, and /v2/analytics then failed with
+-- 'column "items" does not exist' because it selects the names defined here.
+-- The same class of defect as the duplicated verify_evidence_chain function: two
+-- migrations owning one object. This file is the later one, so it now replaces it
+-- outright. The view holds derived data only and is rebuilt by refresh_materialized_views().
+DROP MATERIALIZED VIEW IF EXISTS dcc.mv_workflow_health;
+
+CREATE MATERIALIZED VIEW dcc.mv_workflow_health AS
 SELECT
     tenant_id,
     workflow_type,
@@ -113,6 +122,8 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 4. Evidence chain verification function
 -- ---------------------------------------------------------------------------
+
+DROP FUNCTION IF EXISTS dcc.verify_evidence_chain(uuid);
 
 CREATE OR REPLACE FUNCTION dcc.verify_evidence_chain(p_tenant_id uuid)
 RETURNS TABLE (

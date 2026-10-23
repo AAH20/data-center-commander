@@ -264,6 +264,9 @@ async def get_pool():
             min_size=1,
             max_size=20,
             timeout=5,
+            # open=False: constructing a pool that opens itself is deprecated. The
+            # explicit await open() below is the supported path.
+            open=False,
             kwargs={"row_factory": dict_row, "prepare_threshold": None},
         )
         # The queries in this module are asyncpg-style ($1 placeholders, fetch/fetchrow)
@@ -619,7 +622,7 @@ async def readyz():
 
 @app.get("/v2/overview")
 async def overview(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     demo: str | None = None,
 ):
     cache_key = f"overview:{tenant_id}:{demo}"
@@ -671,7 +674,7 @@ async def overview(
 
 @app.get("/v2/assets")
 async def list_assets(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
     cursor: str | None = None,
 ):
@@ -711,7 +714,7 @@ async def list_assets(
 
 @app.get("/v2/facilities")
 async def list_facilities(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
     cursor: str | None = None,
 ):
@@ -746,7 +749,7 @@ async def list_facilities(
 
 @app.get("/v2/costs")
 async def list_costs(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     demo: str | None = None,
 ):
     """Cost intelligence: estimate projects, observed prices and actuals.
@@ -1278,7 +1281,7 @@ def _version_sort_key(version: str):
 
 @app.get("/v2/procedures")
 async def list_procedures(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     domain: str | None = None,
     risk_class: str | None = None,
     status: str | None = None,
@@ -1339,7 +1342,7 @@ async def list_procedures(
 
 @app.get("/v2/dr/policies")
 async def list_backup_policies(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     enabled: bool | None = None,
     limit: int = Query(100, ge=1, le=1000),
     cursor: str | None = None,
@@ -1385,7 +1388,7 @@ async def list_backup_policies(
 
 
 @app.get("/v2/dr/summary")
-async def dr_summary(tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$")):
+async def dr_summary(tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$")):
     """Disaster-recovery readiness for a tenant, computed from stored state.
 
     RTO and RPO compliance are read from dr_metric_measurements, which records the
@@ -1522,7 +1525,7 @@ async def safety_contract(request: Request, call_next):
 
 @app.get("/v2/connectors")
 async def list_connectors(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
     cursor: str | None = None,
 ):
@@ -1562,7 +1565,7 @@ async def list_connectors(
 
 @app.get("/v2/capacity")
 async def list_capacity(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     dimension: str | None = None,
     limit: int = Query(200, ge=1, le=1000),
     cursor: str | None = None,
@@ -1608,7 +1611,7 @@ async def list_capacity(
 
 @app.get("/v2/evidence")
 async def list_evidence(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(200, ge=1, le=1000),
     cursor: str | None = None,
 ):
@@ -1648,7 +1651,7 @@ async def list_evidence(
 
 @app.get("/v2/workflows")
 async def list_workflows(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     limit: int = Query(100, ge=1, le=1000),
     cursor: str | None = None,
     status: str | None = None,
@@ -1694,7 +1697,7 @@ async def list_workflows(
 
 @app.get("/v2/analytics")
 async def analytics(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     window_days: int = Query(30, ge=1, le=90),
 ):
     cache_key = f"analytics:{tenant_id}:{window_days}"
@@ -1910,7 +1913,7 @@ async def optimize_energy_allocation(request: Request):
 
 @app.get("/v2/evidence/verify")
 async def verify_evidence_tenant_chain(
-    tenant_id: str = Query(..., regex=r"^[0-9a-fA-F-]{36}$"),
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
     max_events: int = Query(10_000, ge=1, le=100_000),
     include_events: bool = False,
 ):

@@ -22,6 +22,7 @@ BEGIN
     OR NEW.base_unit_cost<>p.normalized_unit_price THEN RAISE EXCEPTION 'pinned price is out of date or not normalized to the estimate currency'; END IF;
  RETURN NEW;
 END $$;
+DROP TRIGGER IF EXISTS estimate_price_link_check ON dcc.estimate_line_items;
 CREATE TRIGGER estimate_price_link_check BEFORE INSERT OR UPDATE OF tenant_id,estimate_id,quantity_unit,currency,base_unit_cost,price_observation_id,pricing_status
  ON dcc.estimate_line_items FOR EACH ROW EXECUTE FUNCTION dcc.validate_estimate_price_link();
 COMMIT;
