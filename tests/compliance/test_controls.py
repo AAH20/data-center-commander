@@ -36,14 +36,35 @@ class TestBuiltinControls:
 
 
 class TestControlEvaluation:
+    #: The two knobs the SOC 2 access control actually reads.
+    #:
+    #: It used to read DCC_AUTH_ENABLED, which the served application never consults,
+    #: so this test could pass while the API was open to anonymous callers. The real
+    #: posture is derived from DCC_ALLOW_ANONYMOUS plus the number of DCC_API_KEYS
+    #: entries (see dcc.security.posture.auth_posture). Enforced auth with zero keys
+    #: is a lockout, not a control, so a PASS needs at least one key configured.
+    #: tests/conftest.py sets DCC_ALLOW_ANONYMOUS=1 suite-wide, which is why both
+    #: cases below state it explicitly instead of relying on the ambient value.
+
+    def _api_keys_env(self) -> dict[str, str]:
+        """One real tenant:hash entry, minted the same way the CLI mints one."""
+        from dcc.security.api_keys import generate_api_key, hash_api_key
+
+        tenant = "11111111-1111-1111-1111-111111111111"
+        return {"DCC_API_KEYS": f"{tenant}:{hash_api_key(generate_api_key())}"}
+
     def test_soc2_cc6_1_pass(self) -> None:
-        with patch.dict(os.environ, {"DCC_AUTH_ENABLED": "true", "DCC_MFA_ENABLED": "true"}):
+        env = {"DCC_ALLOW_ANONYMOUS": "0", "DCC_MFA_ENABLED": "true", **self._api_keys_env()}
+        with patch.dict(os.environ, env):
             controls = {c.control_id: c for c in get_builtin_controls()}
             findings = controls["SOC2-CC6.1"].evaluator()
-            assert all(f.status == ComplianceStatus.PASS for f in findings)
+            assert all(f.status == ComplianceStatus.PASS for f in findings), [
+                f.message for f in findings
+            ]
 
     def test_soc2_cc6_1_fail_no_auth(self) -> None:
-        with patch.dict(os.environ, {"DCC_AUTH_ENABLED": "false", "DCC_MFA_ENABLED": "false"}):
+        env = {"DCC_ALLOW_ANONYMOUS": "1", "DCC_MFA_ENABLED": "true", **self._api_keys_env()}
+        with patch.dict(os.environ, env):
             controls = {c.control_id: c for c in get_builtin_controls()}
             findings = controls["SOC2-CC6.1"].evaluator()
             assert any(f.status == ComplianceStatus.FAIL for f in findings)

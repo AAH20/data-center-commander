@@ -16,6 +16,24 @@ POLICY_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "policies
 OPA_BIN = "opa"
 
 
+def _policy_files() -> list[str]:
+    """The .rego sources to load as policy data.
+
+    `--data <dir>` walks the WHOLE directory, so it also ingests
+    `testdata/tfplan_governance/*.json` as policy documents. Those are Terraform
+    plan fixtures, not policy data, and OPA cannot merge them (opa exits rc=2
+    with "<fixture>: merge error"), which failed every Rego evaluation in this
+    suite regardless of the input. policies/rego/selftest.sh -- the repo's own
+    canonical invocation -- loads a single named .rego file for exactly this
+    reason. Enumerate the policies explicitly and leave the fixtures alone.
+    """
+    return sorted(
+        os.path.join(POLICY_DIR, name)
+        for name in os.listdir(POLICY_DIR)
+        if name.endswith(".rego")
+    )
+
+
 def run_opa(input_data: dict, package: str = "datacenter.resource_tagging") -> dict:
     """Run OPA eval against the given input and return the result.
 
@@ -32,21 +50,11 @@ def run_opa(input_data: dict, package: str = "datacenter.resource_tagging") -> d
         input_file = f.name
 
     try:
-        result = subprocess.run(
-            [
-                OPA_BIN,
-                "eval",
-                "--format",
-                "json",
-                "--data",
-                POLICY_DIR,
-                "--input",
-                input_file,
-                f"data.{package}.deny",
-            ],
-            capture_output=True,
-            text=True,
-        )
+        argv = [OPA_BIN, "eval", "--format", "json"]
+        for policy in _policy_files():
+            argv += ["--data", policy]
+        argv += ["--input", input_file, f"data.{package}.deny"]
+        result = subprocess.run(argv, capture_output=True, text=True)
         if result.returncode != 0:
             # OPA reports parse/eval errors as JSON on stdout, so stderr alone
             # reads as empty and hides the real cause.
