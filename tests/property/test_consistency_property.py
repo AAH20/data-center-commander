@@ -701,4 +701,8 @@ def test_consistency_report_mixed_findings(num_pass, num_fail, num_warn):
     assert len(report.findings) == num_pass + num_fail + num_warn
     assert report.failure_count == num_fail
     assert report.warning_count == num_warn
-    assert report.passed == (num_fail == 0 and num_warn == 0)
+    # ConsistencyReport.passed covers BLOCKING findings only (Severity.FAIL);
+    # WARN is advisory and SKIP means the check could not run, so neither one
+    # makes a report fail. See src/dcc/validation/consistency.py:68.
+    assert report.passed == (num_fail == 0)
+    assert report.failed == (num_fail > 0)

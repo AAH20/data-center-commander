@@ -446,8 +446,16 @@ def test_energy_balance_pue_computed(facility_energy, it_energy):
 def test_energy_balance_pue_mismatch_detected(facility_energy, it_energy, pue_value):
     """When reported PUE differs from computed, should produce a finding."""
     if it_energy > 0:
-        computed_pue = facility_energy / it_energy
-        if abs(computed_pue - pue_value) / pue_value > 0.05:
+        # Mirror the validator's arithmetic: it converts inputs with
+        # Decimal(str(value)), so a ratio that is exactly at the tolerance
+        # boundary (e.g. 0.95/1.0 vs a reported PUE of 1.0) yields exactly
+        # 5.0% and must NOT be flagged. Binary float division makes that same
+        # case look like 5.000000000000004%, which would assert a finding the
+        # implementation correctly declines to produce.
+        computed_pue = Decimal(str(facility_energy)) / Decimal(str(it_energy))
+        reported_pue = Decimal(str(pue_value))
+        diff_pct = abs(computed_pue - reported_pue) / reported_pue * 100
+        if diff_pct > Decimal("5"):
             result = validate_energy_balance(
                 facility_energy_kwh=facility_energy,
                 it_energy_kwh=it_energy,

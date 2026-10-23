@@ -14,6 +14,10 @@ requires-python = ">=3.11"
 # different interpreter's site-packages into it.
 dependencies = [
     "fastapi>=0.110",
+    # Required to actually serve the application. scripts/run-local.py launches
+    # dcc.api_async:app through uvicorn, and Dockerfile's ENTRYPOINT is that launcher,
+    # so without this the container starts and immediately exits with ImportError.
+    "uvicorn>=0.27",
     "cryptography>=42",
 ]
 

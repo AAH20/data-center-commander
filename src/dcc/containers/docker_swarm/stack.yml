@@ -396,13 +396,13 @@ secrets:
 #   docker config create db_init_migration_002 database/migrations/002_lifecycle_rollup_fix.sql
 #   docker config create db_init_migration_003 database/migrations/003_estimate_price_link_validation.sql
 #   docker config create db_init_migration_004 database/migrations/004_placement_comparison_snapshots.sql
-#   docker config create app_config src/dcc/containers/docker-swarm/configs/app.env
-#   docker config create nginx_conf src/dcc/containers/docker-swarm/configs/nginx.conf
-#   docker config create nginx_dcc_conf src/dcc/containers/docker-swarm/configs/dcc.conf
-#   docker config create otel_config src/dcc/containers/docker-swarm/configs/otel-collector.yaml
-#   docker config create prometheus_config src/dcc/containers/docker-swarm/configs/prometheus.yml
-#   docker config create grafana_datasources src/dcc/containers/docker-swarm/configs/grafana-datasources.yml
-#   docker config create grafana_dashboards src/dcc/containers/docker-swarm/configs/grafana-dashboards.yml
+#   docker config create app_config src/dcc/containers/docker_swarm/configs/app.env
+#   docker config create nginx_conf src/dcc/containers/docker_swarm/configs/nginx.conf
+#   docker config create nginx_dcc_conf src/dcc/containers/docker_swarm/configs/dcc.conf
+#   docker config create otel_config src/dcc/containers/docker_swarm/configs/otel-collector.yaml
+#   docker config create prometheus_config src/dcc/containers/docker_swarm/configs/prometheus.yml
+#   docker config create grafana_datasources src/dcc/containers/docker_swarm/configs/grafana-datasources.yml
+#   docker config create grafana_dashboards src/dcc/containers/docker_swarm/configs/grafana-dashboards.yml
 configs:
   db_init_schema:
     external: true

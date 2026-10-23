@@ -100,7 +100,10 @@ Data Center Commander is a standalone, vendor-neutral operations and decision-su
 
 ### Multi-Tab Command Center UI
 
-The browser-based UI provides 13 operator views, all backed by the read-only API:
+The browser-based UI is a single page with 14 view sections, all backed by the read-only
+API. Note that the console modules are split across two route families — several call
+`/v1/*`, which only the legacy handler in `src/dcc/api.py` serves, while others call
+`/v2/*`:
 
 | Section | Description |
 |---|---|
@@ -120,7 +123,9 @@ The browser-based UI provides 13 operator views, all backed by the read-only API
 
 ### Read-Only API
 
-Loopback-only HTTP API (Python standard library, no framework dependency). All endpoints enforce tenant scoping via PostgreSQL RLS. See [API Reference](#api-reference) for full details.
+Served by FastAPI on uvicorn (`dcc.api_async:app`), with psycopg3 for PostgreSQL
+access. Every `/v2` endpoint requires an API key and enforces tenant scoping via
+PostgreSQL RLS. See [API Reference](#api-reference) for full details.
 
 ### Portable PostgreSQL Schema
 
@@ -173,7 +178,7 @@ All adapters are bounded, read-only, never persist data, and never follow redire
 - **Quality Engine:** multi-dimensional scoring (coverage, freshness, completeness, accuracy, consistency)
 - **Unit Conversion:** dimensional analysis with power factor support
 - **Time Series:** alignment, resampling, gap detection, coverage reports
-- **Consistency Validation:** 17 validators covering energy sources, asset references, capacity headroom, KPI vs. telemetry, cost rollup, workflow linkage, tenant boundaries, temporal consistency, unit consistency, provenance, PUE, price freshness, estimate price links, energy allocation coverage, and connector data freshness
+- **Consistency Validation:** 15 validators covering energy sources, asset references, capacity headroom, KPI vs. telemetry, cost rollup, workflow linkage, tenant boundaries, temporal consistency, unit consistency, provenance, PUE, price freshness, estimate price links, energy allocation coverage, and connector data freshness
 - **Schema Validation:** 30+ entity validators with constraint checking
 
 ### Security & Tenant Isolation
@@ -182,7 +187,8 @@ All adapters are bounded, read-only, never persist data, and never follow redire
 - **Tenant Context:** context-variable propagation, fail-closed design
 - **Audit Logging:** structured audit events with severity and category
 - **Secrets Management:** AWS Secrets Manager and HashiCorp Vault adapters
-- **Loopback-Only API:** refuses non-loopback binds
+- **Loopback-Only Legacy Server:** `src/dcc/api.py` refuses non-loopback binds; the
+  FastAPI app does not restrict the bind address, and access control is the API key
 
 ### Provenance & Lineage
 
@@ -207,28 +213,53 @@ Requires Python 3.11+ and PostgreSQL 14+. Do not point the demo at a production 
 ```bash
 cd data-center-commander
 uv sync --extra postgres
+
+# Build a database from schema.sql plus all eight migrations, on a scratch database,
+# then smoke-test every GET /v2 route against it.
+PATH="$PWD/.venv/bin:$PATH" PYTHONPATH=src scripts/verify-fresh-deploy.sh
+
+# Or by hand, against a database you created yourself:
 createdb data_center_commander_dev
 export DCC_DATABASE_URL='postgresql://127.0.0.1/data_center_commander_dev'
 psql "$DCC_DATABASE_URL" -v ON_ERROR_STOP=1 -f database/schema.sql
-uv run --extra postgres python scripts/run-local.py --host 127.0.0.1 --port 8790
+for f in database/migrations/*.sql; do
+  psql "$DCC_DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+done
+
+# Mint a key, then export the tenant:hash entry it prints.
+.venv/bin/python -m dcc.keys_cli create --tenant <uuid> --name ops
+export DCC_API_KEYS='<tenant-uuid>:<hash>'
+
+# Start the served API.
+.venv/bin/python -m uvicorn dcc.api_async:app --host 127.0.0.1 --port 8790
 ```
 
-Open `http://127.0.0.1:8790/`. The API refuses non-loopback binds. Apply the
-schema to a new database only. To see a clearly synthetic walkthrough, use the
-separately gated instructions in [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md).
+Open `http://127.0.0.1:8790/` for the console shell. Schema changes go to a new
+database only. `scripts/run-local.py` also exists but starts the legacy
+standard-library handler in `src/dcc/api.py` (routes under `/v1`, no authentication);
+it is not the application documented below. To see a clearly synthetic walkthrough, use
+the separately gated instructions in [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md).
 
 ### Health Checks
 
 - `/healthz` — process liveness
-- `/readyz` — succeeds only when PostgreSQL, the required schema tables, and forced tenant RLS are available
+- `/readyz` — returns `200` only when PostgreSQL is reachable and the `dcc.tenants` and
+  `dcc.assets` tables exist; the probe runs inside a `READ ONLY` transaction. It does
+  not inspect row-level security — `scripts/verify-fresh-deploy.sh` is what asserts
+  forced RLS on the schema.
 
-The local service has no user authentication and must not be exposed remotely.
+`/v2` is authenticated. With no key configured every `/v2` request returns `401`; see
+[Authentication](#authentication).
 
 ### Running Tests
 
 ```bash
 uv run --extra test python -m unittest discover -s tests -v
 ```
+
+Discovery also collects `tests/terraform`, `tests/iac-*` and `tests/e2e`. The e2e
+modules import playwright (the `e2e` extra), so without that extra they error at import
+rather than skip.
 
 Test coverage includes:
 - Adapter contracts (EPMS, CMMS, meter, Azure pricing)
@@ -243,12 +274,16 @@ Test coverage includes:
 
 ## API Reference
 
-27 routes, all under `/v2`. Requests are authenticated with an API key and scoped to
-the key's tenant; the console shell at `/` is public because it carries no tenant data.
+The served application (`dcc.api_async:app`) exposes 27 routes under `/v2`, plus
+`/healthz`, `/readyz`, `/metrics`, the console shell at `/`, the `/assets` static mount,
+and the generated `/docs`, `/redoc` and `/openapi.json`. Requests are authenticated with
+an API key and scoped to the key's tenant; the console shell at `/` is public because it
+carries no tenant data.
 
-> Earlier revisions of this file documented ten `/v1/*` routes. **No `/v1` route has
-> ever been served** — the app mounts `/v2` only, so every one of those paths returned
-> 404. The table below is generated from the app's own route table.
+> `/v1/*` belongs to a different, legacy handler: `src/dcc/api.py`, a standard-library
+> `ThreadingHTTPServer` that `scripts/run-local.py` starts. It serves no `/v2` route and
+> performs no authentication. The FastAPI app serves no `/v1` route. Everything below
+> describes the FastAPI app, and the tables match its own route table.
 
 ### Authentication
 
@@ -265,6 +300,11 @@ Missing and invalid keys return the same code so the endpoint is not a key-enume
 oracle. `DCC_ALLOW_ANONYMOUS=true` disables enforcement for local development and logs
 a warning; it is never appropriate in a deployment.
 
+The `/assets` mount is behind the same middleware: `/assets/topology.js` returns `401`
+without a key and `200` with one. A browser `<script src>` cannot send a header, so the
+console shell injects a `<meta name="dcc-api-key">` tag for loopback clients when
+`DCC_UI_API_KEY` is set.
+
 Mint a key:
 
 ```bash
@@ -279,9 +319,11 @@ turns a locked-out configuration into a startup failure instead of a warning.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/healthz` | Process liveness |
-| GET | `/readyz` | Database, schema, and RLS readiness |
+| GET | `/readyz` | Database reachability and `dcc.tenants`/`dcc.assets` presence |
 | GET | `/metrics` | Prometheus text exposition, labelled by route template |
 | GET | `/` | Console shell (public, no tenant data) |
+| GET | `/assets/*` | Console JavaScript from `ui/`; behind auth, so a key is required |
+| GET | `/docs`, `/redoc`, `/openapi.json` | Generated API documentation; public |
 
 ### Collections
 
@@ -338,7 +380,7 @@ Called with a request body. These compute a recommendation; none of them act on 
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v2/compliance/controls` | Control catalogue (SOC 2, ISO 27001, PCI-DSS, HIPAA, NIST 800-53) |
+| GET | `/v2/compliance/controls` | Control catalogue (SOC 2, ISO 27001, PCI-DSS, HIPAA, NIST 800-53, plus a `custom` framework) |
 | GET | `/v2/compliance/scan` | Per-control status, with `configuration_gaps` naming controls that read variables the app ignores |
 | GET | `/v2/security/posture` | Weighted posture score across five dimensions from observed process state |
 
@@ -347,11 +389,18 @@ Called with a request body. These compute a recommendation; none of them act on 
 | Parameter | Default | Description |
 |---|---|---|
 | `tenant_id` | required | Tenant UUID; must match the authenticated key |
-| `limit` | `100` | Page size, 1–1000 |
-| `cursor` | — | Opaque pagination cursor |
-| `window_days` | `30` | Analytics window, 1–90 |
-| `demo` | — | `synthetic` reveals seeded demo data on `/v2/costs` |
+| `limit` | `100` | Page size, 1–1000. Defaults to `200` on `/v2/capacity` and `/v2/evidence`; only the paginated collections accept it |
+| `cursor` | — | Opaque pagination cursor, accepted by the eight paginated collections |
+| `window_days` | `30` | Analytics window, 1–90 (`/v2/analytics` only) |
+| `demo` | — | `synthetic` reveals seeded demo data on `/v2/costs`. `/v2/overview` accepts it but only uses it as a cache-key component |
 | `max_events` | `10000` | Evidence verification cap, max 100000 |
+| `include_events` | `false` | `/v2/evidence/verify` also returns the scanned events |
+| `framework` | — | `/v2/compliance/controls` and `/v2/compliance/scan`; unknown values return `unknown_framework` |
+| `dimension` | — | `/v2/capacity` capacity dimension filter |
+| `domain`, `risk_class`, `latest_only` | — | `/v2/procedures` filters; `latest_only` collapses to the current version per key |
+| `status` | — | `/v2/workflows` and `/v2/procedures` status filter |
+| `enabled` | — | `/v2/dr/policies` filter |
+| `pattern` | required | `/v2/cache/invalidate` key pattern (POST query parameter) |
 
 ### Response conventions
 
@@ -360,6 +409,12 @@ Collection endpoints return a page envelope:
 ```json
 {"items": [], "total": 0, "limit": 100, "offset": 0, "has_more": false, "next_cursor": null}
 ```
+
+The eight paginated collections (`/v2/assets`, `/v2/facilities`, `/v2/procedures`,
+`/v2/dr/policies`, `/v2/connectors`, `/v2/capacity`, `/v2/evidence`, `/v2/workflows`)
+return that envelope. `/v2/overview`, `/v2/costs`, `/v2/analytics`, `/v2/dr/summary`,
+`/v2/compliance/controls`, `/v2/compliance/scan`, `/v2/security/posture` and
+`/v2/evidence/verify` return their own object shape instead.
 
 Every `/v2` JSON object response carries `read_only: true` and
 `execution_permitted: false`, injected by middleware after the handler runs rather than
@@ -373,7 +428,7 @@ omit it. A handler that sets either field explicitly keeps its own value.
 Errors return a JSON body with a machine-readable key:
 
 ```json
-{"detail": {"error": "unknown_framework", "value": "made_up", "accepted": ["soc2", "iso27001"]}}
+{"detail": {"error": "unknown_framework", "value": "made_up", "accepted": ["soc2", "iso27001", "pci_dss", "hipaa", "nist_800_53", "custom"]}}
 ```
 
 
@@ -1070,7 +1125,11 @@ data-center-commander/
 │       ├── 001_cost_intelligence.sql
 │       ├── 002_lifecycle_rollup_fix.sql
 │       ├── 003_estimate_price_link_validation.sql
-│       └── 004_placement_comparison_snapshots.sql
+│       ├── 004_placement_comparison_snapshots.sql
+│       ├── 005_performance_indexes.sql
+│       ├── 006_performance_optimization.sql
+│       ├── 007_evidence_verifier_single_source.sql
+│       └── 008_disaster_recovery.sql
 ├── docs/           architecture, lifecycle, data/KPI, adapters, security, runbooks
 │   ├── ARCHITECTURE.md
 │   ├── COST_ESTIMATING_AND_UNIT_ECONOMICS.md
@@ -1082,12 +1141,15 @@ data-center-commander/
 │   ├── PURPLE_TEAM_READINESS.md
 │   ├── SECURITY_AND_GOVERNANCE.md
 │   └── media/       screenshots and overview GIF
-├── scripts/        local startup, safe bootstrap, demo-only seed/reset
-│   ├── run-local.py
+├── scripts/        local startup, safe bootstrap, fresh-deploy verification
+│   ├── run-local.py            legacy stdlib server (serves /v1)
+│   ├── verify-fresh-deploy.sh  schema + all migrations + GET-route smoke test
 │   ├── db-seed-demo.sh
 │   └── db-reset-demo.sh
 ├── src/dcc/        loopback read-model API and domain libraries
-│   ├── api.py          HTTP handler, routing, tenant scoping
+│   ├── api_async.py    served FastAPI app, routing, auth middleware, tenant scoping
+│   ├── pgcompat.py     psycopg3 adapter for the asyncpg-style queries
+│   ├── api.py          legacy stdlib ThreadingHTTPServer (serves /v1 via run-local.py)
 │   ├── azure_prices.py Azure retail price client
 │   ├── google_prices.py GCP billing catalog client
 │   ├── adapters/       read-only source adapters
@@ -1127,7 +1189,7 @@ data-center-commander/
 │   ├── validation/     validation and consistency
 │   │   ├── units.py        unit conversion
 │   │   ├── intervals.py    time series alignment
-│   │   ├── consistency.py  17 consistency validators
+│   │   ├── consistency.py  15 consistency validators
 │   │   ├── schema.py       30+ entity validators
 │   │   └── boundaries.py   boundary checks
 │   ├── security/       tenant isolation and secrets
@@ -1201,6 +1263,8 @@ data-center-commander/
 │   ├── placement-comparison.js
 │   ├── placement-scenarios.js
 │   ├── quality-dashboard.js
+│   ├── security-dashboard.js
+│   ├── ops-dashboard.js
 │   ├── economics-dashboard.js
 │   └── forecast-dashboard.js
 ├── pyproject.toml
@@ -1223,9 +1287,13 @@ Existing databases created before the cost-intelligence module should apply migr
 7. [`007_evidence_verifier_single_source.sql`](database/migrations/007_evidence_verifier_single_source.sql) — removes the database-side verifier that disagreed with the writer
 8. [`008_disaster_recovery.sql`](database/migrations/008_disaster_recovery.sql) — backup policies, DR test plans and executions, RTO/RPO measurements, all under RLS
 
-New databases receive all tables and corrected rollup through
-`database/schema.sql` plus migration 004. Existing synthetic demo databases can add the cost-only
-fixture with `database/cost_demo_seed.sql`.
+A new database is built from `database/schema.sql` followed by **all eight**
+migrations. `database/schema.sql` alone is not sufficient — 005–008 add objects the API
+reads (`mv_workflow_health` and its column shape, the DR tables, performance indexes).
+`scripts/verify-fresh-deploy.sh` performs exactly that sequence on a scratch database
+and then asserts the table count, the required views and DR tables, forced RLS, and a
+smoke test of every GET `/v2` route. Existing synthetic demo databases can add the
+cost-only fixture with `database/cost_demo_seed.sql`.
 
 ---
 

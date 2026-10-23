@@ -5,7 +5,7 @@
 set -euo pipefail
 
 STACK_NAME="${1:-dcc}"
-COMPOSE_FILE="${2:-src/dcc/containers/docker-swarm/stack.yml}"
+COMPOSE_FILE="${2:-src/dcc/containers/docker_swarm/stack.yml}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 

@@ -55,8 +55,11 @@ else
   dropdb --if-exists "$SCRATCH_DB"
   createdb "$SCRATCH_DB"
   CREATED_DB=1
-  ADMIN_DSN="postgresql:///${SCRATCH_DB}"
-  DSN="$ADMIN_DSN"
+  # ADMIN_DSN must point at a database we can connect to in order to DROP the scratch
+  # one. Pointing it at the scratch database itself made cleanup a silent no-op --
+  # you cannot drop the database you are connected to.
+  ADMIN_DSN="postgresql:///postgres"
+  DSN="postgresql:///${SCRATCH_DB}"
 fi
 
 # ON_ERROR_STOP is the whole point. Without it psql prints ERROR and exits 0.

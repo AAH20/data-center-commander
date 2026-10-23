@@ -56,25 +56,25 @@ echo ""
 echo "Creating application configs..."
 echo ""
 
-create_config "app_config" "src/dcc/containers/docker-swarm/configs/app.env" "Application environment"
+create_config "app_config" "src/dcc/containers/docker_swarm/configs/app.env" "Application environment"
 echo ""
 
-create_config "nginx_conf" "src/dcc/containers/docker-swarm/configs/nginx.conf" "Nginx main configuration"
+create_config "nginx_conf" "src/dcc/containers/docker_swarm/configs/nginx.conf" "Nginx main configuration"
 echo ""
 
-create_config "nginx_dcc_conf" "src/dcc/containers/docker-swarm/configs/dcc.conf" "Nginx DCC virtual host"
+create_config "nginx_dcc_conf" "src/dcc/containers/docker_swarm/configs/dcc.conf" "Nginx DCC virtual host"
 echo ""
 
-create_config "otel_config" "src/dcc/containers/docker-swarm/configs/otel-collector.yaml" "OpenTelemetry Collector configuration"
+create_config "otel_config" "src/dcc/containers/docker_swarm/configs/otel-collector.yaml" "OpenTelemetry Collector configuration"
 echo ""
 
-create_config "prometheus_config" "src/dcc/containers/docker-swarm/configs/prometheus.yml" "Prometheus configuration"
+create_config "prometheus_config" "src/dcc/containers/docker_swarm/configs/prometheus.yml" "Prometheus configuration"
 echo ""
 
-create_config "grafana_datasources" "src/dcc/containers/docker-swarm/configs/grafana-datasources.yml" "Grafana datasources"
+create_config "grafana_datasources" "src/dcc/containers/docker_swarm/configs/grafana-datasources.yml" "Grafana datasources"
 echo ""
 
-create_config "grafana_dashboards" "src/dcc/containers/docker-swarm/configs/grafana-dashboards.yml" "Grafana dashboards"
+create_config "grafana_dashboards" "src/dcc/containers/docker_swarm/configs/grafana-dashboards.yml" "Grafana dashboards"
 echo ""
 
 echo "=== Configs Setup Complete ==="
