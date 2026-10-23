@@ -131,9 +131,15 @@ const demoToggle=document.createElement('button');demoToggle.type='button';demoT
 if(syntheticDemoMode){const ribbon=document.createElement('div');ribbon.className='banner warn';ribbon.innerHTML='<b>SYNTHETIC DEMO · NOT LIVE</b><span style="margin-left:8px">Explicit presentation mode. All readings, workflows, estimates and price assumptions are fixtures—not facility telemetry, forecasts, quotes, invoices, approvals, or operational evidence. No actuation is available.</span>';document.querySelector('.wrap')?.prepend(ribbon)}
 /* The key is never baked into this file. Resolution order: what the operator typed,
    then what this browser remembered, then the key the loopback server injected as a
-   meta tag, then ?api_key= for a one-off. Resolved per request, so entering a key in
+   meta tag. Resolved per request, so entering a key in
    the rail repairs the panels without a reload. */
-function apiKeyState(){const input=document.getElementById("apiKeyInput");const typed=input?input.value.trim():"";const stored=localStorage.getItem("dcc-api-key")||"";const meta=(document.querySelector('meta[name="dcc-api-key"]')||{}).content||"";const query=new URLSearchParams(location.search).get("api_key")||"";return{typed,stored,meta,query,value:typed||stored||meta||query,any:Boolean(typed||stored||meta||query)}}
+/* Credential resolution. Deliberately NO ?api_key= source: a key in a URL is written to
+   browser history, to the Referer of every subsequent request, and to the server's
+   access log -- a credential leak that persists after the tab closes. If one arrives
+   anyway (an old bookmark), it is read once and immediately scrubbed from the address
+   bar so it is not left behind. */
+(function scrubUrlKey(){try{const u=new URL(location.href);if(u.searchParams.has("api_key")){u.searchParams.delete("api_key");history.replaceState({},"",u.toString())}}catch(e){}})();
+function apiKeyState(){const input=document.getElementById("apiKeyInput");const typed=input?input.value.trim():"";const stored=localStorage.getItem("dcc-api-key")||"";const meta=(document.querySelector('meta[name="dcc-api-key"]')||{}).content||"";return{typed,stored,meta,value:typed||stored||meta,any:Boolean(typed||stored||meta)}}
 const _fetch=(u,o={})=>{const key=apiKeyState().value;const headers={...(key?{"X-API-Key":key}:{}),...(o.headers||{})};return fetch(u,{...o,headers})};function apiError(path,response,body){const detail=body&&typeof body.detail==='object'?body.detail:null;const message=(body&&typeof body.detail==='string'&&body.detail)||(detail&&(detail.error||detail.detail))||(body&&body.error)||`${path} returned HTTP ${response.status}`;return Error(response.status===401?'authentication required: set an API key for this deployment':response.status===403?`tenant mismatch: the API key is not authorised for this tenant_id (${message})`:message)}
 async function readJson(path,response){const text=await response.text();let body={};try{body=text?JSON.parse(text):{}}catch(err){throw Error(`${path} returned HTTP ${response.status} with a non-JSON body`)}if(!response.ok)throw apiError(path,response,body);return body}
 async function get(path){const params=new URLSearchParams({tenant_id:tenant||''});if(syntheticDemoMode)params.set('demo','synthetic');const r=await _fetch(`${path}?${params}`,{cache:'no-store'});return readJson(path,r)}
