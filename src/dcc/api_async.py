@@ -1499,6 +1499,11 @@ async def safety_contract(request: Request, call_next):
 
     if not request.url.path.startswith("/v2"):
         return response
+    # Only successful bodies describe a resource. Injecting read_only into an error
+    # payload adds a claim about a result that does not exist, and made 403 bodies
+    # read as though they carried data.
+    if not 200 <= response.status_code < 300:
+        return response
     if not response.headers.get("content-type", "").startswith("application/json"):
         return response
     if hasattr(response, "body_iterator"):
