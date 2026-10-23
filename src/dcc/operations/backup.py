@@ -758,22 +758,55 @@ class BackupEngine:
         if not conn:
             return {}
 
+        # Best-effort, but never a guess. Two defects made this report a confident 0:
+        #
+        #  1. A single try/except wrapped the whole loop, so one failing table aborted
+        #     every remaining count and the caller's sum(row_counts.values()) reported
+        #     an empty database.
+        #  2. It assumed every table has a tenant_id column and that the tenant is a
+        #     UUID. dcc.tenants has no tenant_id, and a non-UUID tenant raised on the
+        #     ::uuid cast -- both landed in the blanket except and vanished.
+        #
+        # A table is now counted only when it genuinely has a tenant_id column, each
+        # count fails independently, and a table that could not be counted is OMITTED
+        # rather than recorded as 0. Omitting keeps sum() honest: it totals what was
+        # measured, and a missing key says "not measured" instead of "empty".
         counts: dict[str, int] = {}
         try:
             import psycopg
 
             with psycopg.connect(conn) as c:
                 with c.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT table_name
+                        FROM information_schema.columns
+                        WHERE table_schema = 'dcc' AND column_name = 'tenant_id'
+                        """
+                    )
+                    tenant_scoped = {row[0] for row in cur.fetchall()}
+
                     for table in tables:
-                        cur.execute(
-                            f"SELECT count(*) FROM dcc.{table} WHERE tenant_id = %s::uuid",
-                            (tenant_id,),
-                        )
-                        row = cur.fetchone()
-                        counts[table] = row[0] if row else 0
+                        if table not in tenant_scoped:
+                            # Not tenant-scoped (e.g. dcc.tenants itself); counting it
+                            # by tenant_id would be meaningless, not zero.
+                            continue
+                        try:
+                            cur.execute(
+                                f'SELECT count(*) FROM dcc."{table}" WHERE tenant_id = %s::uuid',
+                                (tenant_id,),
+                            )
+                            row = cur.fetchone()
+                            if row is not None:
+                                counts[table] = row[0]
+                        except Exception:
+                            # Leave the key out entirely: the caller must not sum an
+                            # unmeasured table as if it had been counted.
+                            continue
         except Exception:
-            # Row counts are best-effort; don't fail the backup
-            pass
+            # Whole-connection failure (unreachable DSN, bad credentials). An empty
+            # dict still means "nothing measured", which is the truth here.
+            return {}
         return counts
 
     def _find_latest_full_backup(self, tenant_id: str) -> str | None:

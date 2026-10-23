@@ -6,6 +6,8 @@ Adds pagination, caching, rate limiting, and optimization endpoints.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import hashlib
 import json
 import os
@@ -16,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -320,6 +323,17 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# The console loads ten module scripts from /assets/*.js (topology, forecast, quality,
+# security, economics, placement, onboarding, ops, azure-prices). Those files live in
+# ui/ and nothing served them: the app exposed only "/" and "/v2/*", so every one of
+# them 404'd and every dashboard they drive stayed on its static placeholder text.
+_ui_dir = Path(__file__).resolve().parents[2] / "ui"
+if _ui_dir.is_dir():
+    # StaticFiles resolves and confines paths under the given directory, so this does
+    # not expose anything outside ui/. Mounted after the app so /v2 routing is
+    # untouched -- /assets/... shares no prefix with /v2.
+    app.mount("/assets", StaticFiles(directory=str(_ui_dir)), name="assets")
 
 
 @app.middleware("http")
