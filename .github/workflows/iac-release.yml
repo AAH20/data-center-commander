@@ -252,13 +252,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download changelog
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: iac-changelog
           path: dist/
 
       - name: Download IaC artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: iac-artifacts
           path: dist/
@@ -289,7 +289,7 @@ jobs:
           ref: main
 
       - name: Download changelog
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: iac-changelog
           path: ./
