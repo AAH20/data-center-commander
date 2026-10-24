@@ -679,12 +679,31 @@ async def overview(
             tenant_id,
         )
 
+    latest_ingested = latest["latest_ingested_at"] if latest else None
+    kpi_rows = [dict(k) for k in kpis]
+
+    # Provenance. The console branches on all three of these -- 16 times on `synthetic`
+    # alone -- but overview never returned them, so every branch evaluated false and a
+    # synthetic tenant rendered as if it were live. The definitions mirror /v2/costs
+    # rather than introducing a second meaning: synthetic_present is a fact about the
+    # stored rows, synthetic_demo_mode is the caller's explicit opt-in to see them.
+    synthetic_present = any(
+        (row.get("provenance") or {}).get("synthetic") is True for row in kpi_rows
+    )
+    show_synthetic = demo == "synthetic" and synthetic_present
+
     result = {
         "tenant_id": tenant_id,
         "facility_count": facilities["facility_count"] if facilities else 0,
-        "kpis": [dict(k) for k in kpis],
+        "kpis": kpi_rows,
         "open_workflows": open_work["open_count"] if open_work else 0,
-        "latest_telemetry_ingested_at": latest["latest_ingested_at"] if latest else None,
+        "latest_telemetry_ingested_at": latest_ingested,
+        # A tenant with no telemetry is a distinct state from a tenant with zero rows:
+        # the console renders "No telemetry is connected" for the first and the KPI
+        # grid for the second. Collapsing them made an unconnected tenant look empty.
+        "source_status": "live" if latest_ingested is not None else "no_telemetry",
+        "synthetic": synthetic_present,
+        "synthetic_demo_mode": show_synthetic,
         "read_only": True,
         "execution_permitted": False,
     }
