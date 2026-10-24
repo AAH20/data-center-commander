@@ -542,9 +542,12 @@ def _presented_key(request: Request) -> str | None:
 async def auth_middleware(request: Request, call_next):
     """Authenticate the caller and bind the tenant before the handler runs.
 
-    Ordering matters: this is registered after the metrics middleware, so Starlette
-    runs it OUTSIDE metrics and a rejected request is still counted. An unauthenticated
-    request is still a request an operator wants to see on the dashboard.
+    Ordering: middleware registered last runs FIRST, so this layer sits outside
+    rate limiting and the routes. It must sit INSIDE metrics, which is why
+    _promote_metrics_middleware() moves the metrics layer to the outermost position
+    after this is registered. Without that promotion a rejected request was never
+    recorded, and a flood of 401s -- the signal an operator most wants -- was invisible
+    on /metrics.
     """
     path = request.url.path
     if path in _AUTH_PUBLIC_PATHS or path.startswith("/docs") or _auth_is_open():
@@ -2650,3 +2653,37 @@ def _declare_response_schemas() -> None:
 
 
 _declare_response_schemas()
+
+
+# ---------------------------------------------------------------------------
+# Middleware order
+# ---------------------------------------------------------------------------
+# Starlette wraps the app from the END of user_middleware inwards, so index 0 is the
+# OUTERMOST layer. add_middleware inserts at 0, which means the middleware registered
+# LAST runs FIRST -- the opposite of reading order in this file.
+#
+# auth_middleware is registered after metrics_middleware, so auth ended up outside
+# metrics and rejected a request before metrics could record it. The docstring on
+# auth_middleware claimed the reverse and an operator reading it would expect 401s on
+# the dashboard. Measured: a 200 increments api_requests_total, a 401 leaves it
+# unchanged. A flood of authentication failures -- exactly the signal an operator wants
+# -- was invisible.
+#
+# Metrics must be outermost so every request is timed whatever rejects it.
+def _promote_metrics_middleware() -> None:
+    """Move the metrics layer to the outermost position and rebuild the stack."""
+    entries = list(app.user_middleware)
+    index = None
+    for i, entry in enumerate(entries):
+        dispatch = getattr(entry, "dispatch", None) or entry.kwargs.get("dispatch")
+        if getattr(dispatch, "__name__", "") == "metrics_middleware":
+            index = i
+            break
+    if index is None or index == 0:
+        return
+    entries.insert(0, entries.pop(index))
+    app.user_middleware = entries
+    app.middleware_stack = app.build_middleware_stack()
+
+
+_promote_metrics_middleware()
