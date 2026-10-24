@@ -12,7 +12,7 @@ from pathlib import Path
 from tests.terraform.terraform_parser import TerraformParser, get_module_path
 
 
-MODULES_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "terraform", "modules"))
+MODULES_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "iac", "modules"))
 
 
 class TestModuleStructureCompliance(unittest.TestCase):
@@ -95,14 +95,20 @@ class TestModuleStructureCompliance(unittest.TestCase):
                 )
 
     def test_all_modules_have_resources(self):
-        """All modules define at least one resource."""
+        """All modules define at least one resource.
+
+        Orchestrator modules (e.g. aws-compliance, multi-cloud) intentionally
+        define no resources of their own -- they wire child modules together.
+        For those the meaningful invariant is that they delegate via module
+        calls, so an entirely empty module is still caught.
+        """
         for module_dir in self.module_dirs:
             with self.subTest(module=module_dir.name):
                 parsed = self.parser.parse_module(module_dir)
                 self.assertGreater(
-                    len(parsed["resources"]),
+                    len(parsed["resources"]) + len(parsed["module_calls"]),
                     0,
-                    f"{module_dir.name} has no resources"
+                    f"{module_dir.name} has neither resources nor module calls"
                 )
 
 
@@ -402,14 +408,56 @@ class TestResourceCompliance(unittest.TestCase):
         cls.module_dirs = cls.parser.find_module_dirs()
 
     def test_aws_resources_have_tags(self):
-        """AWS resources have tags."""
+        """AWS resources that support tags have them.
+
+        Not every AWS resource type accepts a `tags` argument -- tagging the
+        rest is done by the provider's default_tags, not the resource. The set
+        below was read from the AWS provider's own schema
+        (`terraform providers schema -json`, hashicorp/aws 5.x): each of these
+        type schemas has neither a `tags` nor a `tags_all` attribute, so
+        asserting tags on them is unsatisfiable by any correct module.
+        """
+        NON_TAGGABLE = {
+            # hashicorp/aws 5.x resource schemas with neither a `tags` nor a
+            # `tags_all` attribute, as used by the modules under iac/modules.
+            "aws_accessanalyzer_archive_rule",
+            "aws_backup_selection",
+            "aws_backup_vault_lock_configuration",
+            "aws_backup_vault_notifications",
+            "aws_cloudwatch_dashboard",
+            "aws_cloudwatch_event_target",
+            "aws_config_configuration_recorder",
+            "aws_config_configuration_recorder_status",
+            "aws_config_delivery_channel",
+            "aws_guardduty_member",
+            "aws_guardduty_publishing_destination",
+            "aws_iam_access_key",
+            "aws_iam_group",
+            "aws_iam_group_policy_attachment",
+            "aws_iam_role_policy",
+            "aws_iam_user_policy_attachment",
+            "aws_route_table_association",
+            "aws_s3_bucket_lifecycle_configuration",
+            "aws_s3_bucket_logging",
+            "aws_s3_bucket_policy",
+            "aws_s3_bucket_public_access_block",
+            "aws_s3_bucket_server_side_encryption_configuration",
+            "aws_s3_bucket_versioning",
+            "aws_securityhub_account",
+            "aws_securityhub_action_target",
+            "aws_securityhub_member",
+            "aws_securityhub_product_subscription",
+            "aws_securityhub_standards_subscription",
+            "aws_sns_topic_subscription",
+            "aws_vpn_connection_route",
+        }
         aws_modules = [d for d in self.module_dirs if "aws" in str(d)]
         for module_dir in aws_modules:
             with self.subTest(module=module_dir.name):
                 parsed = self.parser.parse_module(module_dir)
                 for res_name, res_info in parsed["resources"].items():
-                    # Check if resource has tags (some resources may not support tags)
-                    if res_info.get("type", "").startswith("aws_"):
+                    res_type = res_info.get("type", "")
+                    if res_type.startswith("aws_") and res_type not in NON_TAGGABLE:
                         self.assertTrue(
                             res_info.get("tags"),
                             f"{module_dir.name}.{res_name} missing tags"

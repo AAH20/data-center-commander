@@ -58,17 +58,20 @@ class TestOverview:
     def test_quality_state_no_data(self, page: Page, api_server, mock_overview_empty):
         """Quality state should show no data message."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
-        expect(page.locator("#qualityState")).to_contain_text("No validated source observations")
+        # source_status "no_telemetry" renders this empty-state copy.
+        expect(page.locator("#qualityState")).to_contain_text("No telemetry is connected")
 
     def test_workflow_state_no_data(self, page: Page, api_server, mock_overview_empty):
         """Workflow state should show unavailable message."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
-        expect(page.locator("#workflowState")).to_contain_text("Operational queue unavailable")
+        # An empty lifecycle queue renders the count line, not an outage notice.
+        expect(page.locator("#workflowState")).to_contain_text("0 open lifecycle workflows")
 
     def test_asof_displayed(self, page: Page, api_server, mock_overview_empty):
         """As-of stamp should be displayed."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
-        expect(page.locator("#asOf")).to_contain_text("Awaiting database read")
+        # With no telemetry ingested the stamp reads "No telemetry ingested".
+        expect(page.locator("#asOf")).to_contain_text("No telemetry ingested")
 
     def test_asof_with_data(self, page: Page, api_server, mock_overview_with_data):
         """As-of stamp should show telemetry ingested time."""
@@ -84,7 +87,8 @@ class TestOverview:
     def test_readonly_boundary_message(self, page: Page, api_server, mock_all_empty):
         """Read-only boundary message should be displayed."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
-        expect(page.locator(".boundary")).to_contain_text("Read-only decision support")
+        # Two .boundary nodes exist (header and footer); assert on the first.
+        expect(page.locator(".boundary").first).to_contain_text("Read-only decision support")
 
     def test_no_tenant_shows_choose_tenant(self, page: Page, api_server, mock_all_empty):
         """Without tenant_id, should show choose tenant message."""

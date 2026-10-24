@@ -49,15 +49,19 @@ def main() -> int:
 
     from fastapi.testclient import TestClient
 
-    from dcc.api_async import app
+    from dcc.api_async import _iter_routes, app
 
     client = TestClient(app)
     headers = {"X-API-Key": raw_key}
 
+    # _iter_routes, not app.routes: include_router wraps a sub-router in an
+    # _IncludedRouter that has no .path, so iterating app.routes directly silently
+    # skips every included route -- the backup endpoints were never exercised here
+    # even after they were mounted.
     paths = sorted(
         {
             route.path
-            for route in app.routes
+            for route in _iter_routes(app.routes)
             if getattr(route, "path", "").startswith("/v2")
             and "GET" in (getattr(route, "methods", None) or [])
             and "{" not in getattr(route, "path", "")

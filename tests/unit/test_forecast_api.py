@@ -263,6 +263,12 @@ class TestFailurePrediction:
 
 class TestRoutesAreReachable:
     def test_all_three_are_registered(self):
-        paths = {route.path for route in app.routes}
+        # Include routers are NOT flattened into app.routes: FastAPI wraps them in an
+        # _IncludedRouter that has no .path, so a naive {route.path for route in
+        # app.routes} raises on the wrapper and would silently miss included routes.
+        # Use the app's own enumeration, which descends into sub-routers.
+        from dcc.api_async import _iter_routes
+
+        paths = {getattr(route, "path", None) for route in _iter_routes(app.routes)}
         for path in ("/v2/forecast/capacity", "/v2/forecast/failure", "/v2/forecast/drift"):
             assert path in paths, f"{path} is not registered on the served app"

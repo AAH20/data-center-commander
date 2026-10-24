@@ -31,7 +31,7 @@ class TestEvidenceView:
         """Evidence view should show empty state."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "evidence")
-        expect(page.locator("#evidenceView")).to_contain_text("No evidence event references")
+        expect(page.locator("#evidenceView")).to_contain_text("No records returned by the live database query")
 
     def test_evidence_view_hidden_by_default(self, page: Page, api_server, mock_all_empty):
         """Evidence view should be hidden by default."""

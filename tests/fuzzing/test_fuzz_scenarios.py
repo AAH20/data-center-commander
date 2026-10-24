@@ -84,7 +84,9 @@ class TestScenarioFuzz:
         assert costs.total_monthly >= 0
 
     @given(
-        name=st.text(min_size=1, max_size=120),
+        # DeploymentScenario requires a name whose *stripped* length is 1..120,
+        # so whitespace-only strings are invalid input, not a scenario to fuzz.
+        name=st.text(min_size=1, max_size=120).filter(lambda s: s.strip()),
         scenario_type=scenario_types,
         currency=currency_codes,
         horizon=horizon_months,

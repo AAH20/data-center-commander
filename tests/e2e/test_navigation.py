@@ -66,7 +66,7 @@ class TestNavigation:
         """Clicking Integrations nav should activate integrations view."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "integrations")
-        expect(page.locator("#view-integflows")).to_have_class(re.compile(r"\bactive\b"))
+        expect(page.locator("#view-integrations")).to_have_class(re.compile(r"\bactive\b"))
 
     def test_nav_to_evidence(self, page: Page, api_server, mock_all_empty):
         """Clicking Evidence & audit nav should activate evidence view."""

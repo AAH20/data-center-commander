@@ -651,18 +651,19 @@ class TestPricesIntegration(unittest.TestCase):
                 unit_price=Decimal("100"), currency="USD", quantity_unit="unit",
                 geography="US", delivery_basis="delivered", effective_from=date(2026, 1, 1),
                 status=PriceStatus.APPROVED, price_basis="budgetary", source_kind="manual",
-                source_name="", source_ref="", confidence=1.0, fx_to_book=1.0,
+                source_name="", source_ref="", confidence=1.0, fx_to_book=Decimal("1"),
             ),
             PriceRecord(
                 item_code="B", description="B", category="it_equipment",
                 unit_price=Decimal("200"), currency="USD", quantity_unit="unit",
                 geography="US", delivery_basis="delivered", effective_from=date(2026, 1, 1),
                 status=PriceStatus.APPROVED, price_basis="budgetary", source_kind="manual",
-                source_name="", source_ref="", confidence=1.0, fx_to_book=1.0,
+                source_name="", source_ref="", confidence=1.0, fx_to_book=Decimal("1"),
             ),
         ]
         result = compute_weighted_average_price(records)
         self.assertIsNotNone(result)
+        self.assertEqual(float(result), 150.0)
 
     def test_compute_escalated_price(self):
         from dcc.economics.prices import compute_escalated_price
@@ -674,12 +675,29 @@ class TestPricesIntegration(unittest.TestCase):
         self.assertEqual(result, Decimal("110"))
 
     def test_compute_price_index(self):
-        from dcc.economics.prices import compute_price_index
+        from dcc.economics.prices import compute_price_index, PriceRecord, PriceStatus
+        from datetime import date
+
+        def _record(code: str, price: str) -> "PriceRecord":
+            return PriceRecord(
+                item_code=code, description=code, category="it_equipment",
+                unit_price=Decimal(price), currency="USD", quantity_unit="unit",
+                geography="US", delivery_basis="delivered", effective_from=date(2026, 1, 1),
+                status=PriceStatus.APPROVED, price_basis="budgetary", source_kind="manual",
+                source_name="", source_ref="", confidence=Decimal("1.0"), fx_to_book=Decimal("1"),
+            )
+
         result = compute_price_index(
-            base_records=[],
-            comparison_records=[],
+            base_records=[_record("A", "100"), _record("B", "200")],
+            comparison_records=[_record("A", "110"), _record("B", "220")],
         )
         self.assertIsNotNone(result)
+        # Both items rose 10%, so the index is 110 (100 == no change).
+        self.assertEqual(float(result), 110.0)
+
+    def test_compute_price_index_returns_none_without_records(self):
+        from dcc.economics.prices import compute_price_index
+        self.assertIsNone(compute_price_index(base_records=[], comparison_records=[]))
 
 
 class TestTariffsIntegration(unittest.TestCase):
@@ -1037,8 +1055,9 @@ class TestTCOIntegration(unittest.TestCase):
             assumptions=TCOAssumptions(currency="USD", horizon_years=5),
         )
         result = evaluate_tco(scenario)
-        cpu = tco_cost_per_unit(result, "it_capacity_kw", 100)
+        cpu = tco_cost_per_unit(result, "kw", 100)
         self.assertIsNotNone(cpu)
+        self.assertGreater(float(cpu), 0)
 
 
 class TestScenariosIntegration(unittest.TestCase):
@@ -1108,8 +1127,12 @@ class TestScenariosIntegration(unittest.TestCase):
         engine = ScenarioEngine()
         engine.add_scenario(DeploymentScenario(name="A", costs=CostBreakdown(capex=100000, power_monthly=5000), assumptions=ScenarioAssumptions()))
         engine.add_scenario(DeploymentScenario(name="B", costs=CostBreakdown(capex=50000, power_monthly=8000), assumptions=ScenarioAssumptions()))
-        result = engine.break_even("A", "B", "capex", 0, 200000)
+        # break_even() sets the *same* value on both scenarios, so it can only
+        # cross zero for a parameter whose effect is not cancelled by that.
+        # discount_rate (bounded 0..1) is such a parameter; a shared capex is not.
+        result = engine.break_even("A", "B", "discount_rate", 0.0, 1.0)
         self.assertIsNotNone(result)
+        self.assertTrue(0.0 <= float(result) <= 1.0)
 
     def test_scenario_engine_to_dict(self):
         from dcc.economics.scenarios import ScenarioEngine, DeploymentScenario, CostBreakdown, ScenarioAssumptions

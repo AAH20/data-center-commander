@@ -31,10 +31,10 @@ class TestFinanceView:
         """Azure price form should have all required fields."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator('input[name="service_name"]')).to_be_visible()
-        expect(page.locator('input[name="region"]')).to_be_visible()
-        expect(page.locator('input[name="sku"]')).to_be_visible()
-        expect(page.locator('input[name="currency"]')).to_be_visible()
+        expect(page.locator('#azurePriceForm input[name="service_name"]')).to_be_visible()
+        expect(page.locator('#azurePriceForm input[name="region"]')).to_be_visible()
+        expect(page.locator('#azurePriceForm input[name="sku"]')).to_be_visible()
+        expect(page.locator('#azurePriceForm input[name="currency"]')).to_be_visible()
 
     def test_azure_price_status(self, page: Page, api_server, mock_all_empty):
         """Azure price status should be present."""
@@ -52,7 +52,8 @@ class TestFinanceView:
         """Estimate cards container should be present."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator("#estimateCards")).to_be_visible()
+        # Empty container under the empty-data fixture: assert it is mounted.
+        expect(page.locator("#estimateCards")).to_be_attached()
 
     def test_estimate_view_present(self, page: Page, api_server, mock_all_empty):
         """Estimate rollup view should be present."""
@@ -100,13 +101,13 @@ class TestFinanceView:
         """Price view should show no data message."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator("#priceView")).to_contain_text("No price observations")
+        expect(page.locator("#priceView")).to_contain_text("No records returned by the live database query")
 
     def test_actual_cost_view_no_data(self, page: Page, api_server, mock_all_empty):
         """Actual cost view should show no data message."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator("#actualCostView")).to_contain_text("No actual cost")
+        expect(page.locator("#actualCostView")).to_contain_text("No records returned by the live database query")
 
     def test_finance_view_hidden_by_default(self, page: Page, api_server, mock_all_empty):
         """Finance view should be hidden by default."""

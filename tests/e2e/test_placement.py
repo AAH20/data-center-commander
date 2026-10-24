@@ -82,7 +82,8 @@ class TestPlacementComparison:
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
-        expect(page.locator("#placementGates")).to_be_visible()
+        # Empty until a comparison is run: assert it is mounted.
+        expect(page.locator("#placementGates")).to_be_attached()
 
     def test_placement_gates_checkboxes(self, page: Page, api_server, mock_all_empty):
         """Placement gates should have checkboxes."""
@@ -99,7 +100,11 @@ class TestPlacementComparison:
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         page.click("#placement-tab-gates")
-        expect(page.locator("p[role=status]")).to_be_visible()
+        # #placementScenarioStatus is the saved-drafts status outside this panel,
+        # so it is hidden once the gates tab is selected; assert the gates panel
+        # itself is the visible one.
+        expect(page.locator("#placement-panel-gates")).to_be_visible()
+        expect(page.locator("#placementGates")).to_be_attached()
 
     def test_placement_export_button(self, page: Page, api_server, mock_all_empty):
         """Export comparison button should be present."""

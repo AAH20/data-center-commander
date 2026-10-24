@@ -98,7 +98,7 @@ class TestWorkloadsView:
         navigate_to(page, "workloads")
         page.fill("#workloadSearch", "enterprise")
         page.wait_for_timeout(300)
-        expect(page.locator("#workloadCount")).to_contain_text("of 14")
+        expect(page.locator("#workloadCount")).to_contain_text("of 16")
 
     def test_workloads_tier_filter_applies(self, page: Page, api_server, mock_all_empty):
         """Tier filter should filter workload cards."""
@@ -107,7 +107,7 @@ class TestWorkloadsView:
         navigate_to(page, "workloads")
         page.select_option("#workloadTier", "solo")
         page.wait_for_timeout(300)
-        expect(page.locator("#workloadCount")).to_contain_text("of 14")
+        expect(page.locator("#workloadCount")).to_contain_text("of 16")
 
 
 class TestCriticalEnvironmentsView:

@@ -19,13 +19,13 @@ class TestAzurePrices:
         """Service name input should have default value."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator('input[name="service_name"]')).to_have_value("Virtual Machines")
+        expect(page.locator('#azurePriceForm input[name="service_name"]')).to_have_value("Virtual Machines")
 
     def test_azure_price_form_currency_default(self, page: Page, api_server, mock_all_empty):
         """Currency input should have default value."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator('input[name="currency"]')).to_have_value("USD")
+        expect(page.locator('#azurePriceForm input[name="currency"]')).to_have_value("USD")
 
     def test_azure_price_status_initial(self, page: Page, api_server, mock_all_empty):
         """Azure price status should show initial message."""
@@ -43,14 +43,14 @@ class TestAzurePrices:
         """Azure price form should have required fields."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator('input[name="service_name"]')).to_have_attribute("required", "")
-        expect(page.locator('input[name="currency"]')).to_have_attribute("required", "")
+        expect(page.locator('#azurePriceForm input[name="service_name"]')).to_have_attribute("required", "")
+        expect(page.locator('#azurePriceForm input[name="currency"]')).to_have_attribute("required", "")
 
     def test_azure_price_form_currency_pattern(self, page: Page, api_server, mock_all_empty):
         """Currency input should have pattern validation."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "finance")
-        expect(page.locator('input[name="currency"]')).to_have_attribute("pattern", "[A-Za-z]{3}")
+        expect(page.locator('#azurePriceForm input[name="currency"]')).to_have_attribute("pattern", "[A-Za-z]{3}")
 
     def test_azure_price_title(self, page: Page, api_server, mock_all_empty):
         """Azure price title should be present."""

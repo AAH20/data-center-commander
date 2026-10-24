@@ -12,7 +12,7 @@ from pathlib import Path
 from tests.terraform.terraform_parser import TerraformParser, get_module_path
 
 
-MODULES_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "terraform", "modules"))
+MODULES_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "iac", "modules"))
 
 
 class TestContainerizationModule(unittest.TestCase):

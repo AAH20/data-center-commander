@@ -19,7 +19,7 @@ class TestAssetsView:
         """Assets view should have correct title."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "assets")
-        expect(page.locator("#view-assets h2")).to_contain_text("Estate")
+        expect(page.locator("#view-assets h2").first).to_contain_text("Estate")
 
     def test_assets_view_description(self, page: Page, api_server, mock_all_empty):
         """Assets view should have description."""
@@ -31,13 +31,13 @@ class TestAssetsView:
         """Facility view should show empty state."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "assets")
-        expect(page.locator("#facilityView")).to_contain_text("No facility records")
+        expect(page.locator("#facilityView")).to_contain_text("No records returned by the live database query")
 
     def test_asset_view_empty(self, page: Page, api_server, mock_all_empty):
         """Asset view should show empty state."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "assets")
-        expect(page.locator("#assetView")).to_contain_text("No asset records")
+        expect(page.locator("#assetView")).to_contain_text("No records returned by the live database query")
 
     def test_topology_graph_present(self, page: Page, api_server, mock_all_empty):
         """Topology graph container should be present."""

@@ -31,7 +31,7 @@ class TestCapacityView:
         """Capacity view should show empty state."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "capacity")
-        expect(page.locator("#capacityView")).to_contain_text("No capacity snapshots")
+        expect(page.locator("#capacityView")).to_contain_text("No records returned by the live database query")
 
     def test_capacity_view_hidden_by_default(self, page: Page, api_server, mock_all_empty):
         """Capacity view should be hidden by default."""

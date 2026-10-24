@@ -5,6 +5,7 @@ and the placement snapshot workflow end-to-end.
 """
 from __future__ import annotations
 
+import io
 import json
 import unittest
 from unittest.mock import patch, MagicMock
@@ -140,6 +141,9 @@ class _FakeHandler:
         self.pool = None
         self.headers = _FakeHeaders({})
         self.rfile = MagicMock()
+        # BaseHTTPRequestHandler exposes a writable wfile; binary asset and static
+        # responses write straight to it, so the double must provide one too.
+        self.wfile = io.BytesIO()
         self.server = MagicMock()
         self.server.server_address = ("127.0.0.1", 8790)
 
@@ -906,7 +910,7 @@ class TestPricingEndpoints(unittest.TestCase):
     def test_azure_pricing_returns_result(self):
         handler = _FakeHandler("/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
         handler.pool = _make_pool()
-        with patch("dcc.api.fetch_azure_retail_prices", return_value={"prices": []}):
+        with patch("dcc.azure_prices.fetch_azure_retail_prices", return_value={"prices": []}):
             Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
 
@@ -918,14 +922,14 @@ class TestPricingEndpoints(unittest.TestCase):
     def test_azure_pricing_returns_502_on_connection_error(self):
         handler = _FakeHandler("/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
         handler.pool = _make_pool()
-        with patch("dcc.api.fetch_azure_retail_prices", side_effect=ConnectionError("timeout")):
+        with patch("dcc.azure_prices.fetch_azure_retail_prices", side_effect=ConnectionError("timeout")):
             Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 502)
 
     def test_google_pricing_returns_result(self):
         handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
         handler.pool = _make_pool()
-        with patch("dcc.api.fetch_google_cloud_prices", return_value={"prices": []}):
+        with patch("dcc.google_prices.fetch_google_cloud_prices", return_value={"prices": []}):
             Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 200)
 
@@ -937,14 +941,14 @@ class TestPricingEndpoints(unittest.TestCase):
     def test_google_pricing_returns_503_on_missing_key(self):
         handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
         handler.pool = _make_pool()
-        with patch("dcc.api.fetch_google_cloud_prices", side_effect=ConnectionError("GOOGLE_CLOUD_BILLING_API_KEY is not configured")):
+        with patch("dcc.google_prices.fetch_google_cloud_prices", side_effect=ConnectionError("GOOGLE_CLOUD_BILLING_API_KEY is not configured")):
             Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 503)
 
     def test_google_pricing_returns_502_on_other_connection_error(self):
         handler = _FakeHandler("/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001")
         handler.pool = _make_pool()
-        with patch("dcc.api.fetch_google_cloud_prices", side_effect=ConnectionError("timeout")):
+        with patch("dcc.google_prices.fetch_google_cloud_prices", side_effect=ConnectionError("timeout")):
             Handler._do_GET_inner(handler, urlsplit(handler.path))
         self.assertEqual(handler.result[0], 502)
 

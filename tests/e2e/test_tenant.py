@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import urllib.parse
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -34,7 +35,8 @@ class TestTenantInput:
         page.fill("#tenantInput", TENANT_ID)
         page.press("#tenantInput", "Enter")
         page.wait_for_timeout(500)
-        expect(page).to_have_url(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(page.url).query)
+        assert params.get("tenant_id") == [TENANT_ID]
 
     def test_tenant_input_invalid_uuid(self, page: Page, api_server, mock_all_empty):
         """Invalid UUID should show validation error."""
@@ -51,7 +53,8 @@ class TestTenantInput:
         page.fill("#tenantInput", TENANT_ID)
         page.press("#tenantInput", "Enter")
         page.wait_for_timeout(500)
-        expect(page).to_have_url(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(page.url).query)
+        assert params.get("tenant_id") == [TENANT_ID]
 
     def test_tenant_input_label(self, page: Page, api_server, mock_all_empty):
         """Tenant input should have label."""

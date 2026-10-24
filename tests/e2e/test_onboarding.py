@@ -10,6 +10,21 @@ BASE_URL = "http://127.0.0.1:8790"
 TENANT_ID = "dcc00000-0000-4000-8000-000000000001"
 
 
+@pytest.fixture()
+def page(context):
+    """A first-run page, without the shared fixture's onboarding suppression.
+
+    The conftest ``page`` fixture pre-seeds ``dcc-workspace-profile-v1`` in
+    localStorage and stubs ``HTMLDialogElement.showModal`` so ``.dcc-dialog``
+    never opens. That is right for every other view, but it makes the
+    onboarding assertions below unsatisfiable by construction, so this module
+    starts from an untouched browser context instead.
+    """
+    fresh = context.new_page()
+    yield fresh
+    fresh.close()
+
+
 class TestOnboarding:
     """Test onboarding dialog and flow."""
 
@@ -66,7 +81,10 @@ class TestOnboarding:
         page.wait_for_timeout(500)
         page.select_option('select[name="profile"]', "enterprise")
         page.select_option('select[name="objective"]', "cost")
-        page.click('button[type="submit"]')
+        # Scoped to the dialog: an unscoped `button[type="submit"]` matches the
+        # finance view's "Fetch live retail rates" button, which the open
+        # dialog then intercepts.
+        page.click('.dcc-dialog button[type="submit"]')
         page.wait_for_timeout(300)
         dialog = page.locator(".dcc-dialog")
         assert not dialog.evaluate("el => el.open")
@@ -87,6 +105,10 @@ class TestOnboarding:
         """Start onboarding button should open dialog."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
+        # On a first run the dialog is already open and would intercept the
+        # click, so dismiss it before exercising the re-open path.
+        page.click("#dccSetupCancel")
+        page.wait_for_timeout(300)
         page.click("#dccStartOnboarding")
         page.wait_for_timeout(300)
         dialog = page.locator(".dcc-dialog")

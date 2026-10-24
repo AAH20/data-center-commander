@@ -34,75 +34,91 @@ class TestApiHealth:
 
     def test_404_unknown_route(self, page: Page, api_server):
         """Unknown API route should return 404."""
-        response = page.request.get(f"{BASE_URL}/v1/nonexistent?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/nonexistent?tenant_id={TENANT_ID}")
         assert response.status == 404
 
-    def test_invalid_tenant_id(self, page: Page, api_server):
-        """Invalid tenant_id should return 400."""
-        response = page.request.get(f"{BASE_URL}/v1/overview?tenant_id=invalid")
-        assert response.status == 400
+    def test_invalid_tenant_id(self, page: Page, api_server, database_url):
+        """Invalid tenant_id should be rejected as a validation error."""
+        response = page.request.get(f"{BASE_URL}/v2/overview?tenant_id=invalid")
+        # The v2 app is FastAPI, so query validation is rejected by the
+        # framework with 422 before the handler runs. The 400/`{error, read_only,
+        # execution_permitted}` contract in docs/MIGRATION.md belongs to the
+        # legacy /v1 stdlib handler, not to /v2.
+        assert response.status == 422
 
-    def test_missing_tenant_id(self, page: Page, api_server):
-        """Missing tenant_id should return 400."""
-        response = page.request.get(f"{BASE_URL}/v1/overview")
-        assert response.status == 400
+    def test_missing_tenant_id(self, page: Page, api_server, database_url):
+        """Missing tenant_id should be rejected as a validation error."""
+        response = page.request.get(f"{BASE_URL}/v2/overview")
+        # The v2 app is FastAPI, so query validation is rejected by the
+        # framework with 422 before the handler runs. The 400/`{error, read_only,
+        # execution_permitted}` contract in docs/MIGRATION.md belongs to the
+        # legacy /v1 stdlib handler, not to /v2.
+        assert response.status == 422
 
-    def test_assets_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_assets_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Assets endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/assets?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/assets?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_facilities_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_facilities_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Facilities endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/facilities?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/facilities?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_workflows_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_workflows_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Workflows endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/workflows?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/workflows?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_connectors_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_connectors_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Connectors endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/connectors?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/connectors?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_capacity_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_capacity_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Capacity endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/capacity?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/capacity?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_evidence_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_evidence_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Evidence endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/evidence?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/evidence?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_analytics_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_analytics_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Analytics endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/analytics?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/analytics?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_costs_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_costs_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Costs endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/costs?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/costs?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_topology_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_topology_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Topology endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/topology?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/topology?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_placement_scenarios_endpoint(self, page: Page, api_server, mock_all_empty):
+    def test_placement_scenarios_endpoint(self, page: Page, api_server, mock_all_empty, database_url):
         """Placement scenarios endpoint should return 200."""
-        response = page.request.get(f"{BASE_URL}/v1/placement/scenarios?tenant_id={TENANT_ID}")
+        response = page.request.get(f"{BASE_URL}/v2/placement/scenarios?tenant_id={TENANT_ID}")
         assert response.status == 200
 
-    def test_analytics_window_days_validation(self, page: Page, api_server):
+    def test_analytics_window_days_validation(self, page: Page, api_server, database_url):
         """Analytics endpoint should validate window_days."""
-        response = page.request.get(f"{BASE_URL}/v1/analytics?tenant_id={TENANT_ID}&window_days=0")
-        assert response.status == 400
+        response = page.request.get(f"{BASE_URL}/v2/analytics?tenant_id={TENANT_ID}&window_days=0")
+        # The v2 app is FastAPI, so query validation is rejected by the
+        # framework with 422 before the handler runs. The 400/`{error, read_only,
+        # execution_permitted}` contract in docs/MIGRATION.md belongs to the
+        # legacy /v1 stdlib handler, not to /v2.
+        assert response.status == 422
 
-    def test_analytics_window_days_max(self, page: Page, api_server):
+    def test_analytics_window_days_max(self, page: Page, api_server, database_url):
         """Analytics endpoint should reject window_days > 90."""
-        response = page.request.get(f"{BASE_URL}/v1/analytics?tenant_id={TENANT_ID}&window_days=91")
-        assert response.status == 400
+        response = page.request.get(f"{BASE_URL}/v2/analytics?tenant_id={TENANT_ID}&window_days=91")
+        # The v2 app is FastAPI, so query validation is rejected by the
+        # framework with 422 before the handler runs. The 400/`{error, read_only,
+        # execution_permitted}` contract in docs/MIGRATION.md belongs to the
+        # legacy /v1 stdlib handler, not to /v2.
+        assert response.status == 422

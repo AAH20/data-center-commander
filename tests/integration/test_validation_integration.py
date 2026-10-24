@@ -52,20 +52,28 @@ class TestBoundariesIntegration(unittest.TestCase):
         self.assertIn("mwh", ENERGY_UNIT_TO_KWH)
 
     def test_validate_meter_reading(self):
-        from dcc.validation.boundaries import validate_meter_reading
-        result = validate_meter_reading(
-            reading={"value": 100.0, "unit": "kWh", "timestamp": "2026-01-01T00:00:00Z"},
-            meter_boundary={"min": 0, "max": 10000},
+        from dcc.validation.boundaries import validate_meter_boundary, ValidationResult
+        result = validate_meter_boundary(
+            meter_id="m1",
+            boundary="facility",
+            direction="import",
+            unit="kWh",
+            readings=[{"value": 100.0, "unit": "kWh", "timestamp": "2026-01-01T00:00:00Z"}],
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result, ValidationResult)
 
     def test_validate_energy_allocation(self):
-        from dcc.validation.boundaries import validate_energy_allocation
+        from dcc.validation.boundaries import validate_energy_allocation, ValidationResult
         result = validate_energy_allocation(
-            allocation={"energy_kwh": 1000, "coverage": 0.9},
-            total_energy=1200,
+            allocation_id="a1",
+            workload_id="w1",
+            window_start="2026-01-01T00:00:00Z",
+            window_end="2026-01-01T01:00:00Z",
+            energy_kwh=1000,
+            allocation_method="proportional",
+            coverage=0.9,
         )
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result, ValidationResult)
 
 
 class TestConsistencyIntegration(unittest.TestCase):
@@ -103,106 +111,112 @@ class TestConsistencyIntegration(unittest.TestCase):
         self.assertEqual(d["severity"], "pass")
 
     def test_reconcile_energy_sources(self):
-        from dcc.validation.consistency import reconcile_energy_sources
+        from dcc.validation.consistency import reconcile_energy_sources, Severity
         result = reconcile_energy_sources(
-            source_a={"total_kwh": 1000},
-            source_b={"total_kwh": 1000},
+            facility_meter_readings=[{"value_numeric": 1000}],
+            submeter_readings=[{"value_numeric": 1000}],
         )
         self.assertIsNotNone(result)
+        self.assertNotIn(Severity.FAIL, [f.severity for f in result])
 
     def test_validate_asset_references(self):
-        from dcc.validation.consistency import validate_asset_references
+        from dcc.validation.consistency import validate_asset_references, Severity
         result = validate_asset_references(
-            assets=[{"id": "a1", "name": "Asset 1"}],
-            references=[{"asset_id": "a1"}],
+            work_orders=[{"asset_id": "a1"}],
+            assets=[{"id": "a1"}],
         )
         self.assertIsNotNone(result)
+        self.assertNotIn(Severity.FAIL, [f.severity for f in result])
 
     def test_validate_capacity_headroom(self):
         from dcc.validation.consistency import validate_capacity_headroom
         result = validate_capacity_headroom(
-            usable=100,
-            reserved=60,
-            policy_reserve=10,
+            capacity_snapshots=[{"usable": 100, "reserved": 60, "policy_reserve": 10}],
+            it_load_readings=[{"value_numeric": 30}],
         )
         self.assertIsNotNone(result)
 
     def test_validate_kpi_vs_telemetry(self):
-        from dcc.validation.consistency import validate_kpi_vs_telemetry
+        from dcc.validation.consistency import validate_kpi_vs_telemetry, Severity
         result = validate_kpi_vs_telemetry(
-            kpi_value=100,
-            telemetry_sum=100,
+            kpi_observations=[{"value_numeric": 100}],
+            telemetry_readings=[{"value_numeric": 100}],
         )
         self.assertIsNotNone(result)
+        self.assertNotIn(Severity.FAIL, [f.severity for f in result])
 
     def test_validate_cost_rollup(self):
         from dcc.validation.consistency import validate_cost_rollup
         result = validate_cost_rollup(
-            line_items=[{"extended_base": 100, "extended_low": 90, "extended_high": 110}],
-            rollup={"present_value_base": 100},
+            line_items=[{"extended_base": 100}],
+            cost_rollup=[{"present_value_base": 100}],
         )
         self.assertIsNotNone(result)
 
     def test_validate_workflow_facility_linkage(self):
-        from dcc.validation.consistency import validate_workflow_facility_linkage
+        from dcc.validation.consistency import validate_workflow_facility_linkage, Severity
         result = validate_workflow_facility_linkage(
-            workflows=[{"id": "w1", "facility_id": "f1"}],
+            workflows=[{"facility_id": "f1"}],
             facilities=[{"id": "f1"}],
         )
         self.assertIsNotNone(result)
+        self.assertNotIn(Severity.FAIL, [f.severity for f in result])
 
     def test_validate_tenant_boundary(self):
-        from dcc.validation.consistency import validate_tenant_boundary
+        from dcc.validation.consistency import validate_tenant_boundary, Severity
         result = validate_tenant_boundary(
+            sources={"assets": [{"tenant_id": "t1", "id": "r1"}]},
             tenant_id="t1",
-            rows=[{"tenant_id": "t1", "id": "r1"}],
         )
         self.assertIsNotNone(result)
+        self.assertNotIn(Severity.FAIL, [f.severity for f in result])
 
     def test_validate_temporal_consistency(self):
         from dcc.validation.consistency import validate_temporal_consistency
         result = validate_temporal_consistency(
-            events=[
-                {"id": "e1", "occurred_at": "2026-01-01T00:00:00Z"},
-                {"id": "e2", "occurred_at": "2026-01-02T00:00:00Z"},
+            readings=[
+                {"id": "e1", "observed_at": "2026-01-01T00:00:00Z"},
+                {"id": "e2", "observed_at": "2026-01-02T00:00:00Z"},
             ],
+            max_age_days=3650,
         )
         self.assertIsNotNone(result)
 
     def test_validate_unit_consistency(self):
         from dcc.validation.consistency import validate_unit_consistency
         result = validate_unit_consistency(
-            readings=[
-                {"value": 100, "unit": "kWh"},
-                {"value": 200, "unit": "kWh"},
-            ],
+            sources={"telemetry": [{"value": 100, "unit": "kWh"}, {"value": 200, "unit": "kWh"}]},
+            expected_unit="kWh",
         )
         self.assertIsNotNone(result)
 
     def test_validate_provenance_consistency(self):
         from dcc.validation.consistency import validate_provenance_consistency
         result = validate_provenance_consistency(
-            events=[
-                {"id": "e1", "provenance": {"source": "test"}},
-            ],
+            sources={
+                "telemetry": [{"id": "e1", "provenance": {"source": "test"}}],
+                "prices": [{"id": "p1", "provenance": {"source": "test"}}],
+            },
         )
         self.assertIsNotNone(result)
 
     def test_validate_pue_consistency(self):
-        from dcc.validation.consistency import validate_pue_consistency
+        from dcc.validation.consistency import validate_pue_consistency, Severity
         result = validate_pue_consistency(
-            it_energy=100,
-            total_energy=150,
+            facility_energy_kwh=150,
+            it_energy_kwh=100,
+            reported_pue=1.5,
         )
         self.assertIsNotNone(result)
+        self.assertNotIn(Severity.FAIL, [f.severity for f in result])
 
     def test_validate_price_freshness(self):
         from dcc.validation.consistency import validate_price_freshness
         result = validate_price_freshness(
-            prices=[
+            price_observations=[
                 {"item_code": "SRV-1", "observed_at": "2026-01-01T00:00:00Z"},
             ],
-            max_age_days=30,
+            max_age_days=3650,
         )
         self.assertIsNotNone(result)
 
@@ -210,27 +224,24 @@ class TestConsistencyIntegration(unittest.TestCase):
         from dcc.validation.consistency import validate_estimate_price_links
         result = validate_estimate_price_links(
             line_items=[{"price_observation_id": "p1", "pricing_status": "sourced"}],
-            prices=[{"id": "p1", "quality_status": "approved"}],
+            price_observations=[{"id": "p1", "quality_status": "approved"}],
         )
         self.assertIsNotNone(result)
 
     def test_validate_energy_allocation_coverage(self):
         from dcc.validation.consistency import validate_energy_allocation_coverage
         result = validate_energy_allocation_coverage(
-            allocations=[
-                {"workload_id": "w1", "coverage": 0.9},
-            ],
-            workloads=[{"id": "w1"}, {"id": "w2"}],
+            energy_allocations=[{"energy_kwh": 900}],
+            total_energy_kwh=1000,
         )
         self.assertIsNotNone(result)
 
     def test_validate_connector_data_freshness(self):
         from dcc.validation.consistency import validate_connector_data_freshness
         result = validate_connector_data_freshness(
-            connectors=[
-                {"id": "c1", "last_success_at": "2026-01-01T00:00:00Z"},
-            ],
-            max_age_hours=24,
+            connectors=[{"id": "c1"}],
+            latest_readings=[{"connector_id": "c1", "observed_at": "2026-01-01T00:00:00Z"}],
+            max_stale_hours=24,
         )
         self.assertIsNotNone(result)
 
@@ -280,72 +291,94 @@ class TestIntervalsIntegration(unittest.TestCase):
         self.assertEqual(result.minute, 5)
 
     def test_detect_gaps(self):
-        from dcc.validation.intervals import detect_gaps, DataPoint
+        from dcc.validation.intervals import detect_gaps, TimeSeries, DataPoint
         points = [
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc), value=2),
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 15, tzinfo=timezone.utc), value=3),
         ]
-        gaps = detect_gaps(points, expected_interval=300)
+        gaps = detect_gaps(TimeSeries(name="s", interval=300, points=points))
         self.assertIsNotNone(gaps)
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0].expected_points, 1)
 
     def test_downsample(self):
-        from dcc.validation.intervals import downsample, DataPoint
+        from dcc.validation.intervals import downsample, TimeSeries, DataPoint
         points = [
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc), value=2),
         ]
-        result = downsample(points, interval=600, aggregation="mean")
+        result = downsample(TimeSeries(name="s", interval=300, points=points), 600)
         self.assertIsNotNone(result)
+        self.assertEqual(result.interval, 600)
+        self.assertEqual([p.value for p in result.points], [1.5])
 
     def test_upsample(self):
-        from dcc.validation.intervals import upsample, DataPoint
+        from dcc.validation.intervals import upsample, TimeSeries, DataPoint
         points = [
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc), value=2),
         ]
-        result = upsample(points, interval=300, method="forward_fill")
+        result = upsample(TimeSeries(name="s", interval=600, points=points), 300)
         self.assertIsNotNone(result)
+        self.assertEqual(result.interval, 300)
+        self.assertEqual(len(result.points), 3)
 
     def test_coverage_report(self):
-        from dcc.validation.intervals import coverage_report, DataPoint
+        from dcc.validation.intervals import coverage_report, TimeSeries, DataPoint
         points = [
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc), value=2),
         ]
-        report = coverage_report(points, start=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), end=datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc), expected_interval=300)
+        report = coverage_report(
+            [TimeSeries(name="s", interval=300, points=points)],
+            300,
+            start=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc),
+        )
         self.assertIsNotNone(report)
+        self.assertEqual(report.total_expected, 3)
 
     def test_resample(self):
-        from dcc.validation.intervals import resample, DataPoint
+        from dcc.validation.intervals import resample, TimeSeries, DataPoint
         points = [
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
             DataPoint(timestamp=datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc), value=2),
         ]
-        result = resample(points, interval=600)
+        result = resample(TimeSeries(name="s", interval=300, points=points), 600)
         self.assertIsNotNone(result)
+        self.assertEqual(result.interval, 600)
 
     def test_align_series(self):
-        from dcc.validation.intervals import align_series, DataPoint
-        series_a = [
-            DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
-        ]
-        series_b = [
-            DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=2),
-        ]
-        result = align_series(series_a, series_b)
+        from dcc.validation.intervals import align_series, TimeSeries, DataPoint
+        series_a = TimeSeries(
+            name="a", interval=300,
+            points=[DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1)],
+        )
+        series_b = TimeSeries(
+            name="b", interval=600,
+            points=[DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=2)],
+        )
+        result = align_series([series_a, series_b])
         self.assertIsNotNone(result)
+        # Aligned series share a single target interval.
+        self.assertEqual({s.interval for s in result}, {600})
 
     def test_merge_aligned(self):
-        from dcc.validation.intervals import merge_aligned, DataPoint
-        series_a = [
-            DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1),
-        ]
-        series_b = [
-            DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=2),
-        ]
-        result = merge_aligned(series_a, series_b)
+        from dcc.validation.intervals import merge_aligned, TimeSeries, DataPoint
+        series_a = TimeSeries(
+            name="a", interval=300,
+            points=[DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=1)],
+        )
+        series_b = TimeSeries(
+            name="b", interval=300,
+            points=[DataPoint(timestamp=datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), value=2)],
+        )
+        result = merge_aligned([series_a, series_b])
         self.assertIsNotNone(result)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["a"], 1.0)
+        self.assertEqual(result[0]["b"], 2.0)
 
 
 class TestSchemaIntegration(unittest.TestCase):
@@ -421,8 +454,11 @@ class TestSchemaIntegration(unittest.TestCase):
 
     def test_schema_validator_class(self):
         from dcc.validation.schema import SchemaValidator
-        validator = SchemaValidator()
-        self.assertIsNotNone(validator)
+        validator = SchemaValidator(
+            "asset",
+            {"asset_id": {"type": str, "required": True}},
+        )
+        self.assertEqual(validator.validate({"asset_id": "a1"}), {"asset_id": "a1"})
 
     def test_validation_error_with_field(self):
         from dcc.validation.schema import ValidationError
@@ -439,14 +475,13 @@ class TestUnitsIntegration(unittest.TestCase):
     """Integration tests for unit conversion."""
 
     def test_convert_power(self):
-        from dcc.validation.units import convert, get_registry
-        registry = get_registry()
-        result = convert(1000, "W", "kW")
+        from dcc.validation.units import convert
+        result = convert(1000, "kW", source_unit="W")
         self.assertAlmostEqual(float(result.value), 1.0)
 
     def test_convert_energy(self):
         from dcc.validation.units import convert
-        result = convert(1000, "Wh", "kWh")
+        result = convert(1000, "kWh", source_unit="Wh")
         self.assertAlmostEqual(float(result.value), 1.0)
 
     def test_convert_temperature_c_to_f(self):
@@ -477,9 +512,10 @@ class TestUnitsIntegration(unittest.TestCase):
 
     def test_dimension_enum(self):
         from dcc.validation.units import Dimension
-        self.assertEqual(Dimension.POWER, "power")
-        self.assertEqual(Dimension.ENERGY, "energy")
-        self.assertEqual(Dimension.TEMPERATURE, "temperature")
+        # Dimension is a plain Enum; compare on .value, not against the bare string.
+        self.assertEqual(Dimension.POWER.value, "power")
+        self.assertEqual(Dimension.ENERGY.value, "energy")
+        self.assertEqual(Dimension.TEMPERATURE.value, "temperature")
 
     def test_quantity_creation(self):
         from dcc.validation.units import Quantity, Unit, Dimension

@@ -49,9 +49,14 @@ class TestRefresh:
         expect(page.locator("#refreshRate")).to_have_value("30")
 
     def test_updated_at_initial(self, page: Page, api_server, mock_all_empty):
-        """Updated at should show initial state."""
+        """The stamp reports a load time as soon as the first refresh lands.
+
+        "Not refreshed" is only the pre-load placeholder in the markup; the
+        initial load replaces it before the page is interactive, so the
+        observable contract after navigation is an "Updated" timestamp.
+        """
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
-        expect(page.locator("#updatedAt")).to_contain_text("Not refreshed")
+        expect(page.locator("#updatedAt")).to_contain_text("Updated")
 
     def test_refresh_updates_timestamp(self, page: Page, api_server, mock_all_empty):
         """Refresh should update the timestamp."""

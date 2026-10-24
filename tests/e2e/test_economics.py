@@ -33,7 +33,9 @@ class TestEconomicsDashboard:
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "economics")
-        expect(page.locator("#econBanner")).to_be_visible()
+        # #econBanner: data-driven container -- rendered empty by the empty-data fixture,
+        # so it has no box to be visible. Assert it is mounted instead.
+        expect(page.locator("#econBanner")).to_be_attached()
 
     def test_economics_tabs(self, page: Page, api_server, mock_all_empty):
         """Economics tabs should be present."""
@@ -82,21 +84,27 @@ class TestEconomicsDashboard:
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "economics")
-        expect(page.locator("#econTrendsContent")).to_be_visible()
+        # #econTrendsContent: data-driven container -- rendered empty by the empty-data fixture,
+        # so it has no box to be visible. Assert it is mounted instead.
+        expect(page.locator("#econTrendsContent")).to_be_attached()
 
     def test_economics_compare_content(self, page: Page, api_server, mock_all_empty):
         """Compare content container should be present."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "economics")
-        expect(page.locator("#econCompareContent")).to_be_visible()
+        # #econCompareContent: data-driven container -- rendered empty by the empty-data fixture,
+        # so it has no box to be visible. Assert it is mounted instead.
+        expect(page.locator("#econCompareContent")).to_be_attached()
 
     def test_economics_prices_content(self, page: Page, api_server, mock_all_empty):
         """Prices content container should be present."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "economics")
-        expect(page.locator("#econPricesContent")).to_be_visible()
+        # #econPricesContent: data-driven container -- rendered empty by the empty-data fixture,
+        # so it has no box to be visible. Assert it is mounted instead.
+        expect(page.locator("#econPricesContent")).to_be_attached()
 
     def test_economics_tab_switching(self, page: Page, api_server, mock_all_empty):
         """Clicking tabs should switch panels."""

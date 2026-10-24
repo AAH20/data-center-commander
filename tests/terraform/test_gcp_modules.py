@@ -62,10 +62,21 @@ class TestGCPVPCModule(unittest.TestCase):
         self.assertIn("REGIONAL", body)
 
     def test_vpc_labels(self):
-        """VPC has labels."""
-        resource = self.parsed["resources"]["google_compute_network.this"]
-        body = resource.get("body", "")
-        self.assertIn("labels", body)
+        """Network labelling is provided by the provider's `default_labels`.
+
+        `labels` is not an argument of google_compute_network, so asserting it
+        in the resource body can never hold: the Google provider rejects it
+        with "An argument named \"labels\" is not expected here" (confirmed in
+        the hashicorp/google 5.x schema, which has no `labels` attribute on
+        this resource type). The supported mechanism is the provider-level
+        `default_labels`, which this module must wire from var.common_tags so
+        that callers can label everything it creates.
+        """
+        provider_body = self.parsed["providers"].get("google", {}).get("body", "")
+        self.assertIn("default_labels", provider_body,
+                      "module does not configure provider default_labels")
+        self.assertIn("var.common_tags", provider_body,
+                      "provider default_labels is not wired from var.common_tags")
 
     def test_network_name_variable(self):
         """Network name variable exists."""
@@ -134,10 +145,21 @@ class TestGCPSubnetsModule(unittest.TestCase):
         self.assertIn("flow_sampling", body)
 
     def test_subnet_labels(self):
-        """Subnet has labels."""
-        resource = self.parsed["resources"]["google_compute_subnetwork.this"]
-        body = resource.get("body", "")
-        self.assertIn("labels", body)
+        """Network labelling is provided by the provider's `default_labels`.
+
+        `labels` is not an argument of google_compute_network, so asserting it
+        in the resource body can never hold: the Google provider rejects it
+        with "An argument named \"labels\" is not expected here" (confirmed in
+        the hashicorp/google 5.x schema, which has no `labels` attribute on
+        this resource type). The supported mechanism is the provider-level
+        `default_labels`, which this module must wire from var.common_tags so
+        that callers can label everything it creates.
+        """
+        provider_body = self.parsed["providers"].get("google", {}).get("body", "")
+        self.assertIn("default_labels", provider_body,
+                      "module does not configure provider default_labels")
+        self.assertIn("var.common_tags", provider_body,
+                      "provider default_labels is not wired from var.common_tags")
 
     def test_subnet_outputs(self):
         """Subnet outputs are defined."""
@@ -202,11 +224,21 @@ class TestGCPFirewallModule(unittest.TestCase):
             self.assertIn("INGRESS", body)
 
     def test_firewall_labels(self):
-        """Firewall rules have labels."""
-        for key in ["google_compute_firewall.allow_internal", "google_compute_firewall.allow_ssh", "google_compute_firewall.allow_http"]:
-            resource = self.parsed["resources"][key]
-            body = resource.get("body", "")
-            self.assertIn("labels", body)
+        """Network labelling is provided by the provider's `default_labels`.
+
+        `labels` is not an argument of google_compute_network, so asserting it
+        in the resource body can never hold: the Google provider rejects it
+        with "An argument named \"labels\" is not expected here" (confirmed in
+        the hashicorp/google 5.x schema, which has no `labels` attribute on
+        this resource type). The supported mechanism is the provider-level
+        `default_labels`, which this module must wire from var.common_tags so
+        that callers can label everything it creates.
+        """
+        provider_body = self.parsed["providers"].get("google", {}).get("body", "")
+        self.assertIn("default_labels", provider_body,
+                      "module does not configure provider default_labels")
+        self.assertIn("var.common_tags", provider_body,
+                      "provider default_labels is not wired from var.common_tags")
 
 
 class TestGCPRouterNATModule(unittest.TestCase):

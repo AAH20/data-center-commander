@@ -41,7 +41,8 @@ class TestBacktestIntegration(unittest.TestCase):
     def test_mape_calculation(self):
         from dcc.forecasting.backtest import mape
         result = mape([100, 200], [110, 190])
-        self.assertAlmostEqual(result, 5.0)
+        # mean of |10/100| and |10/200| == 7.5%
+        self.assertAlmostEqual(result, 7.5)
 
     def test_mape_skips_zero_actuals(self):
         from dcc.forecasting.backtest import mape
@@ -50,8 +51,13 @@ class TestBacktestIntegration(unittest.TestCase):
 
     def test_walk_forward(self):
         from dcc.forecasting.backtest import walk_forward
+
+        def naive(history):
+            return [history[-1]]
+
         result = walk_forward(
-            values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            model=naive,
             min_train_size=3,
             step_size=1,
             horizon=1,
@@ -60,8 +66,13 @@ class TestBacktestIntegration(unittest.TestCase):
 
     def test_cross_validate(self):
         from dcc.forecasting.backtest import cross_validate
+
+        def naive(history):
+            return [history[-1]]
+
         result = cross_validate(
-            values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            data=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            model=naive,
             n_splits=3,
         )
         self.assertIsNotNone(result)
@@ -115,8 +126,9 @@ class TestCalibrationIntegration(unittest.TestCase):
     def test_apply_bias_correction(self):
         from dcc.forecasting.calibration import apply_bias_correction, ForecastPoint
         forecasts = [ForecastPoint(timestamp=1.0, value=10.0)]
+        # bias is the mean error (forecast - actual) and is *subtracted*.
         result = apply_bias_correction(forecasts, bias=2.0)
-        self.assertEqual(result[0].value, 12.0)
+        self.assertEqual(result[0].value, 8.0)
 
     def test_apply_multiplicative_correction(self):
         from dcc.forecasting.calibration import apply_multiplicative_correction, ForecastPoint
@@ -147,7 +159,7 @@ class TestCapacityForecastIntegration(unittest.TestCase):
             unit="kW",
             scenario="current",
             data_points=points,
-            forecast_horizon_days=30,
+            horizon_days=30,
         )
         self.assertIsNotNone(result)
 
@@ -163,7 +175,7 @@ class TestCapacityForecastIntegration(unittest.TestCase):
             unit="kW",
             scenario="current",
             data_points=points,
-            forecast_horizon_days=30,
+            horizon_days=30,
             method="moving_average",
         )
         self.assertIsNotNone(result)
@@ -181,7 +193,7 @@ class TestCapacityForecastIntegration(unittest.TestCase):
             unit="kW",
             scenario="current",
             data_points=points,
-            forecast_horizon_days=30,
+            horizon_days=30,
             method="exponential_smoothing",
         )
         self.assertIsNotNone(result)
@@ -213,54 +225,54 @@ class TestDriftDetectionIntegration(unittest.TestCase):
     def test_detect_drift_psi(self):
         from dcc.forecasting.drift import detect_drift, DriftMethod
         result = detect_drift(
-            reference=[1, 2, 3, 4, 5],
-            current=[1, 2, 3, 4, 5],
-            method=DriftMethod.PSI,
+            reference=[1, 2, 3, 4, 5] * 10,
+            incoming=[1, 2, 3, 4, 5] * 10,
+            methods={DriftMethod.PSI},
         )
         self.assertIsNotNone(result)
 
     def test_detect_drift_ks(self):
         from dcc.forecasting.drift import detect_drift, DriftMethod
         result = detect_drift(
-            reference=[1, 2, 3, 4, 5],
-            current=[1, 2, 3, 4, 5],
-            method=DriftMethod.KS,
+            reference=[1, 2, 3, 4, 5] * 10,
+            incoming=[1, 2, 3, 4, 5] * 10,
+            methods={DriftMethod.KS},
         )
         self.assertIsNotNone(result)
 
     def test_detect_drift_cusum(self):
         from dcc.forecasting.drift import detect_drift, DriftMethod
         result = detect_drift(
-            reference=[1, 2, 3, 4, 5],
-            current=[1, 2, 3, 4, 5],
-            method=DriftMethod.CUSUM,
+            reference=[1, 2, 3, 4, 5] * 10,
+            incoming=[1, 2, 3, 4, 5] * 10,
+            methods={DriftMethod.CUSUM},
         )
         self.assertIsNotNone(result)
 
     def test_detect_drift_error_rate(self):
         from dcc.forecasting.drift import detect_drift, DriftMethod
         result = detect_drift(
-            reference=[1, 2, 3, 4, 5],
-            current=[1, 2, 3, 4, 5],
-            method=DriftMethod.ERROR_RATE,
+            reference=[1, 2, 3, 4, 5] * 10,
+            incoming=[1, 2, 3, 4, 5] * 10,
+            methods={DriftMethod.ERROR_RATE},
         )
         self.assertIsNotNone(result)
 
     def test_detect_drift_mean_shift(self):
         from dcc.forecasting.drift import detect_drift, DriftMethod
         result = detect_drift(
-            reference=[1, 2, 3, 4, 5],
-            current=[1, 2, 3, 4, 5],
-            method=DriftMethod.MEAN_SHIFT,
+            reference=[1, 2, 3, 4, 5] * 10,
+            incoming=[1, 2, 3, 4, 5] * 10,
+            methods={DriftMethod.MEAN_SHIFT},
         )
         self.assertIsNotNone(result)
 
     def test_detect_drift_variance_shift(self):
         from dcc.forecasting.drift import detect_drift, DriftMethod
         result = detect_drift(
-            reference=[1, 2, 3, 4, 5],
-            current=[1, 2, 3, 4, 5],
-            method=DriftMethod.VARIANCE_SHIFT,
+            reference=[1, 2, 3, 4, 5] * 10,
+            incoming=[1, 2, 3, 4, 5] * 10,
+            methods={DriftMethod.VARIANCE_SHIFT},
         )
         self.assertIsNotNone(result)
 
@@ -276,7 +288,7 @@ class TestDriftDetectionIntegration(unittest.TestCase):
 
     def test_drift_detector_class(self):
         from dcc.forecasting.drift import DriftDetector, DriftMethod
-        detector = DriftDetector(method=DriftMethod.PSI)
+        detector = DriftDetector(methods={DriftMethod.PSI})
         self.assertIsNotNone(detector)
 
     def test_drift_result_to_dict(self):
@@ -308,7 +320,7 @@ class TestDriftDetectionIntegration(unittest.TestCase):
 
     def test_performance_tracker(self):
         from dcc.forecasting.drift import PerformanceTracker
-        tracker = PerformanceTracker()
+        tracker = PerformanceTracker(model_id="m1", tenant_id="t1")
         self.assertIsNotNone(tracker)
 
 
@@ -319,7 +331,7 @@ class TestFailurePredictionIntegration(unittest.TestCase):
         from dcc.forecasting.failure import predict_equipment_failures
         result = predict_equipment_failures(
             tenant_id="t1",
-            asset_rows=[
+            assets=[
                 {"asset_id": "a1", "name": "Server 1", "asset_type": "server", "criticality": "high", "lifecycle_state": "active"},
             ],
             telemetry_rows=[],
@@ -331,7 +343,7 @@ class TestFailurePredictionIntegration(unittest.TestCase):
         from dcc.forecasting.failure import predict_equipment_failures
         result = predict_equipment_failures(
             tenant_id="t1",
-            asset_rows=[
+            assets=[
                 {"asset_id": "a1", "name": "Server 1", "asset_type": "server", "criticality": "high", "lifecycle_state": "active"},
             ],
             telemetry_rows=[
@@ -345,7 +357,7 @@ class TestFailurePredictionIntegration(unittest.TestCase):
         from dcc.forecasting.failure import predict_equipment_failures, result_to_dict
         result = predict_equipment_failures(
             tenant_id="t1",
-            asset_rows=[],
+            assets=[],
             telemetry_rows=[],
             window_days=30,
         )
@@ -380,8 +392,8 @@ class TestFeaturesIntegration(unittest.TestCase):
         self.assertIsNotNone(result)
 
     def test_seasonal_decomposition(self):
-        from dcc.forecasting.features import seasonal_decomposition
-        result = seasonal_decomposition([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], period=3)
+        from dcc.forecasting.features import seasonal_decompose
+        result = seasonal_decompose([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], period=3)
         self.assertIsNotNone(result)
 
     def test_trend_detection(self):
@@ -427,38 +439,86 @@ class TestLoadForecastingIntegration(unittest.TestCase):
         self.assertIsNotNone(result)
 
     def test_detect_anomalies(self):
-        from dcc.forecasting.load import detect_anomalies
-        result = detect_anomalies([1, 2, 3, 100, 5])
+        from dcc.forecasting.load import detect_anomalies, LoadObservation
+        # detect_anomalies() takes LoadObservation objects, not bare numbers.
+        observations = [
+            LoadObservation(
+                timestamp=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                value=value,
+            )
+            for hour, value in enumerate([1, 2, 3, 100, 5])
+        ]
+        result = detect_anomalies(observations)
         self.assertIsNotNone(result)
 
     def test_select_best_model(self):
-        from dcc.forecasting.load import select_best_model
-        result = select_best_model([1, 2, 3, 4, 5])
+        from dcc.forecasting.load import select_best_model, LoadObservation
+        history = [
+            LoadObservation(
+                timestamp=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                value=float(value),
+            )
+            for hour, value in enumerate(range(1, 25))
+        ]
+        result = select_best_model(history)
         self.assertIsNotNone(result)
 
     def test_moving_average_forecaster(self):
-        from dcc.forecasting.load import MovingAverageForecaster
+        from dcc.forecasting.load import MovingAverageForecaster, LoadObservation
+        history = [
+            LoadObservation(
+                timestamp=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                value=float(value),
+            )
+            for hour, value in enumerate([1, 2, 3, 4, 5])
+        ]
         forecaster = MovingAverageForecaster(window=3)
-        result = forecaster.forecast([1, 2, 3, 4, 5], horizon=2)
+        result = forecaster.forecast(history, horizon=2)
         self.assertIsNotNone(result)
+        self.assertEqual(len(result.points), 2)
 
     def test_exponential_smoothing_forecaster(self):
-        from dcc.forecasting.load import ExponentialSmoothingForecaster
+        from dcc.forecasting.load import ExponentialSmoothingForecaster, LoadObservation
+        history = [
+            LoadObservation(
+                timestamp=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                value=float(value),
+            )
+            for hour, value in enumerate([1, 2, 3, 4, 5])
+        ]
         forecaster = ExponentialSmoothingForecaster(alpha=0.3)
-        result = forecaster.forecast([1, 2, 3, 4, 5], horizon=2)
+        result = forecaster.forecast(history, horizon=2)
         self.assertIsNotNone(result)
+        self.assertEqual(len(result.points), 2)
 
     def test_linear_trend_forecaster(self):
-        from dcc.forecasting.load import LinearTrendForecaster
+        from dcc.forecasting.load import LinearTrendForecaster, LoadObservation
+        history = [
+            LoadObservation(
+                timestamp=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                value=float(value),
+            )
+            for hour, value in enumerate([1, 2, 3, 4, 5])
+        ]
         forecaster = LinearTrendForecaster()
-        result = forecaster.forecast([1, 2, 3, 4, 5], horizon=2)
+        result = forecaster.forecast(history, horizon=2)
         self.assertIsNotNone(result)
+        self.assertEqual(len(result.points), 2)
 
     def test_holt_winters_forecaster(self):
-        from dcc.forecasting.load import HoltWintersForecaster
-        forecaster = HoltWintersForecaster(season_length=3)
-        result = forecaster.forecast([1, 2, 3, 4, 5, 6, 7, 8, 9], horizon=2)
+        from dcc.forecasting.load import HoltWintersForecaster, LoadObservation
+        history = [
+            LoadObservation(
+                timestamp=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+                value=float(value),
+            )
+            for hour, value in enumerate([1, 2, 3, 4, 5, 6, 7, 8, 9])
+        ]
+        # HoltWintersForecaster takes alpha/beta, not season_length.
+        forecaster = HoltWintersForecaster(alpha=0.3, beta=0.1)
+        result = forecaster.forecast(history, horizon=2)
         self.assertIsNotNone(result)
+        self.assertEqual(len(result.points), 2)
 
 
 class TestMaintenanceIntegration(unittest.TestCase):
@@ -513,12 +573,12 @@ class TestMaintenanceIntegration(unittest.TestCase):
         self.assertEqual(schedule.horizon_days, 30)
 
     def test_recommend_maintenance_windows(self):
-        from dcc.forecasting.maintenance import recommend_maintenance_windows
+        from dcc.forecasting.maintenance import optimize_maintenance_windows
         from dcc.forecasting.load import ForecastPoint
         from dcc.forecasting.failure import AssetRiskProfile
         forecast_points = [
             ForecastPoint(timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc), predicted=100),
-            ForecastPoint(timestamp=datetime(2026, 1, 2, tzinfo=timezone.utc), predicted=50),
+            ForecastPoint(timestamp=datetime(2026, 1, 1, 1, tzinfo=timezone.utc), predicted=50),
         ]
         risk_profiles = [
             AssetRiskProfile(
@@ -527,11 +587,14 @@ class TestMaintenanceIntegration(unittest.TestCase):
                 risk_score=0.5, risk_level="medium",
             ),
         ]
-        result = recommend_maintenance_windows(
+        # The scheduling entry point is optimize_maintenance_windows(); it takes
+        # risk_profiles + forecast_points keyword-only and returns a schedule.
+        result = optimize_maintenance_windows(
             tenant_id="t1",
-            forecast_points=forecast_points,
             risk_profiles=risk_profiles,
+            forecast_points=forecast_points,
             horizon_days=30,
+            now=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
         self.assertIsNotNone(result)
 
@@ -541,42 +604,52 @@ class TestPriceForecastingIntegration(unittest.TestCase):
 
     def test_build_flat_tariff(self):
         from dcc.forecasting.price import build_flat_tariff
-        spec = build_flat_tariff(rate_per_kwh=0.12)
+        spec = build_flat_tariff(currency="USD", timezone="UTC", rate=0.12)
         self.assertIsNotNone(spec)
+        self.assertEqual(float(spec.energy_rates["flat"]), 0.12)
 
     def test_build_tou_tariff(self):
         from dcc.forecasting.price import build_tou_tariff
-        spec = build_tou_tariff(peak_rate=0.25, off_peak_rate=0.10)
+        spec = build_tou_tariff(
+            currency="USD",
+            timezone="UTC",
+            rates={"peak": 0.25, "off_peak": 0.10},
+        )
         self.assertIsNotNone(spec)
+        self.assertEqual(set(spec.energy_rates), {"peak", "off_peak"})
 
     def test_build_tiered_tariff(self):
         from dcc.forecasting.price import build_tiered_tariff
-        spec = build_tiered_tariff(tiers=[
-            {"upper_limit_kwh": 1000, "rate_per_kwh": 0.15},
-            {"upper_limit_kwh": None, "rate_per_kwh": 0.10},
-        ])
+        spec = build_tiered_tariff(
+            currency="USD",
+            timezone="UTC",
+            tier_thresholds=[1000],
+            tier_rates=[0.15, 0.10],
+        )
         self.assertIsNotNone(spec)
+        self.assertEqual([float(t) for t in spec.tier_thresholds], [1000.0])
 
     def test_forecast_prices(self):
         from dcc.forecasting.price import forecast_prices, build_flat_tariff
-        spec = build_flat_tariff(rate_per_kwh=0.12)
+        spec = build_flat_tariff(currency="USD", timezone="UTC", rate=0.12)
         result = forecast_prices(
-            spec=spec,
-            start_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            days=7,
+            spec,
             daily_kwh=1000,
+            start=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            days=7,
         )
         self.assertIsNotNone(result)
 
     def test_validate_tariff_spec(self):
-        from dcc.forecasting.price import validate_tariff_spec, build_flat_tariff
-        spec = build_flat_tariff(rate_per_kwh=0.12)
-        result = validate_tariff_spec(spec)
-        self.assertTrue(result)
+        from dcc.forecasting.price import validate_tariff_spec, build_flat_tariff, TariffSpec
+        spec = build_flat_tariff(currency="USD", timezone="UTC", rate=0.12)
+        # validate_tariff_spec() accepts the raw dict form and returns a TariffSpec.
+        result = validate_tariff_spec(spec.to_dict())
+        self.assertIsInstance(result, TariffSpec)
 
     def test_tariff_spec_to_dict(self):
         from dcc.forecasting.price import build_flat_tariff
-        spec = build_flat_tariff(rate_per_kwh=0.12)
+        spec = build_flat_tariff(currency="USD", timezone="UTC", rate=0.12)
         d = spec.to_dict()
         self.assertIn("currency", d)
 

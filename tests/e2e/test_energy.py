@@ -32,8 +32,12 @@ class TestEnergyView:
         """Energy rows should be empty when no data."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "energy")
+        # An empty table still renders one full-width placeholder row by design;
+        # a data row would be seven cells with no colspan.
         rows = page.locator("#energyRows tr")
-        assert rows.count() == 0
+        assert rows.count() == 1, "expected only the placeholder row"
+        expect(rows.first.locator('td[colspan="7"]')).to_have_count(1)
+        expect(rows.first).to_contain_text("No KPI observations")
 
     def test_energy_view_description(self, page: Page, api_server, mock_all_empty):
         """Energy view should have description text."""
@@ -62,4 +66,9 @@ class TestEnergyView:
         """Synthetic data should be quarantined from energy view."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}&demo=synthetic")
         page.wait_for_timeout(500)
-        expect(page.locator("#energyRows")).to_be_empty()
+        # No reading may be presented: only the placeholder row is acceptable,
+        # and it must not carry synthetic provenance markers.
+        rows = page.locator("#energyRows tr")
+        assert rows.count() == 1, "synthetic demo must not render KPI rows"
+        expect(rows.first.locator('td[colspan="7"]')).to_have_count(1)
+        expect(rows.first).not_to_contain_text("SYNTHETIC")

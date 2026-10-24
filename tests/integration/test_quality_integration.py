@@ -12,24 +12,31 @@ class TestAnomalyDetectionIntegration(unittest.TestCase):
     """Integration tests for anomaly detection."""
 
     def test_detect_anomalies_zscore(self):
-        from dcc.quality.anomaly import detect_anomalies
-        result = detect_anomalies([1, 2, 3, 4, 5, 100], method="zscore")
+        from dcc.quality.anomaly import zscore_detect
+        result = zscore_detect([1, 2, 3, 4, 5, 100])
         self.assertIsNotNone(result)
+        self.assertEqual(result.method, "zscore")
+        self.assertEqual(result.total_points, 6)
 
     def test_detect_anomalies_iqr(self):
-        from dcc.quality.anomaly import detect_anomalies
-        result = detect_anomalies([1, 2, 3, 4, 5, 100], method="iqr")
+        from dcc.quality.anomaly import iqr_detect
+        result = iqr_detect([1, 2, 3, 4, 5, 100])
         self.assertIsNotNone(result)
+        self.assertEqual(result.method, "iqr")
+        # 100 is a clear IQR outlier in this series.
+        self.assertEqual([a.index for a in result.anomalies], [5])
 
     def test_detect_anomalies_rejects_empty(self):
-        from dcc.quality.anomaly import detect_anomalies
+        from dcc.quality.anomaly import zscore_detect
         with self.assertRaises(ValueError):
-            detect_anomalies([], method="zscore")
+            zscore_detect([])
 
-    def test_detect_anomalies_rejects_invalid_method(self):
-        from dcc.quality.anomaly import detect_anomalies
+    def test_detect_anomalies_rejects_invalid_threshold(self):
+        # The per-method detectors validate their tunable instead of a
+        # "method" string; a non-positive threshold must be rejected.
+        from dcc.quality.anomaly import zscore_detect
         with self.assertRaises(ValueError):
-            detect_anomalies([1, 2, 3], method="invalid")
+            zscore_detect([1, 2, 3], threshold=-1.0)
 
     def test_anomaly_report_to_dict(self):
         from dcc.quality.anomaly import AnomalyReport, Anomaly
@@ -106,29 +113,31 @@ class TestQualityEngineIntegration(unittest.TestCase):
     def test_freshness_score(self):
         from dcc.quality.engine import freshness_score
         result = freshness_score(
-            records=[{"id": "1", "observed_at": datetime.now(timezone.utc).isoformat()}],
-            timestamp_field="observed_at",
+            timestamps=[datetime.now(timezone.utc)],
             max_age_hours=24,
         )
         self.assertIsNotNone(result)
+        self.assertEqual(result.score, 1.0)
 
     def test_consistency_score(self):
         from dcc.quality.engine import consistency_score
         result = consistency_score(
             records=[{"id": "1", "value": 100}],
-            field="value",
+            rules=[lambda r: r["value"] > 0],
+            rule_names=["positive_value"],
         )
         self.assertIsNotNone(result)
+        self.assertEqual(result.score, 1.0)
 
     def test_accuracy_score(self):
         from dcc.quality.engine import accuracy_score
         result = accuracy_score(
             records=[{"id": "1", "value": 100}],
-            field="value",
-            min_val=0,
-            max_val=200,
+            # reference_values is keyed by record field name, not by record id.
+            reference_values={"value": 100},
         )
         self.assertIsNotNone(result)
+        self.assertEqual(result.score, 1.0)
 
 
 class TestFreshnessIntegration(unittest.TestCase):
@@ -141,7 +150,8 @@ class TestFreshnessIntegration(unittest.TestCase):
 
     def test_evaluate_sla_warning(self):
         from dcc.quality.freshness import evaluate_sla
-        result = evaluate_sla(age_hours=0.8, sla_hours=1)
+        # Documented contract: warning once age exceeds 80% of the SLA.
+        result = evaluate_sla(age_hours=0.9, sla_hours=1)
         self.assertEqual(result, "warning")
 
     def test_evaluate_sla_violation(self):
@@ -196,10 +206,11 @@ class TestFreshnessIntegration(unittest.TestCase):
         self.assertEqual(report.overall_status, "ok")
 
     def test_freshness_report_with_violations(self):
-        from dcc.quality.freshness import FreshnessReport, SourceFreshness
-        report = FreshnessReport(
+        from dcc.quality.freshness import build_freshness_report, SourceFreshness
+        # overall_status is derived by build_freshness_report, not by the
+        # FreshnessReport dataclass constructor.
+        report = build_freshness_report(
             tenant_id="t1",
-            checked_at="2026-01-01T00:00:00Z",
             sources=[
                 SourceFreshness(
                     source="test",
@@ -210,9 +221,9 @@ class TestFreshnessIntegration(unittest.TestCase):
                     status="violation",
                 ),
             ],
-            violations=["test"],
         )
         self.assertEqual(report.overall_status, "violation")
+        self.assertEqual(report.violations, ["test"])
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ class TestIntegrationsView:
         """Connector view should show empty state."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "integrations")
-        expect(page.locator("#connectorView")).to_contain_text("No connector registrations")
+        expect(page.locator("#connectorView")).to_contain_text("No records returned by the live database query")
 
     def test_integrations_view_hidden_by_default(self, page: Page, api_server, mock_all_empty):
         """Integrations view should be hidden by default."""

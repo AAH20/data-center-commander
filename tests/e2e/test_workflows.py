@@ -61,7 +61,7 @@ class TestWorkflowsView:
         """Workflow table should show empty state."""
         page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
         navigate_to(page, "workflows")
-        expect(page.locator("#workflowTable")).to_contain_text("No workflow records")
+        expect(page.locator("#workflowTable")).to_contain_text("No records returned by the live database query")
 
     def test_workflows_view_hidden_by_default(self, page: Page, api_server, mock_all_empty):
         """Workflows view should be hidden by default."""

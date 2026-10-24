@@ -937,43 +937,65 @@ class TestMeterAdapterIntegration(unittest.TestCase):
 
     def test_build_modbus_request(self):
         from dcc.adapters.meter import _build_modbus_request
-        request = _build_modbus_request(1, 3, 0, 1)
+        request = _build_modbus_request(1, 1, 3, 0, 1)
         self.assertIsInstance(request, bytes)
+        self.assertEqual(len(request), 12)
+        # MBAP header: transaction id, protocol id, length, unit id
+        self.assertEqual(request[:2], b"\x00\x01")
+        self.assertEqual(request[6], 1)
 
     def test_decode_register_value(self):
         from dcc.adapters.meter import _decode_register_value
-        value = _decode_register_value(b"\x00\x64", "uint16")
+        value, raw = _decode_register_value([0x0064], "uint16", 1.0, "kWh")
         self.assertEqual(value, 100)
+        self.assertEqual(raw, 100)
 
     def test_read_meter_data_modbus(self):
         from dcc.adapters.meter import read_meter_data
-        mock_response = b"\x01\x03\x02\x00\x64"
+        # MBAP(tid=1,pid=0,len=5,uid=1) + fc=3 + byte_count=2 + one uint16 register
+        mock_response = b"\x00\x01\x00\x00\x00\x05\x01\x03\x02\x00\x64"
 
         class MockSocket:
-            def __init__(self): self.sent = None
+            """Streaming socket double: recv() honours bufsize like a real socket."""
+            def __init__(self):
+                self.sent = None
+                self._buf = mock_response
             def connect(self, addr): pass
-            def send(self, data): self.sent = data
-            def recv(self, bufsize): return mock_response
-            def close(self): pass
             def settimeout(self, timeout): pass
+            def sendall(self, data): self.sent = data
+            def recv(self, bufsize):
+                chunk, self._buf = self._buf[:bufsize], self._buf[bufsize:]
+                return chunk
+            def close(self): pass
 
         with patch("dcc.adapters.meter.socket.socket", return_value=MockSocket()):
-            result = read_meter_data("modbus_tcp", host="192.168.1.1", port=502, unit_id=1, register=0, count=1)
-        self.assertIsNotNone(result)
+            result = read_meter_data(
+                protocol="modbus_tcp",
+                host="192.168.1.1",
+                port=502,
+                unit_id=1,
+                registers=[{"address": 0, "unit": "kWh", "meter_id": "m1"}],
+            )
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].meter_id, "m1")
+        self.assertEqual(result[0].value, 100.0)
+        self.assertEqual(result[0].quality.value, "good")
 
     def test_read_meter_data_rejects_invalid_protocol(self):
         from dcc.adapters.meter import read_meter_data, ValidationError_
         with self.assertRaises(ValidationError_):
-            read_meter_data("invalid_protocol")
+            read_meter_data(protocol="invalid_protocol", host="127.0.0.1")
 
     def test_reading_to_dict(self):
-        from dcc.adapters.meter import MeterReading, reading_to_dict
+        from dcc.adapters.meter import MeterReading, reading_to_dict, QualityStatus
         reading = MeterReading(
             meter_id="m1",
-            timestamp="2026-01-01T00:00:00Z",
+            observed_at="2026-01-01T00:00:00Z",
             value=100.0,
             unit="kWh",
-            quality="good",
+            quality=QualityStatus.GOOD,
+            protocol="modbus_tcp",
+            source_address="192.168.1.1:502",
         )
         result = reading_to_dict(reading)
         self.assertEqual(result["meter_id"], "m1")

@@ -19,6 +19,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
+
+from .api_backup import router as backup_router
 from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -323,6 +325,12 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# Backup surface. dcc/operations/backup.py has been able to take real pg_dump backups
+# since before this API existed, but no route imported it, so the capability was
+# unreachable. The router records and reports runs; execution stays out of the request
+# path, because a dump is a long blocking operation and an arbitrary-write primitive.
+app.include_router(backup_router)
 
 # The console loads ten module scripts from /assets/*.js (topology, forecast, quality,
 # security, economics, placement, onboarding, ops, azure-prices). Those files live in
@@ -2628,13 +2636,32 @@ _PAGED_PATHS = (
 )
 
 
-def _declare_response_schemas() -> None:
-    """Attach the envelope schema to every /v2 GET route.
+def _iter_routes(routes):
+    """Yield every APIRoute, descending into included routers.
 
-    Runs after all routes are registered, then drops the cached OpenAPI document so
-    the next /openapi.json request regenerates it with these schemas included.
+    include_router does not flatten into app.routes in this FastAPI version -- it wraps
+    the sub-router in an _IncludedRouter that has no .path, so a naive loop over
+    app.routes skips every included route. That is why the backup endpoints were
+    documented with no response schema until the contract test caught it.
     """
-    for route in app.routes:
+    for route in routes:
+        if hasattr(route, "path"):
+            yield route
+            continue
+        sub = getattr(route, "original_router", None) or getattr(route, "router", None)
+        sub_routes = getattr(sub, "routes", None)
+        if sub_routes:
+            yield from _iter_routes(sub_routes)
+
+
+def _declare_response_schemas() -> None:
+    """Attach the envelope schema to every /v2 GET and POST route.
+
+    Runs after all routes are registered (including included routers), then drops the
+    cached OpenAPI document so the next /openapi.json request regenerates it with these
+    schemas included.
+    """
+    for route in _iter_routes(app.routes):
         path = getattr(route, "path", "")
         if not path.startswith("/v2"):
             continue
@@ -2650,7 +2677,6 @@ def _declare_response_schemas() -> None:
         responses[200].setdefault("content", {})
         responses[200]["content"]["application/json"] = {"schema": schema}
     app.openapi_schema = None
-
 
 _declare_response_schemas()
 
