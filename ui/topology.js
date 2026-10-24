@@ -2,7 +2,7 @@
  * Asset Topology Visualization module for Data Center Commander.
  *
  * Renders a deterministic layered graph of tenant assets and their relationships
- * from the /v1/topology endpoint. Supports search, relationship filtering,
+ * from the /v2/topology endpoint. Supports search, relationship filtering,
  * and 2-hop dependency tracing. Uses adjacency-list BFS for O(V+E) layout
  * and renders up to 200 nodes / 400 edges.
  *
@@ -51,10 +51,10 @@ function render() {
  graphHost.querySelectorAll("[data-node]").forEach(el=>{const select=()=>{focus=el.dataset.node;const item=nodes.find(n=>n.id===focus);const adjacent=edges.filter(e=>e.source===focus||e.target===focus);detailHost.textContent=`${item.label||item.name||item.id} · ${item.type||item.kind||"asset"} · ${adjacent.length} adjacent relationships · ${item.facility||"facility not mapped"} · source: PostgreSQL asset relationship register`;render()};el.addEventListener("click",select);el.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();select()}})});
 }
 /**
- * Loads topology data from the /v1/topology endpoint and renders the graph.
+ * Loads topology data from the /v2/topology endpoint and renders the graph.
  * Populates relationship and focus dropdown filters.
  * @returns {Promise<void>}
  */
-async function load(){const tenant=new URLSearchParams(location.search).get("tenant_id");if(!tenant){graphHost.innerHTML='<div class="empty">Select a tenant to load tenant-scoped asset relationships.</div>';return}try{const response=await fetch(`/v1/topology?tenant_id=${encodeURIComponent(tenant)}`,{cache:"no-store"}),data=await response.json();if(!response.ok)throw Error(data.error||`HTTP ${response.status}`);cached={nodes:(data.nodes||[]).map(n=>({...n,id:n.id})),edges:(data.edges||[]).map(e=>({source:e.source,target:e.target,relation:e.relation}))};const rels=[...new Set(cached.edges.map(e=>e.relation))].sort();relation.innerHTML='<option value="">All relationships</option>'+rels.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("");focusSelect.innerHTML='<option value="">Trace from a node…</option>'+cached.nodes.map(n=>`<option value="${escapeHtml(n.id)}">${escapeHtml(n.label||n.name||n.id)}</option>`).join("");focus=null;render();}catch(error){graphHost.innerHTML=`<div class="empty">Topology unavailable: ${escapeHtml(error.message)}. Verify the PostgreSQL schema and tenant scope.</div>`}}
+async function load(){const tenant=new URLSearchParams(location.search).get("tenant_id");if(!tenant){graphHost.innerHTML='<div class="empty">Select a tenant to load tenant-scoped asset relationships.</div>';return}try{const response=await (window.dccFetch||fetch)(`/v2/topology?tenant_id=${encodeURIComponent(tenant)}`,{cache:"no-store"}),data=await response.json();if(!response.ok)throw Error(data.error||`HTTP ${response.status}`);cached={nodes:(data.nodes||[]).map(n=>({...n,id:n.id})),edges:(data.edges||[]).map(e=>({source:e.source,target:e.target,relation:e.relation}))};const rels=[...new Set(cached.edges.map(e=>e.relation))].sort();relation.innerHTML='<option value="">All relationships</option>'+rels.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("");focusSelect.innerHTML='<option value="">Trace from a node…</option>'+cached.nodes.map(n=>`<option value="${escapeHtml(n.id)}">${escapeHtml(n.label||n.name||n.id)}</option>`).join("");focus=null;render();}catch(error){graphHost.innerHTML=`<div class="empty">Topology unavailable: ${escapeHtml(error.message)}. Verify the PostgreSQL schema and tenant scope.</div>`}}
 search.addEventListener("input",render);relation.addEventListener("change",render);focusSelect.addEventListener("change",()=>{focus=focusSelect.value||null;render()});document.querySelector("#topologyTrace").addEventListener("click",()=>{focus=focusSelect.value||focus;render()});document.querySelector("#refreshTopology").addEventListener("click",load);document.querySelector('[data-view="assets"]')?.addEventListener("click",()=>{if(!cached.nodes.length)load()});
 if(location.hash==="#assets")load();

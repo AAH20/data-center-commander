@@ -302,7 +302,20 @@ document.querySelector('#refreshOperations')?.addEventListener('click',()=>loadO
 </script><script id="command-center-interactions">
 let analyticsSnapshot=null, workflowSnapshot=[], refreshClock=null;
 async function scopedGet(path,extra={}){const params=new URLSearchParams({tenant_id:tenant||"",...extra});if(syntheticDemoMode)params.set('demo','synthetic');const response=await _fetch(`${path}?${params}`,{cache:"no-store"});return readJson(path,response)}
-function showView(name){document.querySelectorAll(".view").forEach(view=>view.classList.toggle("active",view.id===`view-${name}`));document.querySelectorAll(".nav [data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));const active=document.querySelector(`.nav [data-view="${name}"]`);document.querySelector("#crumb").textContent=active?active.textContent.trim():name;history.replaceState(null,"",`#${name}`);if(name==="analytics")loadAnalytics().catch(showAnalyticsError);if(name==="workflows")renderWorkflowQueue();if(name==="governance")loadGovernance();if(name==="operations")loadOperations()}
+function showView(name){document.querySelectorAll(".view").forEach(view=>view.classList.toggle("active",view.id===`view-${name}`));document.querySelectorAll(".nav [data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));const active=document.querySelector(`.nav [data-view="${name}"]`);document.querySelector("#crumb").textContent=active?active.textContent.trim():name;history.replaceState(null,"",`#${name}`);if(name==="analytics")loadAnalytics().catch(showAnalyticsError);if(name==="workflows")renderWorkflowQueue();if(name==="governance")loadGovernance();if(name==="operations")loadOperations();/* Deferred module views load their own data. The economics dashboard only auto-loaded
+   when the hash was already #economics, so arriving via the nav button never ran it and
+   its banner stayed empty -- the view looked broken rather than empty. Each is optional
+   chained because the module may not have loaded yet. */if(name==="economics")window.loadEconomicsDashboard?.()}
+/* Bridge for the deferred module scripts. They are separate <script type="module">
+   files and can only reach this page through window; they already call
+   window.showView?.() and window.getPlacementComparisonSnapshot?.(), both of which
+   were undefined -- optional chaining made those calls silent no-ops, so a module
+   could never navigate or read page state. dccFetch carries the API key header, which
+   a bare fetch() in a module would omit and get a 401. */
+window.showView=showView;
+window.dccFetch=(u,o)=>_fetch(u,o);
+window.getTenantId=()=>{const el=document.getElementById("tenantInput");const v=el?el.value.trim():"";return v||localStorage.getItem("dcc-tenant")||new URLSearchParams(location.search).get("tenant_id")||""};
+
 document.querySelectorAll(".nav [data-view]").forEach(button=>button.addEventListener("click",()=>showView(button.dataset.view)));
 document.querySelectorAll("[data-goto]").forEach(button=>button.addEventListener("click",()=>showView(button.dataset.goto)));
 document.querySelector("#tenantInput").value=tenant||"";
@@ -349,7 +362,24 @@ function downloadJson(name,data){const blob=new Blob([JSON.stringify(data,null,2
 document.querySelector("#exportAnalytics").addEventListener("click",()=>{if(!analyticsSnapshot)return showAnalyticsError(Error("Refresh analytics before exporting"));downloadJson("dcc-bi-snapshot.json",analyticsSnapshot)});
 document.querySelector("#exportWorkflows").addEventListener("click",()=>{const rows=workflowSnapshot,keys=["id","workflow_type","stage","status","priority","title","accountable_owner","opened_at","due_at"];const csv=[keys.join(","),...rows.map(row=>keys.map(key=>JSON.stringify(row[key]??"")).join(","))].join("\n");const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),a=document.createElement("a");a.href=url;a.download="dcc-operations-queue.csv";a.click();URL.revokeObjectURL(url)});
 
-const initialView=location.hash.slice(1);if(initialView&&document.querySelector(`#view-${CSS.escape(initialView)}`))showView(initialView);else showView("overview");loadAnalytics().catch(showAnalyticsError);
+/* Deep links must survive deferred module loading.
+   Several views (#workloads, #critical, #quality, #economics, #placement, #forecast)
+   are appended to the DOM by module scripts that load AFTER this runs. The old code
+   asked for #view-<name>, found nothing, fell back to showView("overview") -- and
+   showView rewrites the URL to #overview. The modules then checked location.hash for
+   their own name, which had already been clobbered, so the deep link was lost twice
+   over. Capture the requested view, keep the hash, and re-apply once everything loaded. */
+const initialView=location.hash.slice(1);
+const _viewExists=n=>Boolean(n)&&Boolean(document.querySelector(`#view-${CSS.escape(n)}`));
+const pendingView=initialView&&!_viewExists(initialView)?initialView:null;
+if(initialView&&!pendingView)showView(initialView);else{
+  showView("overview");
+  // Keep the deep link in the address bar until its view exists; showView("overview")
+  // would otherwise replace it and orphan the pending target.
+  if(pendingView)history.replaceState(null,"","#"+pendingView);
+}
+window.addEventListener("load",()=>{const target=location.hash.slice(1);if(_viewExists(target))showView(target);else if(pendingView&&_viewExists(pendingView))showView(pendingView)});
+loadAnalytics().catch(showAnalyticsError);
 </script><style>.feature-pending{display:none!important}</style><script>document.querySelector('#workspaceSetup').hidden=true;document.querySelector('#view-assets .module')?.classList.add('feature-pending');</script><script type="module" src="/assets/onboarding.js"></script><script type="module" src="/assets/topology.js"></script><script type="module" src="/assets/forecast-dashboard.js"></script>
 <script id="workload-and-critical-environment-workbench">
 (()=>{
@@ -404,7 +434,7 @@ const initialView=location.hash.slice(1);if(initialView&&document.querySelector(
   document.querySelector("#workloadSearch").addEventListener("input",renderProfiles);tier.addEventListener("change",renderProfiles);mode.addEventListener("change",renderProfiles);profile.addEventListener("change",renderControls);
   document.querySelector("#exportGrc").addEventListener("click",()=>{const rows=controls.filter(c=>profile.value==="all"||c.scope.includes("all")||c.scope.includes(profile.value)),keys=["domain","objective","evidence","scope"],quote=v=>'"'+String(v??"").replaceAll('"','""')+'"',csv=[keys.join(","),...rows.map(r=>keys.map(k=>quote(Array.isArray(r[k])?r[k].join("; "):r[k])).concat(quote("Evidence required")).join(","))].join("\n"),url=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),a=document.createElement("a");a.href=url;a.download="critical-environment-grc-checklist.csv";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
   renderProfiles();renderControls();document.querySelectorAll("#view-critical > .actions [data-workload-route]").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.workloadRoute)));
-  if(location.hash==="#workloads"||location.hash==="#critical")showView(location.hash.slice(1));
+  /* re-applied on window load by the startup block above, which runs after this file */
 })();
 </script>
 <script id="synthetic-data-quarantine">

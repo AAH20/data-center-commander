@@ -40,7 +40,7 @@
     const tenant = tenantId();
     if (!validTenant(tenant)) { status.textContent = "Select/configure a UUID tenant before loading saved drafts."; list.replaceChildren(); return; }
     try {
-      const response = await fetch("/v1/placement/scenarios?tenant_id=" + encodeURIComponent(tenant), {cache:"no-store"});
+      const response = await (window.dccFetch||fetch)("/v2/placement/scenarios?tenant_id=" + encodeURIComponent(tenant), {cache:"no-store"});
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "database unavailable");
       const items = body.scenarios || [];
@@ -56,7 +56,7 @@
     if (!validTenant(tenant)) { status.textContent = "A valid UUID tenant is required; the snapshot was not sent."; return; }
     save.disabled = true;
     try {
-      const response = await fetch("/v1/placement/scenarios", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenant_id:tenant,name:name.value.trim(),payload})});
+      const response = await (window.dccFetch||fetch)("/v2/placement/scenarios", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenant_id:tenant,name:name.value.trim(),payload})});
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || "database unavailable");
       status.textContent = "Draft snapshot saved to this tenant’s PostgreSQL database. It is not an approved estimate or placement decision.";

@@ -2593,6 +2593,108 @@ from fastapi.responses import Response as FastAPIResponse  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
+# Topology and placement scenarios
+# ---------------------------------------------------------------------------
+# ui/topology.js and ui/placement-scenarios.js fetch /v1/topology and
+# /v1/placement/scenarios. Neither has ever existed on the v2 server -- the modules
+# were written against the legacy stdlib prefix, so both panels rendered their
+# "unavailable" state permanently. The tables behind them are real
+# (dcc.asset_relationships has rows, dcc.placement_comparison_snapshots is the schema
+# from migration 004), so the honest fix is to serve them, not to delete the panels.
+
+
+@app.get("/v2/topology")
+async def topology(
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
+    relation: str | None = None,
+):
+    """Asset relationship graph for a tenant.
+
+    Returns nodes and edges in the shape ui/topology.js renders. Relationships carry a
+    validity window, so only currently-valid edges are returned: a decommissioned link
+    must not appear in a live topology view.
+    """
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        nodes = await conn.fetch(
+            "SELECT id::text AS id, name AS label, asset_type, lifecycle_state, criticality "
+            "FROM dcc.assets WHERE tenant_id=$1::uuid ORDER BY name",
+            tenant_id,
+        )
+
+        if relation:
+            edges = await conn.fetch(
+                "SELECT source_asset_id::text AS source, target_asset_id::text AS target, relation "
+                "FROM dcc.asset_relationships "
+                "WHERE tenant_id=$1::uuid AND relation=$2 "
+                "AND (valid_to IS NULL OR valid_to > now()) "
+                "ORDER BY relation, source_asset_id",
+                tenant_id,
+                relation,
+            )
+        else:
+            edges = await conn.fetch(
+                "SELECT source_asset_id::text AS source, target_asset_id::text AS target, relation "
+                "FROM dcc.asset_relationships "
+                "WHERE tenant_id=$1::uuid AND (valid_to IS NULL OR valid_to > now()) "
+                "ORDER BY relation, source_asset_id",
+                tenant_id,
+            )
+
+    return {
+        "nodes": [dict(r) for r in nodes],
+        "edges": [dict(r) for r in edges],
+        "relations": sorted({r["relation"] for r in edges}),
+        "read_only": True,
+        "execution_permitted": False,
+    }
+
+
+@app.get("/v2/placement/scenarios")
+async def list_placement_scenarios(
+    tenant_id: str = Query(..., pattern=r"^[0-9a-fA-F-]{36}$"),
+    limit: int = Query(100, ge=1, le=1000),
+    cursor: str | None = None,
+):
+    """Saved placement comparison scenarios, newest first.
+
+    A scenario is a stored payload with a checksum, not a computed result: this endpoint
+    reports what was recorded. Recomputing a comparison belongs to
+    POST /v2/optimize/placement, which is a separate call the caller makes explicitly.
+    """
+    offset = decode_cursor(cursor) if cursor else 0
+    pool = await get_pool()
+    async with pool.connection() as conn, conn.transaction():
+        await conn.execute("SET TRANSACTION READ ONLY")
+        await conn.execute("SELECT set_config('dcc.tenant_id', $1, true)", tenant_id)
+
+        rows = await conn.fetch(
+            "SELECT id::text AS id, name, schema_version, payload, payload_sha256, "
+            "created_by, created_at FROM dcc.placement_comparison_snapshots "
+            "WHERE tenant_id=$1::uuid ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            tenant_id,
+            limit + 1,
+            offset,
+        )
+
+    has_more = len(rows) > limit
+    items = [dict(r) for r in rows[:limit]]
+    for item in items:
+        if item.get("created_at") is not None:
+            item["created_at"] = item["created_at"].isoformat()
+
+    return {
+        "items": items,
+        "next_cursor": encode_cursor(offset + limit) if has_more else None,
+        "read_only": True,
+        "execution_permitted": False,
+    }
+
+
+# ---------------------------------------------------------------------------
 # OpenAPI response schemas
 # ---------------------------------------------------------------------------
 # Every route returned a bare dict, so /openapi.json documented 31 paths and zero
