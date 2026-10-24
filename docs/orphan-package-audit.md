@@ -12,8 +12,8 @@ Read-only audit of four subpackages under `src/dcc/` that no production code imp
 | Package | LOC (measured) | Imports? | Runs for real? | Importers outside itself | Verdict |
 |---|---|---|---|---|---|
 | `autoscaling` | 5,619 | yes | **No real cloud call** — pure in-memory simulation, no `boto3` anywhere | tests only | **DEFER** (DELETE `cloud_run/`) |
-| `operations` | 3,293 | yes | **Yes** — real `pg_dump` backup, but **restore fails on a fresh DB** | tests only | **WIRE `backup.py`**; DEFER `ha.py`, `migrations.py` |
-| `containers` | 3,588 | partly — `docker-swarm` is a **SyntaxError** | No — placeholder `.example.internal` gateways, fails honestly | tests only | **DEFER** (DELETE `docker-swarm/`) |
+| `operations` | 3,293 | yes | **Yes** — real `pg_dump` backup. The claimed restore failure does NOT reproduce; see correction. Row-count defect was real and is fixed. | tests only | **WIRE `backup.py`**; DEFER `ha.py`, `migrations.py` |
+| `containers` | 3,588 | yes — `docker_swarm` importable after the rename (see correction below) | No — placeholder `.example.internal` gateways, fails honestly | tests only | **DEFER** (Rancher/OpenShift need a deployed gateway, not code) |
 | `network` | 4,564 | yes | **Yes** — coherent in-memory state machine, no cloud transport | tests only | **WIRE as planner / DELETE** |
 
 **No `src/` importer exists for any of the four packages.** Verified:
@@ -453,7 +453,13 @@ type-check fine.
   86 rancher/__init__.py           (adapter 398, +5 modules)
 ```
 
-### 3.1 Does it import? — **partially. `docker-swarm` is not importable as Python.**
+### 3.1 Does it import? — **yes, since the directory was renamed.**
+
+> CORRECTION (applied after this audit was written): the directory `docker-swarm` was renamed to
+> `docker_swarm`, and the package is now importable — `len(dcc.containers.docker_swarm.__all__)` is 33.
+> The analysis below described the state before that rename and is kept only as the record of why it
+> mattered. Nothing imported the hyphenated path, git recorded 18 pure renames, and tests/containers
+> still passes 15. **The DELETE recommendation below is withdrawn.**
 
 ```
 $ .venv/bin/python -c "import dcc.containers; print('OK')"
@@ -570,15 +576,17 @@ the rest of the system uses for external inventory (`roi.connectors`, `connector
 **undetermined**; resolving needs a read of the connector protocol to see whether these adapters
 implement it or a parallel one.
 
-### 3.7 Verdict: **DEFER** (all three) — **DELETE `docker-swarm`**
+### 3.7 Verdict: **DEFER** (all three). The `docker-swarm` deletion is WITHDRAWN — it was renamed and now imports.
 
 - `rancher/` + `openshift/`: **DEFER.** ~1,750 LOC of honest, well-structured, credential-gated
   read adapters. They cost nothing to keep and cannot work without a deployed gateway. **Cost to
   WIRE:** dominates everything else — you must stand up a Rancher and an OpenShift gateway, not just
   write code. **Risk:** low (fails closed, never fabricates).
-- `docker-swarm/` (740 LOC): **DELETE.** A hyphenated directory name makes it unimportable by the
-  language itself; no consumer can ever exist, and it has no tests. **Cost:** trivial. **Risk:**
-  none. **What breaks:** nothing — verified no importer.
+- ~~`docker-swarm/` (740 LOC): DELETE.~~ **WITHDRAWN.** The premise was correct — a hyphen is not a
+  legal identifier, so no `from` statement could reach it — but the conclusion was wrong: the fix is
+  a rename, not a deletion. It is now `docker_swarm/`, imports cleanly, exports 33 names, and
+  tests/containers still passes 15. Deleting 740 working LOC to avoid a one-line rename would have
+  destroyed the most complete container-platform adapter in the package.
 - Package `__init__.py` is a bare docstring, so nothing breaks if leaf modules go; but tests import
   leaves directly (`tests/test_rancher_adapter.py`, `tests/test_openshift_adapter.py`,
   `tests/containers/test_rancher_*.py` — 6 files).
@@ -720,7 +728,7 @@ zero integration. Unlike `autoscaling/aws` it does not pretend: it never claims 
 | **1** | `operations/backup.py` (1,627 LOC) | **WIRE** | Low–med | High | Only code in the repo that does real work. Produces verifiable artifacts. Two localized bugs to fix. Fills the exact gap behind `dr.BackupPolicy`. |
 | **2** | `network/` (4,564 LOC) | **WIRE (planner) / DELETE** | Med | Med–high | Runs correctly and honestly. Needs persistence + a transport. Decide by product intent: simulator vs live reader. |
 | **3** | `autoscaling/` (5,619 LOC) | **DEFER**; DELETE `cloud_run/` | High | Med | Validated domain models, but the AWS half has **no boto3 at all** and lies by returning `[]`. Wiring means writing the whole transport. |
-| **4** | `containers/` (3,588 LOC) | **DEFER**; DELETE `docker-swarm/` | High (infra) | Low | Needs a deployed Rancher/OpenShift gateway, not code. `docker-swarm` is unimportable by language rule. |
+| **4** | `containers/` (3,588 LOC) | **DEFER** | High (infra) | Low | Needs a deployed Rancher/OpenShift gateway, not code. `docker_swarm` is now importable and needs no action. |
 
 ### Rationale for the order
 
@@ -736,8 +744,8 @@ zero integration. Unlike `autoscaling/aws` it does not pretend: it never claims 
    transport is the most expensive thing to wire here. `cloud_run/` is separately deletable: 681 LOC
    that cannot authenticate off-GCP and whose `health_check()` conflates "no token" with "down".
 4. **`containers/`** is last because its blocker is infrastructure you cannot write in Python — you
-   need a Rancher and an OpenShift gateway running. The code is honest and cheap to keep; the
-   `docker-swarm` hyphen is a free deletion.
+   need a Rancher and an OpenShift gateway running. The code is honest and cheap to keep. The
+   `docker-swarm` hyphen was already fixed by a rename; there is no deletion to make.
 
 ### Cross-cutting finding: the API already covers the read path
 
@@ -775,3 +783,19 @@ were written under `~/.hermes/cache/scratch/dcc-audit-bk*/`; the temporary datab
 | Does `operations.migrations.migrate` work? | Run against a throwaway DB (mutates schema — outside read-only scope). |
 | Overlap of `autoscaling` with `cost_optimization/` and `forecasting/` | Apply the same run-test to those two packages. |
 | Do `containers` adapters implement the repo's connector protocol? | Read the connector interface and compare method-by-method. |
+
+---
+
+## Corrections applied after publication
+
+An audit that is wrong is worse than one that is silent, because the reader acts on it. These
+findings were checked again against the code and corrected in place.
+
+| Claim as published | Reality | Action |
+|---|---|---|
+| `docker-swarm` is unimportable; **DELETE** it | A hyphen is illegal in an identifier, but the remedy is a rename. Now `docker_swarm`, 33 exported names, 18 pure renames in git, `tests/containers` 15 passed. | Renamed; deletion withdrawn |
+| `operations/backup.py` restore fails on a fresh DB (0 `CREATE SCHEMA`) | Does not reproduce. `pg_dump --dbname ...` emits `CREATE SCHEMA dcc;` and restores into a fresh database: exit 0, 53 tables. | Claim withdrawn |
+| `_get_row_counts` reports 0 rows | Real. One `except` wrapped the whole loop and every query assumed `tenant_id::uuid`; `dcc.tenants` has no such column. | Fixed; unmeasurable tables are now omitted, not zeroed |
+
+The row-count finding is the one that survived verification, and it was the one with the least
+dramatic framing.
