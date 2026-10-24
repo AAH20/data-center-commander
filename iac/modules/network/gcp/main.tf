@@ -13,21 +13,26 @@ terraform {
 }
 
 resource "google_compute_network" "this" {
+  count = var.enabled ? 1 : 0
+
   name                    = var.network_name
   auto_create_subnetworks = false
   routing_mode            = "REGIONAL"
 
   # `labels` is not an argument of google_compute_network (the Google provider
   # rejects it with "An argument named "labels" is not expected here"). Common
-  # tags are applied to the resources that do support labels instead.
+  # tags are applied as provider-level `default_labels` in providers.tf, which
+  # labels every label-capable resource this module creates.
   description = "Managed by ${var.environment}"
 }
 
 resource "google_compute_subnetwork" "this" {
+  count = var.enabled ? 1 : 0
+
   name          = "${var.network_name}-subnet"
   ip_cidr_range = var.subnet_cidr
   region        = var.region
-  network       = google_compute_network.this.id
+  network       = google_compute_network.this[0].id
 
   private_ip_google_access = true
 
@@ -39,14 +44,16 @@ resource "google_compute_subnetwork" "this" {
 }
 
 resource "google_compute_router" "this" {
-  count   = var.enable_cloud_nat ? 1 : 0
+  count = var.enabled && var.enable_cloud_nat ? 1 : 0
+
   name    = "${var.network_name}-router"
   region  = var.region
-  network = google_compute_network.this.id
+  network = google_compute_network.this[0].id
 }
 
 resource "google_compute_router_nat" "this" {
-  count                              = var.enable_cloud_nat ? 1 : 0
+  count = var.enabled && var.enable_cloud_nat ? 1 : 0
+
   name                               = "${var.network_name}-nat"
   router                             = google_compute_router.this[0].name
   region                             = var.region
@@ -55,8 +62,10 @@ resource "google_compute_router_nat" "this" {
 }
 
 resource "google_compute_firewall" "allow_internal" {
+  count = var.enabled ? 1 : 0
+
   name    = "${var.network_name}-allow-internal"
-  network = google_compute_network.this.name
+  network = google_compute_network.this[0].name
 
   allow {
     protocol = "tcp"
@@ -75,8 +84,10 @@ resource "google_compute_firewall" "allow_internal" {
 }
 
 resource "google_compute_firewall" "allow_ssh" {
+  count = var.enabled ? 1 : 0
+
   name    = "${var.network_name}-allow-ssh"
-  network = google_compute_network.this.name
+  network = google_compute_network.this[0].name
 
   allow {
     protocol = "tcp"
@@ -88,8 +99,10 @@ resource "google_compute_firewall" "allow_ssh" {
 }
 
 resource "google_compute_firewall" "allow_http" {
+  count = var.enabled ? 1 : 0
+
   name    = "${var.network_name}-allow-http"
-  network = google_compute_network.this.name
+  network = google_compute_network.this[0].name
 
   allow {
     protocol = "tcp"

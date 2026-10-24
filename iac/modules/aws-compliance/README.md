@@ -27,7 +27,7 @@ module "aws_compliance" {
 
 ## Prerequisites
 
-- Terraform >= 1.0
+- Terraform >= 1.5
 - AWS Provider >= 5.0
 - An S3 bucket for compliance logs (CloudTrail + AWS Config)
 - (Optional) A KMS key for log encryption

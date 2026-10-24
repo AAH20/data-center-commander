@@ -13,43 +13,44 @@ Contact: aah@a2zsoc.com | https://a2zsoc.com
 
 ![Overview tour across the synthetic demo sections](docs/media/overview.gif)
 
-**An open, operator-centered system for governing the full data-center lifecycle—from utility boundary to useful compute.**
+**An open, operator-centered system for governing the full data-center lifecycle, from utility boundary to useful compute.**
 
 [![CI](https://github.com/AAH20/data-center-commander/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/AAH20/data-center-commander/actions/workflows/ci.yml)
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL--3.0-only-blue.svg)](LICENSE)
 
 > One command view for facilities, energy, capacity, maintenance, economics,
-> analytics, and evidence—with read-only integrations and explicit safety
+> analytics, and evidence, with read-only integrations and explicit safety
 > boundaries.
 
-**Status:** decision-support system with enforced authentication and tenant
-isolation. Vendor adapters, validated forecasts at production accuracy, and
-facility control are not delivered.
+**Status:** decision-support system with enforced API-key authentication and tenant
+isolation. Adapter code exists for nine source families and is covered by mocked contract
+tests; no live vendor run ships with the repository. Forecasts are not validated at
+production accuracy, and there is no facility control path.
 
 ---
 
-## Table of Contents
+## Table of contents
 
 - [Architecture](#architecture)
-- [Product Contract](#product-contract)
-- [Feature Overview](#feature-overview)
-- [Quick Start](#quick-start)
-- [API Reference](#api-reference)
-- [Database Schema](#database-schema)
+- [Product contract](#product-contract)
+- [Feature overview](#feature-overview)
+- [Quick start](#quick-start)
+- [API reference](#api-reference)
+- [Database schema](#database-schema)
 - [Adapters](#adapters)
-- [Economics Engine](#economics-engine)
+- [Economics engine](#economics-engine)
 - [Forecasting](#forecasting)
-- [Quality & Validation](#quality--validation)
-- [Security & Tenant Isolation](#security--tenant-isolation)
-- [Provenance & Lineage](#provenance--lineage)
+- [Quality and validation](#quality-and-validation)
+- [Security and tenant isolation](#security-and-tenant-isolation)
+- [Provenance and lineage](#provenance-and-lineage)
 - [Observability](#observability)
-- [Infrastructure as Code](#infrastructure-as-code)
-- [Synthetic Demo](#synthetic-demo)
-- [Standalone Layout](#standalone-layout)
+- [Infrastructure as code](#infrastructure-as-code)
+- [Synthetic demo](#synthetic-demo)
+- [Standalone layout](#standalone-layout)
 - [Migrations](#migrations)
 - [Testing](#testing)
 - [Roadmap](#roadmap)
-- [Safety and Authority Boundary](#safety-and-authority-boundary)
+- [Safety and authority boundary](#safety-and-authority-boundary)
 - [Screenshots](#screenshots)
 - [License](#license)
 
@@ -65,15 +66,13 @@ flowchart LR
   SRC[Utility, OEM, cloud and facility sources] --> ADAPTER[Versioned read-only adapters]
   ADAPTER --> QUALITY[Identity, units, freshness and provenance checks]
   QUALITY --> DB[(Portable PostgreSQL schema)]
-  OP[Operator] --> UI[Multi-tab command center]
-  UI --> API[Authenticated tenant-scoped API]
-  API --> DB
+  CONSOLE[Console and authenticated API] --> DB
   DB --> BI[Reproducible KPIs and continuous BI]
-  BI --> MODELS[Trend and maintenance analysis]
-  MODELS --> GATE{Evidence sufficient?}
-  GATE -->|No| UNKNOWN[Unknown; no forecast]
+  BI --> GATE{Evidence sufficient?}
+  GATE -->|No| UNKNOWN[Unknown, no forecast]
   GATE -->|Yes| REC[Human-reviewed advisory]
-  API -. no authority .-> SAFE[No facility actuation]
+  classDef plain fill:none,stroke:#333,stroke-width:1px
+  class SRC,ADAPTER,QUALITY,DB,CONSOLE,BI,GATE,UNKNOWN,REC plain
 ```
 
 **Explore:** [full architecture](docs/ARCHITECTURE.md) ·
@@ -85,7 +84,7 @@ Data Center Commander is a standalone, vendor-neutral operations and decision-su
 
 ---
 
-## Product Contract
+## Product contract
 
 - Energy-to-compute is measured with explicit meter boundaries, aligned intervals, units, quality, source lineage, and allocation uncertainty.
 - Every KPI is reproducible from named source observations and a versioned calculation definition; missing inputs produce `unknown`, not zero.
@@ -96,16 +95,19 @@ Data Center Commander is a standalone, vendor-neutral operations and decision-su
 
 ---
 
-## Feature Overview
+## Feature overview
 
-### Multi-Tab Command Center UI
+### Multi-tab command center UI
 
-The browser-based UI is a single page with 14 view sections, all backed by the read-only
-API. Note that the console modules are split across two route families — several call
-`/v1/*`, which only the legacy handler in `src/dcc/api.py` serves, while others call
-`/v2/*`:
+The browser-based UI is a single page with 14 `<section class="view">` elements. The left
+rail exposes 12 of them; `view-workloads` and `view-critical` exist in the markup without
+a rail entry. The console shell itself calls twelve `/v2` endpoints. The ten module
+scripts in `ui/` are split across two route families: seven still call `/v1/*`, which
+only the legacy handler in `src/dcc/api.py` serves, and the served FastAPI app answers
+`404` for those paths. Three call `/v2` paths. The rows below cover the sections and the
+panels they render:
 
-| Section | Description |
+| Section or panel | Description |
 |---|---|
 | **Command Picture** | Executive overview: facility count, KPI summary, open workflows, latest telemetry |
 | **Energy & Carbon** | Energy consumption, PUE, carbon intensity, and efficiency trends |
@@ -121,15 +123,16 @@ API. Note that the console modules are split across two route families — sever
 | **Suggested Workloads** | Workload placement recommendations with SLO and energy budget |
 | **Critical & GRC** | Critical environments, governance, risk, and compliance posture |
 
-### Read-Only API
+### Read-only API
 
 Served by FastAPI on uvicorn (`dcc.api_async:app`), with psycopg3 for PostgreSQL
 access. Every `/v2` endpoint requires an API key and enforces tenant scoping via
 PostgreSQL RLS. See [API Reference](#api-reference) for full details.
 
-### Portable PostgreSQL Schema
+### Portable PostgreSQL schema
 
-35+ tables covering the full data-center lifecycle with:
+53 tables covering the full data-center lifecycle, counted from a database built from
+`schema.sql` plus all nine migrations:
 - Multi-tenant row-level security (RLS) with forced enforcement
 - Hash-chained evidence events
 - Immutable placement comparison snapshots
@@ -138,7 +141,7 @@ PostgreSQL RLS. See [API Reference](#api-reference) for full details.
 - Capacity snapshots across 9 dimensions
 - KPI observations with quality status and provenance
 
-### Versioned Read-Only Adapters
+### Versioned read-only adapters
 
 All adapters are bounded, read-only, never persist data, and never follow redirects:
 
@@ -154,7 +157,7 @@ All adapters are bounded, read-only, never persist data, and never follow redire
 | **Weather** | Open-Meteo, Electricity Maps | Weather forecast, grid carbon intensity |
 | **Hypervisor** | VMware vCenter, KVM/libvirt, Hyper-V | VM/host inventory, power, capacity metrics |
 
-### Economics Engine
+### Economics engine
 
 - **Unit Economics:** cost/kWh, cost/kW-year, cost/m²-year, cost/rack-year, cost/work-unit, equivalent annual cost
 - **Bottom-Up Estimating:** component sizing, quantity takeoff, phase subtotals, lifecycle cost calculation
@@ -173,15 +176,15 @@ All adapters are bounded, read-only, never persist data, and never follow redire
 - **Calibration:** bias correction, multiplicative correction, forecast-actual matching
 - **Backtesting:** walk-forward validation, cross-validation, metric computation
 
-### Quality & Validation
+### Quality and validation
 
 - **Quality Engine:** multi-dimensional scoring (coverage, freshness, completeness, accuracy, consistency)
 - **Unit Conversion:** dimensional analysis with power factor support
 - **Time Series:** alignment, resampling, gap detection, coverage reports
 - **Consistency Validation:** 15 validators covering energy sources, asset references, capacity headroom, KPI vs. telemetry, cost rollup, workflow linkage, tenant boundaries, temporal consistency, unit consistency, provenance, PUE, price freshness, estimate price links, energy allocation coverage, and connector data freshness
-- **Schema Validation:** 30+ entity validators with constraint checking
+- **Schema Validation:** 41 entity validators in `src/dcc/validation/schema.py` with constraint checking
 
-### Security & Tenant Isolation
+### Security and tenant isolation
 
 - **PostgreSQL RLS:** forced row-level security on all tenant tables
 - **Tenant Context:** context-variable propagation, fail-closed design
@@ -190,7 +193,7 @@ All adapters are bounded, read-only, never persist data, and never follow redire
 - **Loopback-Only Legacy Server:** `src/dcc/api.py` refuses non-loopback binds; the
   FastAPI app does not restrict the bind address, and access control is the API key
 
-### Provenance & Lineage
+### Provenance and lineage
 
 - **Hash-Chained Steps:** every transformation is SHA-256 hashed and linked
 - **Source Classification:** connector, manual entry, API import, seed fixture, calculated, external system
@@ -206,7 +209,7 @@ All adapters are bounded, read-only, never persist data, and never follow redire
 
 ---
 
-## Quick Start
+## Quick start
 
 Requires Python 3.11+ and PostgreSQL 14+. Do not point the demo at a production database.
 
@@ -214,7 +217,7 @@ Requires Python 3.11+ and PostgreSQL 14+. Do not point the demo at a production 
 cd data-center-commander
 uv sync --extra postgres
 
-# Build a database from schema.sql plus all eight migrations, on a scratch database,
+# Build a database from schema.sql plus all nine migrations, on a scratch database,
 # then smoke-test every GET /v2 route against it.
 PATH="$PWD/.venv/bin:$PATH" PYTHONPATH=src scripts/verify-fresh-deploy.sh
 
@@ -240,18 +243,18 @@ standard-library handler in `src/dcc/api.py` (routes under `/v1`, no authenticat
 it is not the application documented below. To see a clearly synthetic walkthrough, use
 the separately gated instructions in [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md).
 
-### Health Checks
+### Health checks
 
-- `/healthz` — process liveness
-- `/readyz` — returns `200` only when PostgreSQL is reachable and the `dcc.tenants` and
+- `/healthz`: process liveness
+- `/readyz`: returns `200` only when PostgreSQL is reachable and the `dcc.tenants` and
   `dcc.assets` tables exist; the probe runs inside a `READ ONLY` transaction. It does
-  not inspect row-level security — `scripts/verify-fresh-deploy.sh` is what asserts
+  not inspect row-level security: `scripts/verify-fresh-deploy.sh` is what asserts
   forced RLS on the schema.
 
 `/v2` is authenticated. With no key configured every `/v2` request returns `401`; see
 [Authentication](#authentication).
 
-### Running Tests
+### Running tests
 
 ```bash
 uv run --extra test python -m unittest discover -s tests -v
@@ -272,23 +275,63 @@ Test coverage includes:
 
 ---
 
-## API Reference
+## API reference
 
-The served application (`dcc.api_async:app`) exposes 27 routes under `/v2`, plus
-`/healthz`, `/readyz`, `/metrics`, the console shell at `/`, the `/assets` static mount,
-and the generated `/docs`, `/redoc` and `/openapi.json`. Requests are authenticated with
-an API key and scoped to the key's tenant; the console shell at `/` is public because it
-carries no tenant data.
+Served by `dcc.api_async:app`, the application declares 32 `/v2` operations: 20 `GET`
+and 12 `POST`. It also serves `/healthz`, `/readyz`, `/metrics`, the console shell at
+`/`, the `/assets` static mount and the generated `/docs`, `/redoc` and
+`/openapi.json`. Every `/v2` operation and every file under `/assets` requires an API
+key; `/`, `/metrics` and the generated documentation do not, and carry no tenant data.
+
+The table below was generated from the app's own route table, not from an earlier
+draft:
+
+```bash
+PYTHONPATH=src .venv/bin/python -c "
+from dcc.api_async import app, _iter_routes
+for r in _iter_routes(app.routes):
+    for m in (getattr(r, 'methods', None) or []):
+        p = getattr(r, 'path', '')
+        if m not in ('HEAD', 'OPTIONS') and p.startswith('/v2'):
+            print(m, p)"
+```
+
+`_iter_routes` rather than `app.routes` because `include_router` does not flatten into
+`app.routes` in this FastAPI version: it wraps the sub-router in an `_IncludedRouter`
+with no `.path`, so a plain loop over `app.routes` silently skips every included route.
+That is how the three backup operations stayed out of this table, and out of
+`openapi.json`, after they were mounted.
+
+### Request path
+
+```mermaid
+flowchart LR
+  REQ[HTTP request] --> MET[metrics]
+  MET --> SAFE[safety contract]
+  SAFE --> AUTH{auth: key and tenant}
+  AUTH -->|missing, invalid or revoked| R401[401]
+  AUTH -->|valid key| RATE{rate limit}
+  RATE -->|exceeded| R429[429]
+  RATE -->|allowed| ROUTE[route handler]
+  ROUTE --> POOL[(PostgreSQL pool, RLS session)]
+  POOL --> SAFE
+  classDef plain fill:none,stroke:#333,stroke-width:1px
+  class REQ,MET,SAFE,AUTH,R401,RATE,R429,ROUTE,POOL plain
+```
+
+Auth rejects a request before the handler runs, yet metrics is outermost, so a 401 or a
+429 is counted; `read_only` and `execution_permitted` are added on the way back out by
+middleware, which is why a new handler cannot omit them.
 
 > `/v1/*` belongs to a different, legacy handler: `src/dcc/api.py`, a standard-library
 > `ThreadingHTTPServer` that `scripts/run-local.py` starts. It serves no `/v2` route and
-> performs no authentication. The FastAPI app serves no `/v1` route. Everything below
-> describes the FastAPI app, and the tables match its own route table.
+> performs no authentication. The FastAPI app serves no `/v1` route; a `/v1` request to
+> it returns `404`. Everything below describes the FastAPI app.
 
 ### Authentication
 
-Every `/v2` route requires a key, sent as `X-API-Key: <key>` or
-`Authorization: Bearer <key>`.
+Every `/v2` route requires a key, sent either as an `X-API-Key` header or as an
+`Authorization: Bearer` token.
 
 | Situation | Status |
 |---|---|
@@ -325,118 +368,105 @@ turns a locked-out configuration into a startup failure instead of a warning.
 | GET | `/assets/*` | Console JavaScript from `ui/`; behind auth, so a key is required |
 | GET | `/docs`, `/redoc`, `/openapi.json` | Generated API documentation; public |
 
-### Collections
+### Operations
+
+All 32 operations, sorted by path. The ten that end in a page envelope are named in
+[Response conventions](#response-conventions).
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v2/overview` | Facility count, latest KPIs, open workflows, latest telemetry |
-| GET | `/v2/facilities` | Facilities with site codes and names |
-| GET | `/v2/assets` | Asset inventory with type, lifecycle state, criticality |
-| GET | `/v2/workflows` | Operational workflows with stage, status, owner, due dates |
-| GET | `/v2/connectors` | Connector registry including scopes and allowed destinations |
-| GET | `/v2/capacity` | Capacity snapshots by facility, dimension, and scenario |
 | GET | `/v2/analytics` | KPI series, KPI quality, telemetry quality, workflow health |
-| GET | `/v2/costs` | Estimate projects with rollups, prices, actuals |
-
-### Evidence and provenance
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v2/evidence` | Hash-chained evidence events in sequence order |
-| GET | `/v2/evidence/verify` | Verify the chain. Bounded by `max_events`; a truncated scan returns `chain_valid: null`, never `true` |
-
-### Procedures and disaster recovery
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v2/procedures` | Runbooks with risk class, roles, hazards, entry and exit criteria. Collapses to the current version per key |
+| GET | `/v2/assets` | Asset inventory with type, lifecycle state, criticality |
+| GET | `/v2/backup/runs` | Recorded backup runs, newest first; `status` filter, cursor paging |
+| POST | `/v2/backup/runs` | Record a run that has already happened. Does not run `pg_dump`; execution stays out of the request path |
+| GET | `/v2/backup/verify/{run_id}` | `checksum_match`, `metadata_valid` and the combined `valid`. `checksum_match` is `null` when nothing was verified, never `true` |
+| POST | `/v2/cache/invalidate` | Drop cache keys matching `pattern`, a required query parameter |
+| GET | `/v2/capacity` | Capacity snapshots per facility, dimension and scenario |
+| GET | `/v2/compliance/controls` | Control catalogue across SOC 2, ISO 27001, PCI-DSS, HIPAA, NIST 800-53 and a `custom` framework |
+| GET | `/v2/compliance/scan` | Per-control status, with `configuration_gaps` naming controls that read variables the app ignores |
+| GET | `/v2/connectors` | Connector registry with scopes and allowed destinations |
+| GET | `/v2/costs` | Estimate projects with rollups, pinned prices and actuals |
 | GET | `/v2/dr/policies` | Backup policies with schedule and next run |
 | GET | `/v2/dr/summary` | Policy counts, due count, test pass rate, RTO and RPO compliance |
-
-### Economics and forecasting
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/v2/economics/tco` | Total cost of ownership from explicit assumptions |
-| POST | `/v2/economics/tco/compare` | Compare scenarios by present value |
+| POST | `/v2/economics/tco` | Total cost of ownership for one scenario from explicit assumptions |
+| POST | `/v2/economics/tco/compare` | TCO across scenarios, reported as a delta against a baseline |
+| GET | `/v2/evidence` | Hash-chained evidence events in sequence order |
+| GET | `/v2/evidence/verify` | Chain verification. Bounded by `max_events`; a truncated scan returns `chain_valid: null`, never `true` |
+| GET | `/v2/facilities` | Facilities with site codes and names |
 | POST | `/v2/forecast/capacity` | Capacity projection with the at-risk window |
-| POST | `/v2/forecast/failure` | Equipment failure risk per asset |
-| POST | `/v2/forecast/drift` | Drift detection across a metric series |
-
-### Optimisation
-
-Called with a request body. These compute a recommendation; none of them act on one.
-
-| Method | Path |
-|---|---|
-| POST | `/v2/optimize/placement` |
-| POST | `/v2/optimize/capacity-allocation` |
-| POST | `/v2/optimize/energy-allocation` |
-| POST | `/v2/optimize/maintenance-routing` |
-| POST | `/v2/optimize/network-zoning` |
-| POST | `/v2/cache/invalidate` |
-
-### Governance
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v2/compliance/controls` | Control catalogue (SOC 2, ISO 27001, PCI-DSS, HIPAA, NIST 800-53, plus a `custom` framework) |
-| GET | `/v2/compliance/scan` | Per-control status, with `configuration_gaps` naming controls that read variables the app ignores |
+| POST | `/v2/forecast/drift` | Distribution drift between a reference series and an incoming one |
+| POST | `/v2/forecast/failure` | Failure risk per asset from inventory and telemetry |
+| POST | `/v2/optimize/capacity-allocation` | Greedy density allocation |
+| POST | `/v2/optimize/energy-allocation` | Max-min fair energy allocation |
+| POST | `/v2/optimize/maintenance-routing` | Clarke-Wright savings routing |
+| POST | `/v2/optimize/network-zoning` | DSATUR zoning |
+| POST | `/v2/optimize/placement` | First-fit decreasing placement |
+| GET | `/v2/overview` | Facility count, latest KPIs, open workflows, latest telemetry |
+| GET | `/v2/placement/scenarios` | Saved placement comparison scenarios, newest first |
+| GET | `/v2/procedures` | Runbooks with risk class, roles, hazards, entry and exit criteria. Collapses to the current version per key |
 | GET | `/v2/security/posture` | Weighted posture score across five dimensions from observed process state |
+| GET | `/v2/topology` | Asset relationship graph as nodes, edges and relations |
+| GET | `/v2/workflows` | Operational workflows with stage, status, owner and due dates |
 
 ### Query parameters
 
-| Parameter | Default | Description |
+| Parameter | Default | Applies to and values |
 |---|---|---|
-| `tenant_id` | required | Tenant UUID; must match the authenticated key |
-| `limit` | `100` | Page size, 1–1000. Defaults to `200` on `/v2/capacity` and `/v2/evidence`; only the paginated collections accept it |
-| `cursor` | — | Opaque pagination cursor, accepted by the eight paginated collections |
+| `tenant_id` | required where declared | Tenant UUID, 36 characters. Declared by 18 of the 32 operations; the other 14 resolve the tenant from the API key alone. When present it must equal the key's tenant, otherwise `403` |
+| `limit` | `100` | Page size, 1–1000, on the page routes. Defaults to `200` on `/v2/capacity` and `/v2/evidence`, and to `50` with a ceiling of 500 on `/v2/backup/runs` |
+| `cursor` | none | Opaque pagination cursor, accepted by the ten page routes |
 | `window_days` | `30` | Analytics window, 1–90 (`/v2/analytics` only) |
-| `demo` | — | `synthetic` reveals seeded demo data on `/v2/costs`. `/v2/overview` accepts it but only uses it as a cache-key component |
+| `demo` | none | `synthetic` reveals seeded demo data on `/v2/costs`. `/v2/overview` accepts it but only uses it as a cache-key component |
 | `max_events` | `10000` | Evidence verification cap, max 100000 |
 | `include_events` | `false` | `/v2/evidence/verify` also returns the scanned events |
-| `framework` | — | `/v2/compliance/controls` and `/v2/compliance/scan`; unknown values return `unknown_framework` |
-| `dimension` | — | `/v2/capacity` capacity dimension filter |
-| `domain`, `risk_class`, `latest_only` | — | `/v2/procedures` filters; `latest_only` collapses to the current version per key |
-| `status` | — | `/v2/workflows` and `/v2/procedures` status filter |
-| `enabled` | — | `/v2/dr/policies` filter |
-| `pattern` | required | `/v2/cache/invalidate` key pattern (POST query parameter) |
+| `framework` | none | `/v2/compliance/controls` and `/v2/compliance/scan`; unknown values return `unknown_framework` |
+| `dimension` | none | `/v2/capacity` capacity dimension filter |
+| `domain`, `risk_class` | none | `/v2/procedures` filters |
+| `latest_only` | `true` | `/v2/procedures`; collapses to the current version per key |
+| `status` | none | `/v2/workflows`, `/v2/procedures` and `/v2/backup/runs` status filter |
+| `enabled` | none | `/v2/dr/policies` filter |
+| `relation` | none | `/v2/topology` relation type filter |
+| `pattern` | required | `/v2/cache/invalidate` key pattern, a `POST` query parameter |
 
 ### Response conventions
 
-Collection endpoints return a page envelope:
+Ten of the 20 `GET` operations return a page envelope with the keys `items`, `total`,
+`limit`, `offset`, `has_more` and `next_cursor`: `/v2/assets`, `/v2/backup/runs`,
+`/v2/capacity`, `/v2/connectors`, `/v2/dr/policies`, `/v2/evidence`, `/v2/facilities`,
+`/v2/placement/scenarios`, `/v2/procedures` and `/v2/workflows`.
 
-```json
-{"items": [], "total": 0, "limit": 100, "offset": 0, "has_more": false, "next_cursor": null}
-```
+The other ten return a single object with its own shape: `/v2/analytics`,
+`/v2/backup/verify/{run_id}`, `/v2/compliance/controls`, `/v2/compliance/scan`,
+`/v2/costs`, `/v2/dr/summary`, `/v2/evidence/verify`, `/v2/overview`,
+`/v2/security/posture` and `/v2/topology`.
 
-The eight paginated collections (`/v2/assets`, `/v2/facilities`, `/v2/procedures`,
-`/v2/dr/policies`, `/v2/connectors`, `/v2/capacity`, `/v2/evidence`, `/v2/workflows`)
-return that envelope. `/v2/overview`, `/v2/costs`, `/v2/analytics`, `/v2/dr/summary`,
-`/v2/compliance/controls`, `/v2/compliance/scan`, `/v2/security/posture` and
-`/v2/evidence/verify` return their own object shape instead.
+Every 2xx `/v2` JSON response carries `read_only: true` and `execution_permitted:
+false`, injected by middleware after the handler runs rather than set per-handler. This
+was measured on a collection route (`/v2/facilities`, page envelope), on single object
+routes (`/v2/overview`, `/v2/topology`, `/v2/compliance/controls`,
+`/v2/backup/verify/{run_id}`) and on two `POST` routes (`/v2/backup/runs`,
+`/v2/cache/invalidate`), against a database built from `database/schema.sql` and all
+nine migrations. A handler that sets either field explicitly keeps its own value, and a
+non-2xx body is left alone, so a `403` does not read as though it carried data.
 
-Every `/v2` JSON object response carries `read_only: true` and
-`execution_permitted: false`, injected by middleware after the handler runs rather than
-set per-handler.
+The guarantee used to depend on which handler remembered to add the fields:
+`/v2/overview` carried them, `/v2/facilities` did not. Enforcing it in one place makes it
+uniform and fail-closed, so a new endpoint cannot omit it.
 
-This is the advisory guarantee, and it previously held only on routes where someone had
-remembered to add the fields: `/v2/overview` carried them, `/v2/facilities` did not.
-Enforcing it in one place makes it uniform and fail-closed, so a new endpoint cannot
-omit it. A handler that sets either field explicitly keeps its own value.
+Every `/v2` operation declares a response schema in `/openapi.json`: 32 of 32
+operations have a `200` schema, and
+[`tests/unit/test_openapi_contract.py`](tests/unit/test_openapi_contract.py) fails if a
+new route is added without one.
 
-Errors return a JSON body with a machine-readable key:
-
-```json
-{"detail": {"error": "unknown_framework", "value": "made_up", "accepted": ["soc2", "iso27001", "pci_dss", "hipaa", "nist_800_53", "custom"]}}
-```
+Errors carry a machine-readable key at `detail.error`. A rejected enum also returns
+`detail.value` and the accepted set in `detail.accepted`.
 
 
-## Database Schema
+## Database schema
 
 The schema is portable PostgreSQL 14+ / Supabase-compatible. No extensions required.
 
-### Core Entity Tables
+### Core entity tables
 
 | Table | Purpose |
 |---|---|
@@ -447,7 +477,7 @@ The schema is portable PostgreSQL 14+ / Supabase-compatible. No extensions requi
 | `assets` | Equipment with lifecycle state, criticality, warranty |
 | `asset_relationships` | Directed topology graph with relation type, confidence, validity period |
 
-### Connector & Telemetry
+### Connector and telemetry
 
 | Table | Purpose |
 |---|---|
@@ -457,7 +487,7 @@ The schema is portable PostgreSQL 14+ / Supabase-compatible. No extensions requi
 | `meters` | Meter boundaries with direction, multiplier, calibration |
 | `telemetry_readings` | Time-series readings with quality status, provenance, clock offset |
 
-### Energy & Capacity
+### Energy and capacity
 
 | Table | Purpose |
 |---|---|
@@ -468,7 +498,7 @@ The schema is portable PostgreSQL 14+ / Supabase-compatible. No extensions requi
 | `energy_allocations` | Per-workload energy allocation with bounds and coverage |
 | `capacity_snapshots` | Facility capacity across 9 dimensions (power, cooling, rack U, network, storage, CPU, GPU, water, fuel) |
 
-### KPI & Lifecycle
+### KPI and lifecycle
 
 | Table | Purpose |
 |---|---|
@@ -482,7 +512,7 @@ The schema is portable PostgreSQL 14+ / Supabase-compatible. No extensions requi
 | `incidents` | Incident records with severity, timeline, root cause confidence |
 | `change_records` | Change management with risk class, blast radius, rollback plan |
 
-### Evidence & Cost
+### Evidence and cost
 
 | Table | Purpose |
 |---|---|
@@ -495,13 +525,13 @@ The schema is portable PostgreSQL 14+ / Supabase-compatible. No extensions requi
 | `cost_allocations` | Cost-to-workload allocation with method and evidence |
 | `placement_comparison_snapshots` | Immutable draft TCO comparison snapshots |
 
-### Views & Functions
+### Views and functions
 
-- **`estimate_cost_rollup`** — Aggregated present-value rollups by estimate, currency, and phase
-- **`validate_estimate_price_link()`** — Trigger ensuring sourced lines pin approved, in-date, matching price observations
-- **`reject_placement_snapshot_mutation()`** — Trigger enforcing snapshot immutability
+- **`estimate_cost_rollup`**: Aggregated present-value rollups by estimate, currency, and phase
+- **`validate_estimate_price_link()`**: Trigger ensuring sourced lines pin approved, in-date, matching price observations
+- **`reject_placement_snapshot_mutation()`**: Trigger enforcing snapshot immutability
 
-### RLS Policies
+### RLS policies
 
 All tenant tables have forced row-level security:
 ```sql
@@ -515,13 +545,13 @@ CREATE POLICY tenant_scope ON dcc.<table>
 ## Adapters
 
 All adapters follow the same contract:
-- **Read-only** — never write to source or persist data
-- **Bounded** — response size limits, row limits, timeout enforcement
-- **No redirects** — SSRF prevention via redirect handler
-- **Tenant-scoped** — all queries filtered by tenant context
-- **Credential references** — secrets live in external managers, never in source
+- **Read-only**: never write to source or persist data
+- **Bounded**: response size limits, row limits, timeout enforcement
+- **No redirects**: SSRF prevention via redirect handler
+- **Tenant-scoped**: all queries filtered by tenant context
+- **Credential references**: secrets live in external managers, never in source
 
-### Cloud Pricing Adapter
+### Cloud pricing adapter
 
 ```python
 from dcc.adapters import CloudCostAdapter, fetch_aws_prices
@@ -532,7 +562,7 @@ result = adapter.fetch_prices("azure", service="Virtual Machines", region="eastu
 result = fetch_aws_prices(service="ec2", region="us-east-1", sku="m5.large")
 ```
 
-### EPMS Adapter
+### EPMS adapter
 
 ```python
 from dcc.adapters import create_epms_adapter
@@ -544,7 +574,7 @@ ups = epms.read_ups()
 alarms = epms.read_alarms(severity="critical")
 ```
 
-### CMMS Adapter
+### CMMS adapter
 
 ```python
 from dcc.adapters.cmms import probe_cmms, fetch_work_orders, fetch_assets
@@ -554,7 +584,7 @@ orders = fetch_work_orders(endpoint="https://cmms.example.com/api", status="open
 assets = fetch_assets(endpoint="https://cmms.example.com/api", asset_type="server")
 ```
 
-### BMS Adapter
+### BMS adapter
 
 ```python
 from dcc.adapters.bms import probe, fetch_points, fetch_alarms, fetch_hvac_summary
@@ -565,7 +595,7 @@ alarms = fetch_alarms(active_only=True, limit=100)
 hvac = fetch_hvac_summary()
 ```
 
-### OEM Redfish Adapter
+### OEM Redfish adapter
 
 ```python
 from dcc.adapters.oem import probe, fetch_telemetry, fetch_server_telemetry
@@ -575,7 +605,7 @@ telemetry = fetch_telemetry(vendor="hpe", resource_type="systems", metrics=["pow
 servers = fetch_server_telemetry(vendor="supermicro")
 ```
 
-### Utility Adapter
+### Utility adapter
 
 ```python
 from dcc.adapters.utility import probe, fetch_tariffs, fetch_bills, fetch_rate_schedule
@@ -586,7 +616,7 @@ bills = fetch_bills(account_number="123456789")
 schedule = fetch_rate_schedule(tariff_code="COMM-IND-2024")
 ```
 
-### Weather & Carbon Adapter
+### Weather and carbon adapter
 
 ```python
 from dcc.adapters.weather import fetch_weather, fetch_carbon_intensity, fetch_weather_and_carbon
@@ -596,7 +626,7 @@ carbon = fetch_carbon_intensity(latitude="40.7128", longitude="-74.0060")
 both = fetch_weather_and_carbon(latitude="40.7128", longitude="-74.0060")
 ```
 
-### Hypervisor Adapter
+### Hypervisor adapter
 
 ```python
 from dcc.adapters.hypervisor import probe, fetch_vm_inventory, fetch_host_inventory, fetch_power_metrics
@@ -607,7 +637,7 @@ hosts = fetch_host_inventory(hypervisor_type="kvm_libvirt")
 power = fetch_power_metrics(hypervisor_type="vmware_vcenter", vm_ids=["vm-123"])
 ```
 
-### Adapter Registry
+### Adapter registry
 
 ```python
 from dcc.adapters import get_registry, AdapterInfo, AdapterCapability, HealthStatus
@@ -626,9 +656,9 @@ rate_limit = registry.get_rate_limit("my-adapter")
 
 ---
 
-## Economics Engine
+## Economics engine
 
-### Unit Economics
+### Unit economics
 
 ```python
 from dcc.economics import cost_per_kwh, cost_per_kw_year, cost_per_m2_year, cost_per_rack_year, cost_per_work_unit
@@ -637,7 +667,7 @@ result = cost_per_kwh(total_cost=1_000_000, annual_kwh=10_000_000)
 # result.value = 0.10, result.unit = "USD/kWh"
 ```
 
-### Bottom-Up Estimating
+### Bottom-up estimating
 
 ```python
 from dcc.economics import DeploymentSpec, DeploymentType, estimate_deployment, quick_estimate
@@ -654,7 +684,7 @@ result = estimate_deployment(spec)
 # result.line_items, result.phase_subtotals, result.total_cost
 ```
 
-### TCO Analysis
+### TCO analysis
 
 ```python
 from dcc.economics import TCOEngine, TCOAssumptions, TCOScenario, compare_tco
@@ -667,7 +697,7 @@ result = compare_tco(onprem, cloud, assumptions)
 # result.winner, result.tco_onprem, result.tco_cloud, result.yearly_cash_flows
 ```
 
-### Price Engine
+### Price engine
 
 ```python
 from dcc.economics import PriceEngine, PriceRecord, PriceStatus
@@ -682,7 +712,7 @@ record = engine.create_price_record(
 )
 ```
 
-### Tariff Calculations
+### Tariff calculations
 
 ```python
 from dcc.economics import create_flat_rate_tariff, create_tiered_tariff, create_simple_tou_tariff, calculate_tariff
@@ -711,7 +741,7 @@ summary = reconcile_estimate(estimate_id="...", actuals=[...], thresholds=thresh
 
 ## Forecasting
 
-### Load Forecasting
+### Load forecasting
 
 ```python
 from dcc.forecasting import (
@@ -728,7 +758,7 @@ best = select_best_model(observations, candidates=["ma", "es", "hw", "lt"])
 anomalies = detect_anomalies(observations, threshold=3.0)
 ```
 
-### Failure Prediction
+### Failure prediction
 
 ```python
 from dcc.forecasting import predict_equipment_failures
@@ -742,7 +772,7 @@ result = predict_equipment_failures(
 # result.risk_score, result.failure_probability, result.contributing_factors
 ```
 
-### Drift Detection
+### Drift detection
 
 ```python
 from dcc.forecasting import DriftDetector, DriftMethod, compute_psi, compute_ks_statistic
@@ -779,9 +809,9 @@ cv = cross_validate(observations, forecaster, n_splits=5)
 
 ---
 
-## Quality & Validation
+## Quality and validation
 
-### Quality Engine
+### Quality engine
 
 ```python
 from dcc.quality import QualityEngine, QualityDimension, DEFAULT_WEIGHTS
@@ -800,7 +830,7 @@ report = engine.score_source(
 # report.overall_score, report.dimension_scores, report.quality_grade
 ```
 
-### Unit Conversion
+### Unit conversion
 
 ```python
 from dcc.validation import convert, convert_temperature, UnitRegistry, get_registry
@@ -810,7 +840,7 @@ temp = convert_temperature(25, "C", "F")  # 77.0
 registry = get_registry()
 ```
 
-### Time Series Alignment
+### Time series alignment
 
 ```python
 from dcc.validation import align_series, detect_gaps, coverage_report, resample
@@ -821,7 +851,7 @@ report = coverage_report(observations, window_start, window_end)
 resampled = resample(observations, interval="1h", aggregation="mean")
 ```
 
-### Consistency Validation
+### Consistency validation
 
 ```python
 from dcc.validation import (
@@ -847,7 +877,7 @@ report = run_consistency_validation(tenant_id="...")
 # report.findings, report.summary, report.is_valid
 ```
 
-### Schema Validation
+### Schema validation
 
 ```python
 from dcc.validation import validate_asset, validate_facility, validate_estimate_project
@@ -866,9 +896,9 @@ except ValidationError as e:
 
 ---
 
-## Security & Tenant Isolation
+## Security and tenant isolation
 
-### Tenant Context
+### Tenant context
 
 ```python
 from dcc.security.tenant import TenantContext, current_tenant, tenant_context
@@ -888,7 +918,7 @@ except TenantNotFoundError:
     pass
 ```
 
-### Audit Logging
+### Audit logging
 
 ```python
 from dcc.security import AuditLogger, AuditAction, AuditCategory, AuditSeverity
@@ -898,7 +928,7 @@ logger.log(AuditAction.READ, AuditCategory.DATA_ACCESS, severity=AuditSeverity.I
            actor="operator-1", resource_type="asset", resource_id="...")
 ```
 
-### Secrets Management
+### Secrets management
 
 ```python
 from dcc.security import create_aws_secrets_manager_adapter, create_vault_adapter
@@ -909,7 +939,7 @@ vault = create_vault_adapter(url="https://vault.example.com:8200", token="...")
 
 ---
 
-## Provenance & Lineage
+## Provenance and lineage
 
 ```python
 from dcc.provenance import LineageTracker, SourceType, TransformationType, QualityStatus
@@ -972,11 +1002,11 @@ report = build_slo_report([slo], window_days=30)
 
 ---
 
-## Infrastructure as Code
+## Infrastructure as code
 
 Data Center Commander includes a comprehensive Terraform module library under [`iac/modules/`](iac/modules/) for provisioning cloud infrastructure, compliance controls, virtualization, and containerization across AWS, GCP, IBM Cloud, and DigitalOcean. All modules require Terraform >= 1.5.0.
 
-### AWS Infrastructure
+### AWS infrastructure
 
 | Module | Description |
 |---|---|
@@ -989,7 +1019,7 @@ Data Center Commander includes a comprehensive Terraform module library under [`
 | [`aws/rds`](iac/modules/aws/rds) | RDS instance with automated backups, encryption, Multi-AZ, Performance Insights, and CloudWatch log exports |
 | [`aws/cloudwatch`](iac/modules/aws/cloudwatch) | CloudWatch log groups, metric alarms, dashboards, and event rules |
 
-### AWS Compliance-as-Code
+### AWS compliance as code
 
 | Module | Description |
 |---|---|
@@ -1000,7 +1030,7 @@ Data Center Commander includes a comprehensive Terraform module library under [`
 | [`aws-compliance/cloudtrail`](iac/modules/aws-compliance/cloudtrail) | Multi-region CloudTrail with log validation, event selectors, and insights |
 | [`aws-compliance/iam-access-analyzer`](iac/modules/aws-compliance/iam-access-analyzer) | IAM Access Analyzer with unused access analysis and archive rules |
 
-### GCP Compliance-as-Code
+### GCP compliance as code
 
 | Module | Description |
 |---|---|
@@ -1009,7 +1039,7 @@ Data Center Commander includes a comprehensive Terraform module library under [`
 | [`gcp-compliance/security-command-center`](iac/modules/gcp-compliance/security-command-center) | Security Command Center source with notification configs, mute rules, and custom configs |
 | [`gcp-compliance/vpc-service-controls`](iac/modules/gcp-compliance/vpc-service-controls) | VPC Service Controls perimeters with access policies, access levels, and ingress/egress policies |
 
-### IBM Cloud Infrastructure
+### IBM Cloud infrastructure
 
 | Module | Description |
 |---|---|
@@ -1019,7 +1049,7 @@ Data Center Commander includes a comprehensive Terraform module library under [`
 | [`ibm/object-storage`](iac/modules/ibm/object-storage) | COS bucket with versioning, lifecycle rules, encryption, and activity tracking |
 | [`ibm/iam`](iac/modules/ibm/iam) | IAM access groups with members, policies, and dynamic rules |
 
-### DigitalOcean Infrastructure
+### DigitalOcean infrastructure
 
 | Module | Description |
 |---|---|
@@ -1053,7 +1083,7 @@ Data Center Commander includes a comprehensive Terraform module library under [`
 | [`openshift/rbac`](iac/modules/openshift/rbac) | ServiceAccount with Role/ClusterRole and bindings |
 | [`openshift/route`](iac/modules/openshift/route) | Route with edge/passthrough/reencrypt TLS termination |
 
-### Data Center Operations
+### Data center operations
 
 | Module | Description |
 |---|---|
@@ -1088,7 +1118,7 @@ module "compliance" {
 
 ---
 
-## Synthetic Demo
+## Synthetic demo
 
 After applying the normal schema and demo seed, add the optional additive
 30-day history using `database/demo_analytics_expansion.sql` against only the
@@ -1112,7 +1142,7 @@ missing. It never enables facility actuation or other writes. See
 
 ---
 
-## Standalone Layout
+## Standalone layout
 
 ```text
 data-center-commander/
@@ -1129,7 +1159,8 @@ data-center-commander/
 │       ├── 005_performance_indexes.sql
 │       ├── 006_performance_optimization.sql
 │       ├── 007_evidence_verifier_single_source.sql
-│       └── 008_disaster_recovery.sql
+│       ├── 008_disaster_recovery.sql
+│       └── 009_backup_operations.sql
 ├── docs/           architecture, lifecycle, data/KPI, adapters, security, runbooks
 │   ├── ARCHITECTURE.md
 │   ├── COST_ESTIMATING_AND_UNIT_ECONOMICS.md
@@ -1190,7 +1221,7 @@ data-center-commander/
 │   │   ├── units.py        unit conversion
 │   │   ├── intervals.py    time series alignment
 │   │   ├── consistency.py  15 consistency validators
-│   │   ├── schema.py       30+ entity validators
+│   │   ├── schema.py       41 entity validators
 │   │   └── boundaries.py   boundary checks
 │   ├── security/       tenant isolation and secrets
 │   │   └── tenant.py       RLS context management
@@ -1278,22 +1309,24 @@ data-center-commander/
 
 Existing databases created before the cost-intelligence module should apply migrations in order:
 
-1. [`001_cost_intelligence.sql`](database/migrations/001_cost_intelligence.sql) — cost books, price observations, estimates, actuals
-2. [`002_lifecycle_rollup_fix.sql`](database/migrations/002_lifecycle_rollup_fix.sql) — corrected lifecycle rollup
-3. [`003_estimate_price_link_validation.sql`](database/migrations/003_estimate_price_link_validation.sql) — price pinning trigger
-4. [`004_placement_comparison_snapshots.sql`](database/migrations/004_placement_comparison_snapshots.sql) — immutable draft snapshots
-5. [`005_performance_indexes.sql`](database/migrations/005_performance_indexes.sql) — query indexes
-6. [`006_performance_optimization.sql`](database/migrations/006_performance_optimization.sql) — further index work
-7. [`007_evidence_verifier_single_source.sql`](database/migrations/007_evidence_verifier_single_source.sql) — removes the database-side verifier that disagreed with the writer
-8. [`008_disaster_recovery.sql`](database/migrations/008_disaster_recovery.sql) — backup policies, DR test plans and executions, RTO/RPO measurements, all under RLS
+1. [`001_cost_intelligence.sql`](database/migrations/001_cost_intelligence.sql): cost books, price observations, estimates, actuals
+2. [`002_lifecycle_rollup_fix.sql`](database/migrations/002_lifecycle_rollup_fix.sql): corrected lifecycle rollup
+3. [`003_estimate_price_link_validation.sql`](database/migrations/003_estimate_price_link_validation.sql): price pinning trigger
+4. [`004_placement_comparison_snapshots.sql`](database/migrations/004_placement_comparison_snapshots.sql): immutable draft snapshots
+5. [`005_performance_indexes.sql`](database/migrations/005_performance_indexes.sql): query indexes
+6. [`006_performance_optimization.sql`](database/migrations/006_performance_optimization.sql): further index work
+7. [`007_evidence_verifier_single_source.sql`](database/migrations/007_evidence_verifier_single_source.sql): removes the database-side verifier that disagreed with the writer
+8. [`008_disaster_recovery.sql`](database/migrations/008_disaster_recovery.sql): backup policies, DR test plans and executions, RTO/RPO measurements, all under RLS
+9. [`009_backup_operations.sql`](database/migrations/009_backup_operations.sql): `backup_runs` under RLS, the table the three backup operations read and write
 
-A new database is built from `database/schema.sql` followed by **all eight**
-migrations. `database/schema.sql` alone is not sufficient — 005–008 add objects the API
-reads (`mv_workflow_health` and its column shape, the DR tables, performance indexes).
+A new database is built from `database/schema.sql` followed by **all nine**
+migrations. `database/schema.sql` alone is not sufficient: 005–009 add objects the API
+reads (`mv_workflow_health` and its column shape, the DR tables, `backup_runs`, the
+performance indexes).
 `scripts/verify-fresh-deploy.sh` performs exactly that sequence on a scratch database
 and then asserts the table count, the required views and DR tables, forced RLS, and a
-smoke test of every GET `/v2` route. Existing synthetic demo databases can add the
-cost-only fixture with `database/cost_demo_seed.sql`.
+smoke test of every GET `/v2` route that takes no path parameter, 19 of the 20. Existing
+synthetic demo databases can add the cost-only fixture with `database/cost_demo_seed.sql`.
 
 ---
 
@@ -1306,13 +1339,13 @@ uv run --extra test python -m unittest discover -s tests -v
 ```
 
 The test suite covers:
-- **Adapter contracts** — EPMS, CMMS, meter, Azure pricing
-- **Economics** — unit economics, estimates, prices, TCO, allocation
-- **Forecasting** — backtest, calibration, drift, capacity, features, load, price, anomaly, maintenance
-- **Quality** — freshness, anomaly detection
-- **Validation** — consistency, intervals, units, boundaries, schema
-- **Security** — tenant isolation
-- **API** — route contracts, response shapes, error handling
+- **Adapter contracts**: EPMS, CMMS, meter, Azure pricing
+- **Economics**: unit economics, estimates, prices, TCO, allocation
+- **Forecasting**: backtest, calibration, drift, capacity, features, load, price, anomaly, maintenance
+- **Quality**: freshness, anomaly detection
+- **Validation**: consistency, intervals, units, boundaries, schema
+- **Security**: tenant isolation
+- **API**: route contracts, response shapes, error handling
 
 ---
 
@@ -1338,7 +1371,7 @@ without that review.
 
 ---
 
-## Safety and Authority Boundary
+## Safety and authority boundary
 
 See [`docs/SECURITY_AND_GOVERNANCE.md`](docs/SECURITY_AND_GOVERNANCE.md). This
 starter is observation and decision-support only. It contains no generic shell,

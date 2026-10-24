@@ -21,6 +21,8 @@
 # =============================================================================
 
 terraform {
+  required_version = ">= 1.5.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -100,13 +102,16 @@ module "aws_compute" {
 ###############################################################################
 
 module "gcp_network" {
-  count  = var.enable_gcp ? 1 : 0
   source = "../network/gcp"
 
-  providers = {
-    google = google
-  }
+  # No `providers` map and no `count`: network/gcp configures its own google
+  # provider so that it can set `default_labels` from common_tags (its
+  # resources have no `labels` argument). Terraform forbids both overriding that
+  # configuration from here ("Cannot override provider configuration") and
+  # count/for_each on a module that configures its own providers, so the
+  # enable/disable switch is passed in as `enabled` instead.
 
+  enabled          = var.enable_gcp
   network_name     = "${var.project_name}-vpc"
   project_id       = var.gcp_project_id
   region           = var.gcp_region
@@ -129,8 +134,8 @@ module "gcp_compute" {
   instance_count    = var.gcp_instance_count
   project_id        = var.gcp_project_id
   region            = var.gcp_region
-  network_id        = module.gcp_network[0].network_id
-  subnet_id         = module.gcp_network[0].subnet_id
+  network_id        = module.gcp_network.network_id
+  subnet_id         = module.gcp_network.subnet_id
   enable_encryption = var.enable_encryption
   enable_static_ip  = false
   enable_monitoring = var.enable_monitoring
@@ -269,8 +274,8 @@ module "vpn_mesh" {
   shared_key     = var.vpn_shared_key
   aws_vpc_id     = var.enable_aws ? module.aws_network[0].vpc_id : null
   aws_vpc_cidr   = var.aws_vpc_cidr
-  gcp_network_id = var.enable_gcp ? module.gcp_network[0].network_id : null
+  gcp_network_id = var.enable_gcp ? module.gcp_network.network_id : null
   gcp_vpc_cidr   = var.gcp_vpc_cidr
-  gcp_router_id  = var.enable_gcp ? module.gcp_network[0].router_id : null
+  gcp_router_id  = var.enable_gcp ? module.gcp_network.router_id : null
   common_tags    = local.tags
 }

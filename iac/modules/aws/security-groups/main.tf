@@ -33,6 +33,10 @@ resource "aws_vpc_security_group_ingress_rule" "ingress" {
   cidr_ipv4                    = each.value.cidr_ipv4
   cidr_ipv6                    = each.value.cidr_ipv6
   referenced_security_group_id = each.value.referenced_security_group_id
+
+  tags = merge(var.tags, {
+    Name = "${var.name}-ingress"
+  })
 }
 
 resource "aws_vpc_security_group_egress_rule" "egress" {
@@ -46,4 +50,8 @@ resource "aws_vpc_security_group_egress_rule" "egress" {
   cidr_ipv4                    = each.value.cidr_ipv4
   cidr_ipv6                    = each.value.cidr_ipv6
   referenced_security_group_id = each.value.referenced_security_group_id
+
+  tags = merge(var.tags, {
+    Name = "${var.name}-egress"
+  })
 }

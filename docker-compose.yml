@@ -3,16 +3,32 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      # POSTGRES_USER is the cluster's initdb superuser and bypasses row-level security
+      # unconditionally. It is used only to build the schema at first boot; the app
+      # connects as dcc_app (created by 99_app_role.sql), which is NOBYPASSRLS.
       POSTGRES_USER: dcc
-      POSTGRES_PASSWORD: dcc_dev_password
+      POSTGRES_PASSWORD: ${DCC_DB_ADMIN_PASSWORD:-dcc_dev_password}
       POSTGRES_DB: data_center_commander
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./database/migrations/001_cost_intelligence.sql:/docker-entrypoint-initdb.d/002_migration_001.sql:ro
-      - ./database/migrations/002_lifecycle_rollup_fix.sql:/docker-entrypoint-initdb.d/003_migration_002.sql:ro
-      - ./database/migrations/003_estimate_price_link_validation.sql:/docker-entrypoint-initdb.d/004_migration_003.sql:ro
-      - ./database/migrations/004_placement_comparison_snapshots.sql:/docker-entrypoint-initdb.d/005_migration_004.sql:ro
+      # /docker-entrypoint-initdb.d runs these in LEXICOGRAPHIC order, not numeric order.
+      # The previous mounts were named 01_schema.sql and 002_migration_001.sql, and
+      # "002_..." sorts BEFORE "01_..." ("0","0" beats "0","1"), so every migration ran
+      # against a database with no schema and the deployment was broken on first boot.
+      # They were also numbered only to 004, so migrations 005-010 never ran at all.
+      # Target names below are zero-padded so ordering is explicit and complete.
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./database/migrations/001_cost_intelligence.sql:/docker-entrypoint-initdb.d/01_migration_001.sql:ro
+      - ./database/migrations/002_lifecycle_rollup_fix.sql:/docker-entrypoint-initdb.d/02_migration_002.sql:ro
+      - ./database/migrations/003_estimate_price_link_validation.sql:/docker-entrypoint-initdb.d/03_migration_003.sql:ro
+      - ./database/migrations/004_placement_comparison_snapshots.sql:/docker-entrypoint-initdb.d/04_migration_004.sql:ro
+      - ./database/migrations/005_performance_indexes.sql:/docker-entrypoint-initdb.d/05_migration_005.sql:ro
+      - ./database/migrations/006_performance_optimization.sql:/docker-entrypoint-initdb.d/06_migration_006.sql:ro
+      - ./database/migrations/007_evidence_verifier_single_source.sql:/docker-entrypoint-initdb.d/07_migration_007.sql:ro
+      - ./database/migrations/008_disaster_recovery.sql:/docker-entrypoint-initdb.d/08_migration_008.sql:ro
+      - ./database/migrations/009_backup_operations.sql:/docker-entrypoint-initdb.d/09_migration_009.sql:ro
+      - ./database/migrations/010_telemetry_partition_rls.sql:/docker-entrypoint-initdb.d/10_migration_010.sql:ro
+      - ./database/init/99_app_role.sql:/docker-entrypoint-initdb.d/99_app_role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dcc -d data_center_commander"]
       interval: 10s
@@ -30,7 +46,12 @@ services:
       db:
         condition: service_healthy
     environment:
-      DCC_DATABASE_URL: postgresql://dcc:dcc_dev_password@db:5432/data_center_commander
+      # dcc_app, not dcc: connecting as the superuser would make all 40 tenant_scope
+      # policies inert and every tenant would see every other tenant's data.
+      DCC_DATABASE_URL: postgresql://dcc_app:${DCC_APP_PASSWORD:-dcc_app_dev_password}@db:5432/data_center_commander
+      # Auth is enforced by default, so a deployment with no keys rejects everything.
+      # Set this to a real tenant:hash pair; see scripts/keys_cli.py.
+      DCC_API_KEYS: ${DCC_API_KEYS:-}
     ports:
       - "8790:8790"
     networks:

@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.5.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -10,29 +10,6 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-}
-
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "production"
-}
-
-variable "compliance_s3_bucket" {
-  description = "S3 bucket for compliance logs (CloudTrail, AWS Config)"
-  type        = string
-}
-
-variable "compliance_kms_key_id" {
-  description = "KMS key ID for encrypting compliance logs"
-  type        = string
-  default     = null
 }
 
 # --- AWS Config ---
@@ -182,25 +159,4 @@ module "iam_access_analyzer" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
-}
-
-# --- Outputs ---
-output "config_recorder_id" {
-  value = module.aws_config.config_recorder_id
-}
-
-output "guardduty_detector_id" {
-  value = module.guardduty.detector_id
-}
-
-output "security_hub_arn" {
-  value = module.security_hub.security_hub_arn
-}
-
-output "cloudtrail_arn" {
-  value = module.cloudtrail.trail_arn
-}
-
-output "access_analyzer_arn" {
-  value = module.iam_access_analyzer.analyzer_arn
 }

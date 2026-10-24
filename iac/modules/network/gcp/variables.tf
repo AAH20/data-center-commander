@@ -43,3 +43,14 @@ variable "common_tags" {
   type        = map(string)
   default     = {}
 }
+
+# This module owns its google provider configuration (see providers.tf) so that
+# it can apply `common_tags` as provider-level `default_labels`. Terraform
+# forbids count/for_each/depends_on on calls to a module that configures its
+# own providers, so the "deploy this cloud or not" switch lives here instead of
+# on the caller's module block.
+variable "enabled" {
+  description = "Whether to create the network resources (false creates nothing, but keeps the module instantiable)"
+  type        = bool
+  default     = true
+}
