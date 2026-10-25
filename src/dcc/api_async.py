@@ -10,6 +10,7 @@ from pathlib import Path
 
 import hashlib
 import json
+import logging
 import os
 import time
 from collections.abc import AsyncGenerator
@@ -311,6 +312,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Data Center Commander",
@@ -633,10 +636,16 @@ async def readyz():
                     content={"ready": False, "checks": {"schema": "incomplete"}},
                 )
         return {"ready": True, "checks": {"database": "ok", "schema": "ok"}}
-    except Exception as exc:
+    except Exception:
+        # Never return str(exc) from an unauthenticated route. A psycopg/asyncpg
+        # connection error routinely embeds the DSN -- host, port, database and role --
+        # which turns a readiness probe into a reconnaissance endpoint for anyone who can
+        # reach it. The detail goes to the log, where an operator who already has access
+        # can read it; the caller gets a stable code.
+        logger.exception("readiness check failed")
         return JSONResponse(
             status_code=503,
-            content={"ready": False, "error": str(exc)},
+            content={"ready": False, "checks": {"database": "unreachable"}},
         )
 
 
