@@ -53,7 +53,18 @@ INSERT INTO dcc.capacity_snapshots(id,tenant_id,facility_id,observed_at,scenario
 -- exactly these fields. If any of them changes, the hash must be recomputed:
 --     python -c "from dcc.provenance.evidence import compute_event_hash; ..."
 INSERT INTO dcc.evidence_events(tenant_id,sequence,id,event_type,occurred_at,actor_ref,subject_type,subject_id,payload,previous_hash,event_hash) VALUES
-('dcc00000-0000-4000-8000-000000000001',1,'dcc00000-0000-4000-8000-0000000000e1','demo.fixture.seeded','2026-01-01T00:00:00.000000+00:00','demo-seed-script','tenant','dcc-demo-lab','{"synthetic":true,"label":"NOT LIVE","fixture":"dcc-demo-v1"}',NULL,'6f4f827d71afe71c1ce9ab34b02e9628e3b0867f183d5abc1990753d3f559453') ON CONFLICT DO NOTHING;
+('dcc00000-0000-4000-8000-000000000001',1,'dcc00000-0000-4000-8000-0000000000e1','demo.fixture.seeded','2026-01-01T00:00:00.000000+00:00','demo-seed-script','tenant','dcc-demo-lab','{"synthetic":true,"label":"NOT LIVE","fixture":"dcc-demo-v1"}',NULL,'6f4f827d71afe71c1ce9ab34b02e9628e3b0867f183d5abc1990753d3f559453')
+ON CONFLICT (tenant_id, sequence) DO UPDATE SET
+    event_hash = EXCLUDED.event_hash,
+    payload    = EXCLUDED.payload,
+    actor_ref  = EXCLUDED.actor_ref,
+    occurred_at= EXCLUDED.occurred_at
+WHERE dcc.evidence_events.event_hash IS DISTINCT FROM EXCLUDED.event_hash;
+-- DO UPDATE, not DO NOTHING: an earlier seed wrote the placeholder string
+-- 'synthetic-demo-event-hash-v1' here, and DO NOTHING made that corruption permanent --
+-- re-running the seed could never repair a chain it had already broken, so a database
+-- seeded before the fix kept reporting its own evidence as invalid. The WHERE clause
+-- keeps a repeat run from touching a row that is already correct.
 -- Illustrative cost workbook. Values are synthetic assumptions, not quotations or market prices.
 INSERT INTO dcc.cost_books(id,tenant_id,name,version,status,currency,geography,price_basis,valid_from,source_policy,approved_by,approved_at)
 VALUES ('dcc00000-0000-4000-8000-000000000022','dcc00000-0000-4000-8000-000000000001','Demo planning assumptions','2026.1','approved','USD','EG','benchmark',current_date-30,'{"synthetic":true,"label":"NOT LIVE; replace with sourced quotes/tariffs"}','demo-reviewer',now()) ON CONFLICT DO NOTHING;
