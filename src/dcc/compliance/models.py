@@ -22,13 +22,21 @@ from uuid import UUID, uuid4
 
 
 class ComplianceStatus(str, Enum):
-    """Outcome status for a single control evaluation."""
+    """Outcome status for a single control evaluation.
+
+    ``NOT_ASSESSED`` is distinct from both ``SKIP`` and ``NOT_APPLICABLE`` and is
+    used when the control ran but the fact it asserts could not be measured. It is
+    deliberately not treated as a pass anywhere: an unmeasured control is an
+    unknown, and an unknown reported as compliant is the defect this status exists
+    to prevent.
+    """
 
     PASS = "pass"
     FAIL = "fail"
     SKIP = "skip"
     ERROR = "error"
     NOT_APPLICABLE = "not_applicable"
+    NOT_ASSESSED = "not_assessed"
 
 
 class Severity(str, Enum):
@@ -316,14 +324,31 @@ class ComplianceReport:
         return sum(1 for r in self.results if r.status == ComplianceStatus.ERROR)
 
     @property
+    def not_assessed(self) -> int:
+        """Controls that ran but whose subject could not be measured."""
+        return sum(1 for r in self.results if r.status == ComplianceStatus.NOT_ASSESSED)
+
+    @property
     def compliance_score(self) -> float:
-        """Return compliance score as a percentage (0-100)."""
+        """Percentage of graded controls that pass.
+
+        ``NOT_ASSESSED`` counts against the score, alongside ``FAIL``. Excluding
+        it would let a report of sixteen unmeasured controls claim 100%, which is
+        the same false assurance as reporting them as passes. ``NOT_APPLICABLE``
+        is the only status removed from the denominator.
+        """
         if not self.results:
             return 0.0
-        applicable = [r for r in self.results if r.status != ComplianceStatus.NOT_APPLICABLE]
-        if not applicable:
+        graded = [r for r in self.results if r.status != ComplianceStatus.NOT_APPLICABLE]
+        if not graded:
             return 100.0
-        return (len(applicable) - self.failed) / len(applicable) * 100.0
+        not_passing = sum(
+            1
+            for r in graded
+            if r.status in {ComplianceStatus.FAIL, ComplianceStatus.NOT_ASSESSED}
+        )
+        return (len(graded) - not_passing) / len(graded) * 100.0
+
 
     @property
     def duration_seconds(self) -> float:
@@ -346,6 +371,7 @@ class ComplianceReport:
                 "failed": self.failed,
                 "skipped": self.skipped,
                 "errors": self.errors,
+                "not_assessed": self.not_assessed,
                 "compliance_score": round(self.compliance_score, 2),
                 "duration_seconds": round(self.duration_seconds, 3),
             },

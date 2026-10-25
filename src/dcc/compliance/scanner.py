@@ -96,6 +96,25 @@ class ScanContext:
 ScanHook = Callable[[ScanContext], None]
 
 
+def _status_from_findings(findings: Sequence[Finding]) -> ComplianceStatus:
+    """Collapse a control's findings into one status, worst first.
+
+    Order is FAIL, ERROR, NOT_ASSESSED, PASS. ``NOT_ASSESSED`` sits below ERROR
+    because an error is a control that broke, and above PASS because a partially
+    measured control has not satisfied its requirement in full. Reporting such a
+    control as a pass is the specific false assurance this ordering prevents: a
+    control that measured one of two halves must not present as complete.
+    """
+    statuses = {f.status for f in findings}
+    if ComplianceStatus.FAIL in statuses:
+        return ComplianceStatus.FAIL
+    if ComplianceStatus.ERROR in statuses:
+        return ComplianceStatus.ERROR
+    if ComplianceStatus.NOT_ASSESSED in statuses:
+        return ComplianceStatus.NOT_ASSESSED
+    return ComplianceStatus.PASS
+
+
 # ---------------------------------------------------------------------------
 # Scanner
 # ---------------------------------------------------------------------------
@@ -325,16 +344,8 @@ class ComplianceScanner:
         else:
             try:
                 raw_findings = control.evaluator()
-                if raw_findings:
-                    findings = list(raw_findings)
-                    # If any finding is a failure, the control fails
-                    if any(f.status == ComplianceStatus.FAIL for f in findings):
-                        status = ComplianceStatus.FAIL
-                    elif any(f.status == ComplianceStatus.ERROR for f in findings):
-                        status = ComplianceStatus.ERROR
-                else:
-                    # No findings means the control passed
-                    status = ComplianceStatus.PASS
+                findings = list(raw_findings or [])
+                status = _status_from_findings(findings)
             except Exception as exc:
                 status = ComplianceStatus.ERROR
                 findings = [

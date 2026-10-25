@@ -138,6 +138,11 @@ class TestLockoutGuard:
         store = api._API_KEYS
         store._keys.clear()
         store._hash_to_id.clear()
+        # count() also consults the durable backend when a DSN is configured, so
+        # clearing the in-memory dict is not enough to make the store empty. Detach it:
+        # the lockout guard is a process-startup check, and this test is about the guard,
+        # not about whatever rows a previous run left in the development database.
+        monkeypatch.setattr(store, "_backend", None, raising=False)
 
     def test_warns_when_enforced_with_no_keys(self, monkeypatch, caplog):
         self._clear(monkeypatch)

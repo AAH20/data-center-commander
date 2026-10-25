@@ -54,12 +54,14 @@ def generate_markdown_report(report: ComplianceReport) -> str:
     lines.append(f"| Failed | {report.failed} |")
     lines.append(f"| Skipped | {report.skipped} |")
     lines.append(f"| Errors | {report.errors} |")
+    lines.append(f"| Not assessed (no observable) | {report.not_assessed} |")
     lines.append(f"| **Compliance Score** | **{report.compliance_score:.1f}%** |")
     lines.append("")
 
     # Results by status
     _append_status_section(lines, report, ComplianceStatus.FAIL, "Failed Controls")
     _append_status_section(lines, report, ComplianceStatus.ERROR, "Errors")
+    _append_status_section(lines, report, ComplianceStatus.NOT_ASSESSED, "Not Assessed Controls")
     _append_status_section(lines, report, ComplianceStatus.PASS, "Passed Controls")
 
     # Detailed findings

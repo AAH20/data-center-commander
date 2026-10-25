@@ -498,7 +498,13 @@ def _warn_if_locked_out() -> None:
     if _auth_is_open():
         return
     try:
-        existing = len(_API_KEYS.list_keys())
+        # count(), not len(list_keys()). A listing runs under row level security, and
+        # with no dcc.tenant_id set the policy correctly returns zero rows for any
+        # non-bypassing role -- which is what the deployment role is. Counting via a
+        # listing therefore reported "NO API KEYS CONFIGURED" on every boot of a
+        # correctly-configured deployment, and with DCC_REQUIRE_KEYS=1 that false alarm
+        # was fatal. count() answers the one question this check actually asks.
+        existing = _API_KEYS.count()
     except Exception:
         existing = 0
     if existing or _BOOTSTRAPPED_KEYS:

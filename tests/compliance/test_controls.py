@@ -1,21 +1,82 @@
-"""Tests for built-in compliance controls."""
+"""Tests for the built-in compliance controls.
+
+These assert the *contract* of the catalogue: how many controls exist, that every
+evaluator produces a status, and that the controls which can be judged without a
+database judge the state the application actually enforces.
+
+What they deliberately do NOT do is assert a status from an environment variable.
+The previous version of this file did exactly that -- it set ``DCC_MFA_ENABLED``,
+``DCC_ENCRYPTION_AT_REST`` and friends and expected a pass -- which is how a suite
+stays green while the controls report on configuration nothing reads. The
+measurement-level tests, including the ones that show a status moving when the
+underlying fact moves, live in ``test_controls_real_state.py``.
+"""
 from __future__ import annotations
 
 import os
 from unittest.mock import patch
 
-from dcc.compliance.controls import get_builtin_controls, get_controls_by_framework
+from dcc.compliance.controls import EVALUATION_BASIS, get_builtin_controls, get_controls_by_framework
 from dcc.compliance.models import ComplianceStatus, Framework
+from dcc.compliance.scanner import ComplianceScanner
+
+EXPECTED_IDS = {
+    "SOC2-CC6.1",
+    "SOC2-CC6.2",
+    "SOC2-CC6.3",
+    "SOC2-CC7.1",
+    "SOC2-CC7.2",
+    "ISO27001-A.9.4.1",
+    "ISO27001-A.12.4.1",
+    "ISO27001-A.14.1.1",
+    "PCI-1.1",
+    "PCI-3.4",
+    "PCI-8.2",
+    "PCI-10.1",
+    "HIPAA-164.312(a)(1)",
+    "HIPAA-164.312(e)(1)",
+    "NIST-AC-2",
+    "NIST-AU-1",
+}
 
 
-class TestBuiltinControls:
-    def test_get_all_controls(self) -> None:
-        controls = get_builtin_controls()
-        assert len(controls) > 0
-        ids = {c.control_id for c in controls}
-        assert "SOC2-CC6.1" in ids
-        assert "PCI-3.4" in ids
-        assert "HIPAA-164.312(a)(1)" in ids
+def _one_tenant_key() -> str:
+    """A real ``tenant:sha256hex`` entry, minted the way the CLI mints one."""
+    from dcc.security.api_keys import generate_api_key, hash_api_key
+
+    tenant = "11111111-1111-1111-1111-111111111111"
+    return f"{tenant}:{hash_api_key(generate_api_key())}"
+
+
+def _evaluate(control_id: str, env: dict[str, str] | None = None):
+    """Run one control's evaluator with a controlled environment."""
+    clean = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"DCC_API_KEYS", "DCC_ALLOW_ANONYMOUS", "DCC_MFA_ENABLED", "DCC_DATABASE_URL"}
+    }
+    clean.update(env or {})
+    with patch.dict(os.environ, clean, clear=True):
+        controls = {c.control_id: c for c in get_builtin_controls()}
+        evaluator = controls[control_id].evaluator
+        assert evaluator is not None, f"{control_id} has no evaluator"
+        return evaluator()
+
+
+def _has(findings, status: ComplianceStatus, needle: str = "") -> bool:
+    return any(
+        f.status is status and (needle in f.message if needle else True) for f in findings
+    )
+
+
+class TestCatalogue:
+    def test_control_count_is_unchanged(self) -> None:
+        """Sixteen controls, always. Rewriting their basis must not shrink the set."""
+        assert len(get_builtin_controls()) == 16
+
+    def test_control_ids_are_stable(self) -> None:
+        ids = {c.control_id for c in get_builtin_controls()}
+        assert ids == EXPECTED_IDS
 
     def test_get_controls_by_framework(self) -> None:
         soc2 = get_controls_by_framework(Framework.SOC2)
@@ -34,61 +95,153 @@ class TestBuiltinControls:
         for ctrl in get_builtin_controls():
             assert len(ctrl.tags) > 0, f"{ctrl.control_id} has no tags"
 
+    def test_every_control_declares_its_basis(self) -> None:
+        """A control must say whether it measures state or cannot be measured."""
+        assert set(EVALUATION_BASIS) == EXPECTED_IDS
+        assert set(EVALUATION_BASIS.values()) == {"measured", "not_assessed"}
 
-class TestControlEvaluation:
-    #: The two knobs the SOC 2 access control actually reads.
-    #:
-    #: It used to read DCC_AUTH_ENABLED, which the served application never consults,
-    #: so this test could pass while the API was open to anonymous callers. The real
-    #: posture is derived from DCC_ALLOW_ANONYMOUS plus the number of DCC_API_KEYS
-    #: entries (see dcc.security.posture.auth_posture). Enforced auth with zero keys
-    #: is a lockout, not a control, so a PASS needs at least one key configured.
-    #: tests/conftest.py sets DCC_ALLOW_ANONYMOUS=1 suite-wide, which is why both
-    #: cases below state it explicitly instead of relying on the ambient value.
+    def test_descriptions_do_not_promise_unmeasured_things(self) -> None:
+        for ctrl in get_builtin_controls():
+            text = f"{ctrl.title} {ctrl.description}".lower()
+            assert "mfa is enabled" not in text, ctrl.control_id
+            assert "tls is enforced" not in text, ctrl.control_id
 
-    def _api_keys_env(self) -> dict[str, str]:
-        """One real tenant:hash entry, minted the same way the CLI mints one."""
-        from dcc.security.api_keys import generate_api_key, hash_api_key
 
-        tenant = "11111111-1111-1111-1111-111111111111"
-        return {"DCC_API_KEYS": f"{tenant}:{hash_api_key(generate_api_key())}"}
+class TestFindingContract:
+    def test_evaluators_never_raise_without_a_database(self) -> None:
+        """A scan must survive an unconfigured environment and report why."""
+        for ctrl in get_builtin_controls():
+            findings = _evaluate(ctrl.control_id, {"DCC_ALLOW_ANONYMOUS": "1"})
+            assert findings, f"{ctrl.control_id} returned no findings"
+            for finding in findings:
+                assert finding.status in {
+                    ComplianceStatus.PASS,
+                    ComplianceStatus.FAIL,
+                    ComplianceStatus.NOT_ASSESSED,
+                }, f"{ctrl.control_id}: {finding.status} ({finding.message})"
 
-    def test_soc2_cc6_1_pass(self) -> None:
-        env = {"DCC_ALLOW_ANONYMOUS": "0", "DCC_MFA_ENABLED": "true", **self._api_keys_env()}
-        with patch.dict(os.environ, env):
-            controls = {c.control_id: c for c in get_builtin_controls()}
-            findings = controls["SOC2-CC6.1"].evaluator()
-            assert all(f.status == ComplianceStatus.PASS for f in findings), [
-                f.message for f in findings
+    def test_not_assessed_findings_explain_themselves(self) -> None:
+        """An unmeasurable control must say what could not be measured, and why."""
+        explain = ("cannot", "could not", "judgement", "not assessed")
+        for ctrl in get_builtin_controls():
+            for finding in _evaluate(ctrl.control_id, {"DCC_ALLOW_ANONYMOUS": "1"}):
+                if finding.status is ComplianceStatus.NOT_ASSESSED:
+                    assert len(finding.message) > 40, ctrl.control_id
+                    assert any(word in finding.message.lower() for word in explain), ctrl.control_id
+
+    def test_every_finding_carries_evidence(self) -> None:
+        for ctrl in get_builtin_controls():
+            for finding in _evaluate(ctrl.control_id, {"DCC_ALLOW_ANONYMOUS": "1"}):
+                assert finding.evidence, f"{ctrl.control_id} finding has no evidence"
+
+
+class TestSoc2CC61:
+    """Access control reads the posture the application enforces."""
+
+    def test_anonymous_access_fails(self) -> None:
+        findings = _evaluate("SOC2-CC6.1", {"DCC_ALLOW_ANONYMOUS": "1", "DCC_API_KEYS": _one_tenant_key()})
+        assert any(f.status is ComplianceStatus.FAIL for f in findings)
+        assert any("Anonymous" in f.message for f in findings)
+
+    def test_enforced_auth_with_keys_passes_the_auth_half(self) -> None:
+        findings = _evaluate("SOC2-CC6.1", {"DCC_ALLOW_ANONYMOUS": "0", "DCC_API_KEYS": _one_tenant_key()})
+        assert any(f.status is ComplianceStatus.PASS for f in findings), [f.message for f in findings]
+
+    def test_enforced_auth_without_keys_is_a_lockout_not_a_pass(self) -> None:
+        findings = _evaluate("SOC2-CC6.1", {"DCC_ALLOW_ANONYMOUS": "0", "DCC_API_KEYS": ""})
+        assert any(f.status is ComplianceStatus.FAIL for f in findings)
+        assert any("lockout" in f.message for f in findings)
+
+    def test_mfa_is_not_asserted_from_the_environment(self) -> None:
+        """The old control failed unless DCC_MFA_ENABLED=true. Nothing reads it now."""
+        base = {"DCC_ALLOW_ANONYMOUS": "0", "DCC_API_KEYS": _one_tenant_key()}
+        without = [(f.status, f.message) for f in _evaluate("SOC2-CC6.1", base)]
+        with_flag = [
+            (f.status, f.message)
+            for f in _evaluate("SOC2-CC6.1", {**base, "DCC_MFA_ENABLED": "true"})
+        ]
+        assert without == with_flag
+
+    def test_mfa_reports_not_assessed(self) -> None:
+        findings = _evaluate("SOC2-CC6.1", {"DCC_ALLOW_ANONYMOUS": "0", "DCC_API_KEYS": _one_tenant_key()})
+        mfa = [f for f in findings if "MFA" in f.message]
+        assert mfa and mfa[0].status is ComplianceStatus.NOT_ASSESSED
+
+
+class TestPci82:
+    """Authentication strength is judged from the credentials that exist."""
+
+    def test_strong_hashed_key_passes(self) -> None:
+        findings = _evaluate("PCI-8.2", {"DCC_API_KEYS": _one_tenant_key()})
+        assert all(f.status is ComplianceStatus.PASS for f in findings), [f.message for f in findings]
+
+    def test_truncated_hash_fails(self) -> None:
+        findings = _evaluate("PCI-8.2", {"DCC_API_KEYS": "11111111-1111-1111-1111-111111111111:abc123"})
+        assert any(f.status is ComplianceStatus.FAIL for f in findings)
+
+    def test_no_credentials_fails(self) -> None:
+        findings = _evaluate("PCI-8.2", {"DCC_API_KEYS": ""})
+        assert any(f.status is ComplianceStatus.FAIL for f in findings)
+
+
+class TestUnmeasurableControls:
+    """Controls with no honest observable must say so rather than pass."""
+
+    def test_network_segmentation_is_not_asserted(self) -> None:
+        findings = _evaluate("PCI-1.1", {})
+        assert all(f.status is ComplianceStatus.NOT_ASSESSED for f in findings)
+        assert any("cannot be observed" in f.message for f in findings)
+
+    def test_encryption_at_rest_is_not_asserted(self) -> None:
+        findings = _evaluate("PCI-3.4", {})
+        assert all(f.status is ComplianceStatus.NOT_ASSESSED for f in findings)
+
+    def test_policy_documents_report_presence_not_adequacy(self) -> None:
+        for control_id in ("ISO27001-A.14.1.1", "NIST-AU-1"):
+            findings = _evaluate(control_id, {})
+            assert all(f.status is ComplianceStatus.NOT_ASSESSED for f in findings), control_id
+
+    def test_environment_cannot_flip_an_unmeasurable_control(self) -> None:
+        """No variable turns "we cannot see this" into "this is fine"."""
+        env = {
+            "DCC_NETWORK_SEGMENTED": "true",
+            "DCC_ENCRYPTION_AT_REST": "true",
+            "DCC_SECURITY_POLICY_PATH": "/etc/passwd",
+            "DCC_AUDIT_POLICY_PATH": "/etc/passwd",
+        }
+        for control_id in ("PCI-1.1", "PCI-3.4", "ISO27001-A.14.1.1", "NIST-AU-1"):
+            findings = _evaluate(control_id, env)
+            assert all(f.status is ComplianceStatus.NOT_ASSESSED for f in findings), control_id
+
+
+class TestScannerAggregation:
+    def test_not_assessed_outranks_pass_but_not_fail(self) -> None:
+        scanner = ComplianceScanner()
+        controls = {c.control_id: c for c in get_builtin_controls()}
+        result = scanner._evaluate_control(controls["SOC2-CC6.1"], tenant_id=None)
+        # Authentication passes, MFA is unmeasurable: the control as a whole is not
+        # satisfied, and must not be presented as a pass.
+        with patch.dict(
+            os.environ,
+            {"DCC_ALLOW_ANONYMOUS": "0", "DCC_API_KEYS": _one_tenant_key()},
+        ):
+            result = scanner._evaluate_control(controls["SOC2-CC6.1"], tenant_id=None)
+        assert result.status is ComplianceStatus.NOT_ASSESSED
+        assert any(f.status is ComplianceStatus.PASS for f in result.findings)
+
+    def test_not_assessed_controls_lower_the_score(self) -> None:
+        from dcc.compliance.models import ComplianceReport, ControlResult
+
+        report = ComplianceReport(
+            results=[
+                ControlResult(control_id="a", framework=Framework.SOC2, title="a", status=ComplianceStatus.PASS),
+                ControlResult(
+                    control_id="b",
+                    framework=Framework.SOC2,
+                    title="b",
+                    status=ComplianceStatus.NOT_ASSESSED,
+                ),
             ]
-
-    def test_soc2_cc6_1_fail_no_auth(self) -> None:
-        env = {"DCC_ALLOW_ANONYMOUS": "1", "DCC_MFA_ENABLED": "true", **self._api_keys_env()}
-        with patch.dict(os.environ, env):
-            controls = {c.control_id: c for c in get_builtin_controls()}
-            findings = controls["SOC2-CC6.1"].evaluator()
-            assert any(f.status == ComplianceStatus.FAIL for f in findings)
-
-    def test_pci_3_4_pass(self) -> None:
-        with patch.dict(os.environ, {"DCC_ENCRYPTION_AT_REST": "true"}):
-            controls = {c.control_id: c for c in get_builtin_controls()}
-            findings = controls["PCI-3.4"].evaluator()
-            assert all(f.status == ComplianceStatus.PASS for f in findings)
-
-    def test_pci_3_4_fail(self) -> None:
-        with patch.dict(os.environ, {"DCC_ENCRYPTION_AT_REST": "false"}):
-            controls = {c.control_id: c for c in get_builtin_controls()}
-            findings = controls["PCI-3.4"].evaluator()
-            assert any(f.status == ComplianceStatus.FAIL for f in findings)
-
-    def test_hipaa_pass(self) -> None:
-        with patch.dict(os.environ, {"DCC_UNIQUE_USER_IDS": "true", "DCC_TLS_ENFORCED": "true"}):
-            controls = {c.control_id: c for c in get_builtin_controls()}
-            findings = controls["HIPAA-164.312(a)(1)"].evaluator()
-            assert all(f.status == ComplianceStatus.PASS for f in findings)
-
-    def test_nist_ac_2_pass(self) -> None:
-        with patch.dict(os.environ, {"DCC_ACCOUNT_MANAGEMENT": "true"}):
-            controls = {c.control_id: c for c in get_builtin_controls()}
-            findings = controls["NIST-AC-2"].evaluator()
-            assert all(f.status == ComplianceStatus.PASS for f in findings)
+        )
+        assert report.not_assessed == 1
+        assert report.compliance_score == 50.0

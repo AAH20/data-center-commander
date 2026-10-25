@@ -28,6 +28,7 @@ services:
       - ./database/migrations/008_disaster_recovery.sql:/docker-entrypoint-initdb.d/08_migration_008.sql:ro
       - ./database/migrations/009_backup_operations.sql:/docker-entrypoint-initdb.d/09_migration_009.sql:ro
       - ./database/migrations/010_telemetry_partition_rls.sql:/docker-entrypoint-initdb.d/10_migration_010.sql:ro
+      - ./database/migrations/011_api_keys.sql:/docker-entrypoint-initdb.d/11_migration_011.sql:ro
       - ./database/init/99_app_role.sql:/docker-entrypoint-initdb.d/99_app_role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U dcc -d data_center_commander"]

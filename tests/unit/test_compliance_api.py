@@ -137,24 +137,30 @@ class TestScan:
 
 
 class TestConfigurationGaps:
-    """Every built-in evaluator reads at least one variable the app never consults.
+    """The scan must be able to name controls that read variables the app ignores.
 
-    Reporting a pass on such a variable is decorative: an operator can set it and the
-    running system does nothing differently. The scan must say so.
+    This mechanism used to report every one of the sixteen controls: each evaluator
+    read at least one variable the served application never consulted, so a pass on
+    one of them was decorative -- an operator could set it and the running system did
+    nothing differently.
+
+    The controls now measure system state instead, so the report is empty. That is
+    the assertion below: not "the mechanism exists" but "nothing is left for it to
+    find". A regression that reintroduces an unconsumed variable makes this fail with
+    the offending control named, which is exactly what it is for.
     """
 
-    def test_scan_names_the_gap(self):
+    def test_scan_finds_no_unconsumed_configuration(self):
         client = TestClient(app)
         gaps = client.get("/v2/compliance/scan").json()["configuration_gaps"]
-        assert gaps["affected_controls"] > 0
-        assert gaps["detail"], "the gap report must name the controls and their variables"
-        assert "must not be reported as an operational control" in gaps["impact"]
+        assert gaps["affected_controls"] == 0, gaps["detail"]
+        assert gaps["detail"] == {}
 
     def test_the_fixed_control_has_no_gap(self):
         """SOC2-CC6.1 was repointed at the real configuration, so it must be clean.
 
         This is the test that proves the fix rather than describing it: the same
-        mechanism that flags the other controls must find nothing to flag here.
+        mechanism that flags a control must find nothing to flag here.
         """
         client = TestClient(app)
         gaps = client.get("/v2/compliance/scan").json()["configuration_gaps"]
