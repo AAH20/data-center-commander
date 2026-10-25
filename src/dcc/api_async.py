@@ -22,6 +22,9 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
 
 from .api_backup import router as backup_router
+# The DR policy record is the single definition of a backup policy; the
+# /v2/dr/policies handler reads through it instead of overriding it.
+from .dr import policies as dr_policies
 from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -1418,6 +1421,13 @@ async def list_backup_policies(
 ):
     """Backup policies for a tenant.
 
+    The row is read through ``dcc.dr.policies`` -- one column list, one
+    translation -- rather than assembled here. This handler used to select a
+    column set and hand back the raw row, which is how the API came to return a
+    ``policy_type`` from the trigger axis and a ``compression`` from the codec
+    axis under the same names the record used for different things. There is
+    now a single definition of what a policy is, and this endpoint reports it.
+
     next_run_at is returned because it is the scheduler's only input: a policy with no
     next run is not scheduled, however enabled it looks.
     """
@@ -1434,18 +1444,16 @@ async def list_backup_policies(
             clause += f" AND enabled=${len(args)}"
 
         rows = await conn.fetch(
-            "SELECT policy_id::text,name,policy_type,schedule,custom_cron,retention_days,"
-            "tables,compression,verify_after,enabled,status,tags,"
-            "created_at,updated_at,last_run_at,next_run_at "
-            f"FROM dcc.backup_policies WHERE {clause} "
-            "ORDER BY name LIMIT $%d OFFSET $%d" % (len(args) + 1, len(args) + 2),
+            f"SELECT {dr_policies.SELECT_COLUMNS} FROM dcc.backup_policies "
+            f"WHERE {clause} ORDER BY name "
+            "LIMIT $%d OFFSET $%d" % (len(args) + 1, len(args) + 2),
             *args,
             limit + 1,
             offset,
         )
 
     has_more = len(rows) > limit
-    items = [dict(r) for r in rows[:limit]]
+    items = [dr_policies.policy_from_row(dict(r)).to_dict() for r in rows[:limit]]
     return Page(
         items=items,
         total=len(items),

@@ -47,16 +47,16 @@ scenarios:
     weight: 40
     flow:
       - get:
-          url: "/v1/overview?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/overview?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - get:
-          url: "/v1/analytics?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}&window_days=7"
+          url: "/v2/analytics?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}&window_days=7"
       - think: 0.2
 
   - name: "Monitoring Agent Poll"
     weight: 35
     flow:
       - get:
-          url: "/v1/assets?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/assets?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - get:
           url: "/healthz"
       - think: 0.1
@@ -69,5 +69,5 @@ scenarios:
       - get:
           url: "/readyz"
       - get:
-          url: "/v1/overview?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/overview?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 0.1

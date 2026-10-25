@@ -13,15 +13,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 from .policies import (
     BackupPolicy,
     PolicyEngine,
+    PolicyRunResult,
     PolicySchedule,
     PolicyStatus,
     PolicyType,
+    PolicyValidationError,
 )
 from .failover import (
     FailoverAutomation,
@@ -178,9 +180,10 @@ class DROrchestrator:
     State: this class keeps no run state of its own. Everything it reports is
     read from the subsystem roots it was constructed with -- policies and
     procedures as JSON files, failover executions as ``_exec_*.json``, RTO/RPO
-    measurements and DR test runs as their own files. Constructing a new
-    orchestrator over the same roots therefore recovers the same history; it is
-    not memory-only, and a restart does not erase the incident record.
+    measurements and DR test runs as their own files, policy run outcomes as an
+    append-only ``_runs.jsonl`` ledger. Constructing a new orchestrator over the
+    same roots therefore recovers the same history; it is not memory-only, and a
+    restart does not erase the incident record.
 
     The exception is the failover step-handler registry: handlers are code, so a
     fresh process must register them again before it can act on a procedure.
@@ -192,6 +195,13 @@ class DROrchestrator:
         summary = orchestrator.get_tenant_summary("tenant-uuid")
     """
 
+    #: Factory for the engine that executes backup policies, registered from
+    #: outside this package by
+    #: :func:`dcc.operations.backup.install_dr_backup_execution`. None means no
+    #: execution layer is available, and policy runs refuse rather than claim a
+    #: backup they did not take.
+    _backup_engine_factory: ClassVar[Any | None] = None
+
     def __init__(
         self,
         config: DROrchestratorConfig | None = None,
@@ -201,6 +211,7 @@ class DROrchestrator:
         procedure_root: str | None = None,
         tracker_root: str | None = None,
         test_root: str | None = None,
+        backup_engine: Any | None = None,
     ) -> None:
         """Initialize the DR orchestrator.
 
@@ -211,8 +222,14 @@ class DROrchestrator:
             procedure_root: Override procedure root directory.
             tracker_root: Override tracker root directory.
             test_root: Override test root directory.
+            backup_engine: Engine used to execute backups (optional). When
+                omitted, a :class:`dcc.operations.backup.BackupEngine` is built
+                lazily over ``config.backup_root`` the first time a policy has
+                to run.
         """
         self.config = config or DROrchestratorConfig()
+        self._lock = threading.RLock()
+        self._backup_engine = backup_engine
 
         # Apply overrides
         if backup_root:
@@ -234,8 +251,6 @@ class DROrchestrator:
         )
         self._rto_tracker = RTOTracker(self.config.tracker_root)
         self._test_engine = DRTestEngine(self.config.test_root)
-
-        self._lock = threading.RLock()
 
     @property
     def policy_engine(self) -> PolicyEngine:
@@ -341,33 +356,286 @@ class DROrchestrator:
         """Get all policies due to run for a tenant."""
         return self._policy_engine.get_due_policies(tenant_id)
 
-    def run_due_policies(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Mark all due policies as run.
+    @property
+    def backup_engine(self) -> Any | None:
+        """The engine that executes backups, or None when none is configured.
 
-        WARNING: this does not execute a backup. It records ``success=True`` and
-        a timestamp for each due policy without calling any backup engine, so
-        the returned ``success`` means "the policy was marked run", not "a
-        backup exists". ``dcc.operations.backup.BackupEngine`` is the component
-        that actually runs ``pg_dump``; this class deliberately does not import
-        it (dcc.dr stays stdlib-only), and nothing in the API calls this method
-        today. Treat it as bookkeeping until it is wired to
-        ``BackupPolicy.to_engine_params()``.
+        ``dcc.dr`` may not import ``dcc.operations``: the DR package has to stay
+        importable without ``pg_dump`` or a database, and a test enforces that
+        boundary over the source. So the engine is *handed* to this class instead
+        of imported by it -- pass ``backup_engine=`` to the constructor, or
+        install a default factory once at the composition root with
+        ``dcc.operations.backup.install_dr_backup_execution()``.
 
         Returns:
-            List of policy run results, one per due policy.
+            The configured engine, or None when nothing was installed and no
+            factory has been registered.
+        """
+        with self._lock:
+            if self._backup_engine is None:
+                factory = type(self)._backup_engine_factory
+                if factory is None:
+                    return None
+                self._backup_engine = factory(self.config.backup_root)
+            return self._backup_engine
+
+    @classmethod
+    def use_backup_engine_factory(cls, factory: Any | None) -> None:
+        """Register (or clear) the default engine factory for new orchestrators.
+
+        Args:
+            factory: Callable taking the backup root and returning an engine
+                exposing ``create_backup`` and ``verify_backup``, or None to
+                clear it so that runs refuse instead of guessing.
+        """
+        cls._backup_engine_factory = factory
+
+    def run_due_policies(
+        self,
+        tenant_id: str,
+        *,
+        dsn: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Run every due policy for a tenant, for real, and record what happened.
+
+        Each due policy is translated by
+        :meth:`~dcc.dr.policies.BackupPolicy.to_engine_params` into a
+        ``BackupEngine.create_backup`` call, which shells out to ``pg_dump`` and
+        writes a dump file. ``success`` is only recorded when that dump exists
+        *and* re-verifies: the checksum stored in the backup metadata is
+        recomputed from the file on disk, and the size is compared with the
+        artifact. A run that produced no file, an empty file, or a file whose
+        checksum does not match is recorded as a failure with the reason attached
+        -- never as a success.
+
+        Verification happens regardless of ``BackupPolicy.verify_after``. An
+        unverified run is not a successful one, and this record exists to be
+        trusted; the flag describes a preference, the record states a fact.
+
+        Failures do not raise. No configured engine, a policy the engine cannot
+        express (CONTINUOUS, SNAPSHOT), an unreachable database, a ``pg_dump``
+        that exits non-zero, or an artifact that fails verification all produce a
+        result row with ``success=False`` and a populated ``error``, so the
+        attempt is recorded rather than lost to an exception. One policy failing
+        does not stop the remaining due policies from running.
+
+        Every outcome is appended to a durable run ledger
+        (``<policy_root>/<tenant_id>/_runs.jsonl``) before the policy schedule is
+        advanced, because :meth:`PolicyEngine.record_run` moves ``next_run_at``
+        forward without storing success, reason, or backup id. Without the ledger
+        a failed backup would leave no trace except a schedule that skips it.
+
+        Args:
+            tenant_id: Tenant UUID string.
+            dsn: PostgreSQL connection string. Defaults to ``DCC_DATABASE_URL``
+                inside the engine, which refuses to run without one.
+
+        Returns:
+            One dict per due policy, with ``policy_id``, ``policy_name``,
+            ``success``, ``backup_id``, ``message``, ``error``,
+            ``duration_seconds``, ``timestamp``, and -- for completed dumps --
+            ``size_bytes``, ``checksum``, ``verified`` and ``verification``.
         """
         due = self.get_due_policies(tenant_id)
-        results = []
-        for policy in due:
-            # In production, this would trigger actual backup execution
-            self._policy_engine.record_run(tenant_id, policy.policy_id, success=True)
-            results.append({
-                "policy_id": policy.policy_id,
-                "policy_name": policy.name,
-                "success": True,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
-        return results
+        return [self._run_policy(tenant_id, policy, dsn=dsn) for policy in due]
+
+    def _run_policy(
+        self,
+        tenant_id: str,
+        policy: BackupPolicy,
+        *,
+        dsn: str | None,
+    ) -> dict[str, Any]:
+        """Execute one policy and return the honest outcome record."""
+        started = datetime.now(timezone.utc)
+        outcome = PolicyRunResult(success=False, policy_id=policy.policy_id)
+        extras: dict[str, Any] = {
+            "policy_name": policy.name,
+            "backup_id": None,
+            "size_bytes": None,
+            "checksum": None,
+            "verified": False,
+        }
+
+        try:
+            engine = self.backup_engine
+            params = policy.to_engine_params()
+        except PolicyValidationError as exc:
+            # Refuse, do not downgrade: a policy claiming protection the engine
+            # cannot deliver must not be recorded as though it delivered it.
+            outcome.error = str(exc)
+            outcome.message = "policy has no executable equivalent"
+        except Exception as exc:  # factory raised, backup root unwritable
+            outcome.error = f"{type(exc).__name__}: {exc}"
+            outcome.message = "policy could not be executed"
+        else:
+            if engine is None:
+                outcome.error = (
+                    "no backup engine configured: nothing was executed. Install "
+                    "one with dcc.operations.backup.install_dr_backup_execution() "
+                    "or pass backup_engine= to the orchestrator"
+                )
+                outcome.message = "policy was not run"
+            else:
+                try:
+                    # Values from to_engine_params are the engine's own enum
+                    # values as plain strings; the engine's enums are str-backed
+                    # and compare equal, which is why this package can call it
+                    # without importing it.
+                    result = engine.create_backup(
+                        **{**params, "tenant_id": tenant_id, "dsn": dsn}
+                    )
+                except Exception as exc:
+                    # create_backup reports pg_dump failures as a result, but a
+                    # filesystem error (mkdir/metadata before its own try) can
+                    # still escape. Record it instead of losing the attempt.
+                    outcome.error = f"{type(exc).__name__}: {exc}"
+                    outcome.message = "backup engine raised before completing"
+                else:
+                    extras["backup_id"] = result.backup_id
+                    if result.metadata is not None:
+                        extras["size_bytes"] = result.metadata.size_bytes
+                        extras["checksum"] = result.metadata.checksum
+
+                    if not result.success:
+                        outcome.error = result.error or result.message or "backup failed"
+                        outcome.message = result.message
+                    else:
+                        self._accept_verified_backup(
+                            engine, tenant_id, result, outcome, extras
+                        )
+
+        outcome.duration_seconds = (datetime.now(timezone.utc) - started).total_seconds()
+        outcome.backup_id = extras["backup_id"]
+        record = {**outcome.to_dict(), **extras}
+        record["policy_name"] = policy.name
+        record["success"] = outcome.success
+
+        record_error = self._record_policy_outcome(tenant_id, policy, record)
+        if record_error:
+            record["record_error"] = record_error
+        return record
+
+    def _accept_verified_backup(
+        self,
+        engine: Any,
+        tenant_id: str,
+        result: Any,
+        outcome: PolicyRunResult,
+        extras: dict[str, Any],
+    ) -> None:
+        """Promote a completed backup to success only if its artifact verifies."""
+        metadata = result.metadata
+        if metadata is None or not metadata.checksum:
+            outcome.error = (
+                "backup reported success without a stored checksum; "
+                "the artifact cannot be confirmed"
+            )
+            return
+        if metadata.size_bytes <= 0:
+            outcome.error = (
+                f"backup reported success but the artifact is {metadata.size_bytes} bytes"
+            )
+            return
+
+        try:
+            verification = engine.verify_backup(tenant_id, result.backup_id)
+        except Exception as exc:
+            outcome.error = f"verification raised: {type(exc).__name__}: {exc}"
+            return
+
+        extras["verified"] = bool(verification.valid)
+        extras["verification"] = verification.to_dict()
+
+        if not (verification.valid and verification.checksum_match and verification.size_match):
+            problems = list(verification.errors) or ["artifact did not verify"]
+            outcome.error = "backup artifact failed verification: " + "; ".join(problems)
+            return
+
+        outcome.success = True
+        outcome.message = result.message
+
+    def _record_policy_outcome(
+        self,
+        tenant_id: str,
+        policy: BackupPolicy,
+        record: dict[str, Any],
+    ) -> str | None:
+        """Persist the outcome durably, then advance the policy schedule.
+
+        Returns an error string if the policy file could not be updated, so the
+        caller can surface it without pretending the run disappeared.
+        """
+        problems: list[str] = []
+        try:
+            self._append_run_record(tenant_id, record)
+        except Exception as exc:
+            # The ledger is the durable record; if it cannot be written, say so
+            # rather than returning a clean-looking result.
+            problems.append(f"run ledger not written: {type(exc).__name__}: {exc}")
+
+        try:
+            self._policy_engine.record_run(
+                tenant_id,
+                policy.policy_id,
+                success=bool(record.get("success")),
+                backup_id=record.get("backup_id"),
+            )
+        except Exception as exc:
+            problems.append(f"policy schedule not updated: {type(exc).__name__}: {exc}")
+        return "; ".join(problems) or None
+
+    def _run_ledger_path(self, tenant_id: str) -> Path:
+        """Path of the per-tenant run ledger."""
+        return self._policy_engine.policy_root / tenant_id / "_runs.jsonl"
+
+    def _append_run_record(self, tenant_id: str, record: dict[str, Any]) -> None:
+        """Append one run outcome to the tenant's run ledger."""
+        path = self._run_ledger_path(tenant_id)
+        line = json.dumps({"tenant_id": tenant_id, **record}, default=str)
+        with self._lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+
+    def list_policy_runs(
+        self,
+        tenant_id: str,
+        *,
+        policy_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Read recorded policy runs, oldest first.
+
+        Args:
+            tenant_id: Tenant UUID string.
+            policy_id: Only runs of this policy.
+            limit: Return at most this many of the most recent runs.
+
+        Returns:
+            Run records, oldest first. An unreadable line is skipped rather than
+            failing the whole history -- a truncated append must not hide the
+            runs before it.
+        """
+        path = self._run_ledger_path(tenant_id)
+        if not path.exists():
+            return []
+
+        records: list[dict[str, Any]] = []
+        with self._lock:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if policy_id is not None and record.get("policy_id") != policy_id:
+                continue
+            records.append(record)
+        return records[-limit:] if limit > 0 else records
 
     # ------------------------------------------------------------------
     # Failover operations

@@ -33,39 +33,39 @@ scenarios:
     weight: 25
     flow:
       - get:
-          url: "/v1/overview?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/overview?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1
       - get:
-          url: "/v1/assets?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/assets?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1
       - get:
-          url: "/v1/facilities?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/facilities?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1
       - get:
-          url: "/v1/workflows?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/workflows?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 2
 
   - name: "Analytics Deep Dive"
     weight: 25
     flow:
       - get:
-          url: "/v1/analytics?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}&window_days=30"
+          url: "/v2/analytics?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}&window_days=30"
       - think: 2
       - get:
-          url: "/v1/topology?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/topology?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1
 
   - name: "Cost & Capacity Review"
     weight: 25
     flow:
       - get:
-          url: "/v1/costs?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/costs?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1
       - get:
-          url: "/v1/capacity?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/capacity?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1
       - get:
-          url: "/v1/evidence?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/evidence?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 2
 
   - name: "Health & Connectors"
@@ -76,5 +76,5 @@ scenarios:
       - get:
           url: "/readyz"
       - get:
-          url: "/v1/connectors?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/connectors?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 1

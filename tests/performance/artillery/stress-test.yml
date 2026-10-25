@@ -38,27 +38,27 @@ scenarios:
     weight: 30
     flow:
       - get:
-          url: "/v1/analytics?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}&window_days=90"
+          url: "/v2/analytics?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}&window_days=90"
       - think: 0.5
 
   - name: "Full Asset Scan"
     weight: 25
     flow:
       - get:
-          url: "/v1/assets?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/assets?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 0.5
       - get:
-          url: "/v1/topology?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/topology?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 0.5
 
   - name: "Cost Deep Dive"
     weight: 25
     flow:
       - get:
-          url: "/v1/costs?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/costs?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 0.5
       - get:
-          url: "/v1/capacity?tenant_id={{ $processEnvironment.TENANT_ID || '00000000-0000-4000-8000-000000000001' }}"
+          url: "/v2/capacity?tenant_id={{ $processEnvironment.TENANT_ID || 'dcc00000-0000-4000-8000-000000000001' }}"
       - think: 0.5
 
   - name: "Health Check Storm"

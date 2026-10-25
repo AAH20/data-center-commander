@@ -32,19 +32,19 @@ const headers = getHeaders();
 
 export default function () {
   // Heavy endpoints under stress
-  let res = http.get(buildUrl('/v1/analytics', { window_days: 90 }), { headers });
+  let res = http.get(buildUrl('/v2/analytics', { window_days: 90 }), { headers });
   check(res, { 'analytics status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/assets'), { headers });
+  res = http.get(buildUrl('/v2/assets'), { headers });
   check(res, { 'assets status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/topology'), { headers });
+  res = http.get(buildUrl('/v2/topology'), { headers });
   check(res, { 'topology status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/costs'), { headers });
+  res = http.get(buildUrl('/v2/costs'), { headers });
   check(res, { 'costs status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/capacity'), { headers });
+  res = http.get(buildUrl('/v2/capacity'), { headers });
   check(res, { 'capacity status is 200': (r) => r.status === 200 });
 
   sleep(0.5);

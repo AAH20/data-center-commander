@@ -22,16 +22,16 @@ module.exports = {
     // Track response times by endpoint
     const url = requestParams.url || '';
     let endpoint = 'unknown';
-    if (url.includes('/v1/overview')) endpoint = 'overview';
-    else if (url.includes('/v1/assets')) endpoint = 'assets';
-    else if (url.includes('/v1/facilities')) endpoint = 'facilities';
-    else if (url.includes('/v1/workflows')) endpoint = 'workflows';
-    else if (url.includes('/v1/analytics')) endpoint = 'analytics';
-    else if (url.includes('/v1/topology')) endpoint = 'topology';
-    else if (url.includes('/v1/costs')) endpoint = 'costs';
-    else if (url.includes('/v1/capacity')) endpoint = 'capacity';
-    else if (url.includes('/v1/evidence')) endpoint = 'evidence';
-    else if (url.includes('/v1/connectors')) endpoint = 'connectors';
+    if (url.includes('/v2/overview')) endpoint = 'overview';
+    else if (url.includes('/v2/assets')) endpoint = 'assets';
+    else if (url.includes('/v2/facilities')) endpoint = 'facilities';
+    else if (url.includes('/v2/workflows')) endpoint = 'workflows';
+    else if (url.includes('/v2/analytics')) endpoint = 'analytics';
+    else if (url.includes('/v2/topology')) endpoint = 'topology';
+    else if (url.includes('/v2/costs')) endpoint = 'costs';
+    else if (url.includes('/v2/capacity')) endpoint = 'capacity';
+    else if (url.includes('/v2/evidence')) endpoint = 'evidence';
+    else if (url.includes('/v2/connectors')) endpoint = 'connectors';
     else if (url.includes('/healthz')) endpoint = 'healthz';
     else if (url.includes('/readyz')) endpoint = 'readyz';
 

@@ -33,34 +33,34 @@ const headers = getHeaders();
 
 export default function () {
   // Core endpoints under sustained load
-  let res = http.get(buildUrl('/v1/overview'), { headers });
+  let res = http.get(buildUrl('/v2/overview'), { headers });
   check(res, { 'overview status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/assets'), { headers });
+  res = http.get(buildUrl('/v2/assets'), { headers });
   check(res, { 'assets status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/facilities'), { headers });
+  res = http.get(buildUrl('/v2/facilities'), { headers });
   check(res, { 'facilities status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/workflows'), { headers });
+  res = http.get(buildUrl('/v2/workflows'), { headers });
   check(res, { 'workflows status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/analytics', { window_days: 30 }), { headers });
+  res = http.get(buildUrl('/v2/analytics', { window_days: 30 }), { headers });
   check(res, { 'analytics status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/topology'), { headers });
+  res = http.get(buildUrl('/v2/topology'), { headers });
   check(res, { 'topology status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/costs'), { headers });
+  res = http.get(buildUrl('/v2/costs'), { headers });
   check(res, { 'costs status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/capacity'), { headers });
+  res = http.get(buildUrl('/v2/capacity'), { headers });
   check(res, { 'capacity status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/evidence'), { headers });
+  res = http.get(buildUrl('/v2/evidence'), { headers });
   check(res, { 'evidence status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/connectors'), { headers });
+  res = http.get(buildUrl('/v2/connectors'), { headers });
   check(res, { 'connectors status is 200': (r) => r.status === 200 });
 
   res = http.get(`${BASE_URL}/healthz`, { headers });

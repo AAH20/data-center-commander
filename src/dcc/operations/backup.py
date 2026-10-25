@@ -572,9 +572,9 @@ class BackupEngine:
         self,
         tenant_id: str,
         *,
-        backup_type: BackupType = BackupType.FULL,
+        backup_type: BackupType | str = BackupType.FULL,
         tables: list[str] | None = None,
-        compression: CompressionType | None = None,
+        compression: CompressionType | str | None = None,
         tags: dict[str, str] | None = None,
         dsn: str | None = None,
         point_in_time: datetime | None = None,
@@ -583,9 +583,13 @@ class BackupEngine:
 
         Args:
             tenant_id: Tenant UUID string.
-            backup_type: Type of backup (full, incremental, differential).
+            backup_type: Type of backup (full, incremental, differential). Its
+                enum value as a plain string is accepted too: ``dcc.dr``
+                describes policies without importing this module, so it hands
+                over ``"full"`` rather than ``BackupType.FULL``.
             tables: Specific tables to back up (None = all).
-            compression: Compression type (None = engine default).
+            compression: Compression type (None = engine default). Accepts the
+                value string for the same reason as ``backup_type``.
             tags: Optional tags for the backup.
             dsn: PostgreSQL connection string (uses env DCC_DATABASE_URL if None).
             point_in_time: Target point-in-time for PITR.
@@ -595,7 +599,11 @@ class BackupEngine:
         """
         start_time = datetime.now(timezone.utc)
         backup_id = str(uuid4())
-        comp = compression or self.default_compression
+        # Coerce once, here. Metadata serialises ``.value``, so a caller that
+        # spoke the documented string protocol would otherwise fail at write time
+        # -- after pg_dump had already run.
+        backup_type = BackupType(backup_type)
+        comp = CompressionType(compression) if compression is not None else self.default_compression
         table_list = tables if tables is not None else list(DEFAULT_TABLES)
 
         metadata = BackupMetadata(
@@ -1623,6 +1631,36 @@ def list_backups(
 
 
 # ---------------------------------------------------------------------------
+# Composition root for the DR policy runner
+# ---------------------------------------------------------------------------
+
+
+def install_dr_backup_execution(backup_root: str | Path | None = None) -> None:
+    """Point :class:`dcc.dr.orchestrator.DROrchestrator` at this engine.
+
+    ``dcc.dr`` cannot import ``dcc.operations``: the DR package has to stay
+    importable without ``pg_dump`` or a database, and a unit test enforces that
+    boundary over the source. It therefore runs policies through an engine handed
+    to it, and this function is where the real one is handed over. Call it once at
+    application start-up, before running policies.
+
+    Without this call (or a ``backup_engine=`` argument) a policy run has nothing
+    to execute and is recorded as a failure saying so -- never as a success.
+
+    Args:
+        backup_root: Backup root for the engine. Defaults to the orchestrator's
+            own configured ``backup_root``.
+    """
+    from dcc.dr.orchestrator import DROrchestrator
+
+    DROrchestrator.use_backup_engine_factory(
+        lambda orchestrator_root: BackupEngine(
+            backup_root if backup_root is not None else orchestrator_root
+        )
+    )
+
+
+# ---------------------------------------------------------------------------
 # Module exports
 # ---------------------------------------------------------------------------
 
@@ -1657,4 +1695,5 @@ __all__ = [
     "restore_backup",
     "verify_backup",
     "list_backups",
+    "install_dr_backup_execution",
 ]

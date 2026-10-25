@@ -33,13 +33,13 @@ const headers = getHeaders();
 
 export default function () {
   // Simulate dashboard refresh storm
-  let res = http.get(buildUrl('/v1/overview'), { headers });
+  let res = http.get(buildUrl('/v2/overview'), { headers });
   check(res, { 'overview status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/analytics', { window_days: 7 }), { headers });
+  res = http.get(buildUrl('/v2/analytics', { window_days: 7 }), { headers });
   check(res, { 'analytics status is 200': (r) => r.status === 200 });
 
-  res = http.get(buildUrl('/v1/assets'), { headers });
+  res = http.get(buildUrl('/v2/assets'), { headers });
   check(res, { 'assets status is 200': (r) => r.status === 200 });
 
   res = http.get(`${BASE_URL}/healthz`, { headers });
