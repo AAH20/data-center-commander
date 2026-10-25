@@ -26,9 +26,15 @@ resource "aws_guardduty_detector" "this" {
       }
     }
 
+    # Malware protection is expressed in the AWS provider as EBS volume
+    # scanning: `scan_ec2_instance_with_findings` requires an `ebs_volumes`
+    # block, and `enable` lives on that block (there is no `enable` argument
+    # directly on `scan_ec2_instance_with_findings`).
     malware_protection {
       scan_ec2_instance_with_findings {
-        enable = lookup(var.data_sources, "malware_protection", true)
+        ebs_volumes {
+          enable = lookup(var.data_sources, "malware_protection", true)
+        }
       }
     }
   }

@@ -28,11 +28,16 @@ variable "unused_access_age" {
 }
 
 variable "rules" {
-  description = "Access Analyzer rules configuration"
+  description = "Access Analyzer archive rules; each has a name and a filter with required criteria plus optional contains/eq/neq (lists of strings) and exists (\"true\"/\"false\")"
   type = list(object({
-    name      = string
-    rule_type = string
-    details   = any
+    name = string
+    filter = object({
+      criteria = string
+      contains = optional(list(string))
+      eq       = optional(list(string))
+      exists   = optional(string)
+      neq      = optional(list(string))
+    })
   }))
   default = []
 }

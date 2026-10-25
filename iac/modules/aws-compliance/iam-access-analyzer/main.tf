@@ -36,13 +36,14 @@ resource "aws_accessanalyzer_archive_rule" "this" {
   analyzer_name = aws_accessanalyzer_analyzer.this.analyzer_name
   rule_name     = each.value.name
 
-  dynamic "filter" {
-    for_each = each.value.details
-    content {
-      contains = lookup(filter.value, "contains", null)
-      eq       = lookup(filter.value, "eq", null)
-      exists   = lookup(filter.value, "exists", null)
-      neq      = lookup(filter.value, "neq", null)
-    }
+  # `filter` is a set block and every element requires a `criteria` string
+  # (the finding attribute to match, e.g. "resource"). `contains`, `eq` and
+  # `neq` are lists of strings; `exists` is a string ("true"/"false").
+  filter {
+    criteria = each.value.filter.criteria
+    contains = each.value.filter.contains
+    eq       = each.value.filter.eq
+    exists   = each.value.filter.exists
+    neq      = each.value.filter.neq
   }
 }

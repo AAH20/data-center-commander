@@ -91,8 +91,8 @@ module "guardduty" {
 module "security_hub" {
   source = "./security-hub"
 
-  enable_security_hub       = true
-  auto_enable_new_standards = true
+  enable_security_hub  = true
+  auto_enable_controls = true
 
   enable_standards = [
     { name = "aws-foundational-security-best-practices", version = "v1.0.0" },

@@ -13,8 +13,8 @@ variable "enable_security_hub" {
   default     = true
 }
 
-variable "auto_enable_new_standards" {
-  description = "Automatically enable new standards when they become available"
+variable "auto_enable_controls" {
+  description = "Automatically enable new controls added to the standards subscribed by this module (the per-account setting AWS exposes; `aws_securityhub_account` has no `auto_enable_new_standards` argument)"
   type        = bool
   default     = true
 }
