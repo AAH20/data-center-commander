@@ -128,7 +128,13 @@ class ContractTests(unittest.TestCase):
         migration = (ROOT / "database" / "migrations" / "001_cost_intelligence.sql").read_text()
         self.assertIn('data-view="finance"', ui)
         self.assertIn('class="view active" id="view-overview"', ui)
-        self.assertIn("/v1/costs", ui)
+        # /v2/costs, not /v1/costs. The console moved to the v2 prefix when the served
+        # app stopped exposing /v1 at all, so this assertion was demanding a route that
+        # returns 404 from the product. Asserting the old prefix would have "passed" only
+        # while the UI was broken. This is the same defect class as a test that checks a
+        # documented endpoint exists without ever calling it.
+        self.assertIn("/v2/costs", ui)
+        self.assertNotIn("/v1/costs", ui, "the console must not call the retired v1 prefix")
         self.assertIn("SYNTHETIC · NOT LIVE", ui)
         self.assertIn("ENABLE ROW LEVEL SECURITY", migration)
         self.assertIn("CREATE TABLE IF NOT EXISTS dcc.price_observations", migration)

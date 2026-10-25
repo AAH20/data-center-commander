@@ -204,7 +204,7 @@ def require_tenant() -> str:
 # ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True)
 class TenantContext:
     """Context manager that scopes database operations to a single tenant.
 
