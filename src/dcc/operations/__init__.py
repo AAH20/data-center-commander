@@ -35,7 +35,7 @@ from .backup import (
 from .migrations import *
 from .ha import (
     FailoverDecision,
-    FailoverResult,
+    FailoverOutcome,
     FailoverStrategy,
     HALoadBalancer,
     HAManager,
@@ -86,7 +86,7 @@ __all__ = [
     "verify_backup",
     "verify_checksum",
     "FailoverDecision",
-    "FailoverResult",
+    "FailoverOutcome",
     "FailoverStrategy",
     "HALoadBalancer",
     "HAManager",

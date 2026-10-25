@@ -20,13 +20,20 @@ groups:
           description: "The DCC database readiness check has been failing for more than 1 minute."
 
       - alert: DCCNoRecentTelemetry
-        expr: dcc_latest_telemetry_age_seconds > 3600
+        # The exporter signals "age unknown" with -1 (overview fetch failed, or the
+        # payload carried no latest_telemetry_ingested_at). `> 3600` alone is silent
+        # in exactly the case where freshness cannot be proven, so the negative
+        # sentinel is alerted on too: unknown staleness is not freshness.
+        expr: dcc_latest_telemetry_age_seconds > 3600 or dcc_latest_telemetry_age_seconds < 0
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "No recent telemetry ingested"
-          description: "No telemetry has been ingested in the last hour."
+          description: >-
+            No telemetry has been ingested in the last hour, or telemetry age could
+            not be determined (the exporter reports -1 when it cannot read
+            latest_telemetry_ingested_at).
 
       - alert: DCCExporterDown
         expr: up{job="dcc-exporter"} == 0

@@ -418,8 +418,18 @@ async def metrics_middleware(request: Request, call_next):
     finally:
         route = request.scope.get("route")
         label = getattr(route, "path", None) or "unmatched"
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
-        _METRICS.record_latency(label, elapsed_ms)
+        elapsed_s = time.perf_counter() - started
+        # record_latency(name, value, labels) -- the route belongs in LABELS, not in the
+        # name. Passing it as the name produced /v2/overview_bucket, which is not a legal
+        # Prometheus metric name, and one illegal name makes Prometheus reject the WHOLE
+        # scrape: every app metric was being discarded, so every alert built on one could
+        # never fire. The unit was wrong too -- milliseconds into a _seconds histogram,
+        # so every observation would have landed above the top bucket.
+        _METRICS.record_latency(
+            "api_request_duration_seconds",
+            elapsed_s,
+            labels={"route": label},
+        )
         _METRICS.increment_throughput("api_requests_total", labels={"route": label})
         if status_code >= 400:
             _METRICS.record_error(_classify_status(status_code), labels={"route": label})

@@ -179,8 +179,29 @@ class FailoverDecision:
 
 
 @dataclass(slots=True)
-class FailoverResult:
-    """Result of a failover operation."""
+class FailoverOutcome:
+    """Outcome of a single node-pair failover attempt in the HA manager.
+
+    Deliberately NOT named ``FailoverResult``: ``dcc.dr.failover.FailoverResult``
+    is a different, richer shape (an execution record with ``execution_id``,
+    step counters, and a ``FailoverStatus``). Two classes sharing the name meant
+    an import typo silently produced the wrong one and the attributes only
+    surfaced at the call site.
+
+    This one answers "did the VIP/route move from source to target, and how
+    long did it take". It carries no step detail -- the DR orchestrator's
+    ``FailoverExecution`` does.
+
+    Attributes:
+        success: Whether the source-to-target move completed.
+        source_node: Node the failover moved away from.
+        target_node: Node now serving, or None if no target was selected.
+        duration_ms: Wall-clock duration of the attempt, in milliseconds.
+        timestamp: Unix epoch seconds when the attempt finished.
+        error: Failure reason, or None on success.
+        metadata: Strategy-specific detail (strategy used, confidence, ...).
+    """
+
     success: bool
     source_node: str
     target_node: str | None
@@ -696,7 +717,7 @@ class HAManager:
         self._router = HealthBasedRouter()
         self._nodes: dict[str, NodeHealth] = {}
         self._lock = threading.RLock()
-        self._failover_history: list[FailoverResult] = []
+        self._failover_history: list[FailoverOutcome] = []
         self._max_history = 100
 
     @property
@@ -764,7 +785,7 @@ class HAManager:
                 strategy=self._failover_strategy,
             )
 
-    def execute_failover(self, source_node_id: str, target_node_id: str | None = None) -> FailoverResult:
+    def execute_failover(self, source_node_id: str, target_node_id: str | None = None) -> FailoverOutcome:
         """Execute a failover from source to target.
 
         If target_node_id is None, the best target is selected automatically.
@@ -773,7 +794,7 @@ class HAManager:
         with self._lock:
             source = self._nodes.get(source_node_id)
             if source is None:
-                return FailoverResult(
+                return FailoverOutcome(
                     success=False,
                     source_node=source_node_id,
                     target_node=None,
@@ -785,7 +806,7 @@ class HAManager:
             if target_node_id is None:
                 decision = self.check_failover(source_node_id)
                 if not decision.should_failover or decision.target_node is None:
-                    return FailoverResult(
+                    return FailoverOutcome(
                         success=False,
                         source_node=source_node_id,
                         target_node=None,
@@ -797,7 +818,7 @@ class HAManager:
 
             target = self._nodes.get(target_node_id)
             if target is None:
-                return FailoverResult(
+                return FailoverOutcome(
                     success=False,
                     source_node=source_node_id,
                     target_node=target_node_id,
@@ -811,7 +832,7 @@ class HAManager:
             source.failed_at = time.time()
             target.state = NodeState.ACTIVE
 
-            result = FailoverResult(
+            result = FailoverOutcome(
                 success=True,
                 source_node=source_node_id,
                 target_node=target_node_id,
@@ -838,7 +859,7 @@ class HAManager:
         with self._lock:
             return [n for n in self._nodes.values() if n.is_healthy]
 
-    def get_failover_history(self) -> list[FailoverResult]:
+    def get_failover_history(self) -> list[FailoverOutcome]:
         """Get failover history."""
         with self._lock:
             return list(self._failover_history)

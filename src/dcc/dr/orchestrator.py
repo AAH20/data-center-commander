@@ -175,6 +175,17 @@ class DROrchestrator:
     Coordinates all DR subsystems (policies, failover, RTO/RPO, testing)
     into a unified management interface.
 
+    State: this class keeps no run state of its own. Everything it reports is
+    read from the subsystem roots it was constructed with -- policies and
+    procedures as JSON files, failover executions as ``_exec_*.json``, RTO/RPO
+    measurements and DR test runs as their own files. Constructing a new
+    orchestrator over the same roots therefore recovers the same history; it is
+    not memory-only, and a restart does not erase the incident record.
+
+    The exception is the failover step-handler registry: handlers are code, so a
+    fresh process must register them again before it can act on a procedure.
+    See :class:`~dcc.dr.failover.FailoverAutomation`.
+
     Usage::
 
         orchestrator = DROrchestrator("/path/to/dr/data")
@@ -331,10 +342,19 @@ class DROrchestrator:
         return self._policy_engine.get_due_policies(tenant_id)
 
     def run_due_policies(self, tenant_id: str) -> list[dict[str, Any]]:
-        """Run all due policies for a tenant.
+        """Mark all due policies as run.
+
+        WARNING: this does not execute a backup. It records ``success=True`` and
+        a timestamp for each due policy without calling any backup engine, so
+        the returned ``success`` means "the policy was marked run", not "a
+        backup exists". ``dcc.operations.backup.BackupEngine`` is the component
+        that actually runs ``pg_dump``; this class deliberately does not import
+        it (dcc.dr stays stdlib-only), and nothing in the API calls this method
+        today. Treat it as bookkeeping until it is wired to
+        ``BackupPolicy.to_engine_params()``.
 
         Returns:
-            List of policy run results.
+            List of policy run results, one per due policy.
         """
         due = self.get_due_policies(tenant_id)
         results = []

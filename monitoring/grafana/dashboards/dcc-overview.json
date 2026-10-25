@@ -87,11 +87,12 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "sum(rate(dcc_api_requests_total[5m])) by (route)",
+          "expr": "sum(rate(api_requests_total[5m])) by (route)",
           "legendFormat": "{{route}}",
           "refId": "A"
         }
       ],
+      "description": "Requests per second by route. Query changed from dcc_api_requests_total to api_requests_total: the API has never published a dcc_-prefixed request counter (src/dcc/api_async.py, metrics_middleware); this panel was permanently empty.",
       "title": "Request Rate by Route",
       "type": "timeseries"
     },
@@ -180,6 +181,7 @@
           "refId": "A"
         }
       ],
+      "description": "EMPTY BY DESIGN (no producer): the API records latency with the route template as the metric NAME (record_latency(label, ...) in src/dcc/api_async.py), so dcc_api_request_duration_seconds_bucket is never published. The panel renders nothing until the app publishes a stable latency histogram; see the TODO in monitoring/prometheus/rules/dcc-alerts.yml.",
       "title": "p95 Latency by Route",
       "type": "timeseries"
     },
@@ -312,6 +314,7 @@
           "refId": "A"
         }
       ],
+      "description": "EMPTY BY DESIGN (no producer): no metric counts database errors. The exporter publishes readiness (dcc_database_ready) and the API counts HTTP 5xx in api_errors_total -- neither is a database fault counter. Add one in the app, or delete this panel.",
       "title": "Database Errors",
       "type": "stat"
     },
@@ -400,6 +403,7 @@
           "refId": "A"
         }
       ],
+      "description": "EMPTY BY DESIGN (no producer): nothing publishes dcc_database_connections. The exporter's database metrics are readiness/schema/rls booleans only (monitoring/exporter/dcc_exporter.py).",
       "title": "Database Connections",
       "type": "timeseries"
     }

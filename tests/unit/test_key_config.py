@@ -8,6 +8,7 @@ actually produces a key that authenticates.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -115,9 +116,16 @@ class TestKeyCli:
         assert "dcc_" not in result.stdout, "the plaintext key must not appear in hash-only mode"
 
     def test_full_output_includes_the_key_once(self):
+        # This asserts the LEGACY print-only path, which only exists when no database is
+        # configured. It must clear DCC_DATABASE_URL from the child environment: with a
+        # DSN, `create` correctly requires a UUID tenant and writes a durable row, so the
+        # same command exits 2 and this test failed or passed depending on whether the
+        # developer happened to export a DSN. A test that changes behaviour with the
+        # ambient environment is not testing the code it claims to.
+        env = {k: v for k, v in os.environ.items() if k != "DCC_DATABASE_URL"}
         result = subprocess.run(
             [sys.executable, "-m", "dcc.keys_cli", "create", "--tenant", "t"],
-            capture_output=True, text=True,
+            capture_output=True, text=True, env=env,
         )
         assert "DCC_API_KEYS=" in result.stdout
         assert "shown ONCE" in result.stdout

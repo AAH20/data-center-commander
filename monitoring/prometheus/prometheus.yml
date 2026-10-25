@@ -6,6 +6,10 @@ global:
 
 rule_files:
   - "alerts.yml"
+  # Application-level alerts (error rate, latency, database). Without this entry
+  # the file is never loaded, so its rules never evaluate -- the same silent gap
+  # as a rule over a series that does not exist.
+  - "rules/dcc-alerts.yml"
 
 alerting:
   alertmanagers:

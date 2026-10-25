@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 from uuid import uuid4
 
 
@@ -85,7 +85,28 @@ class PolicyStatus(str, Enum):
 
 @dataclass(frozen=True)
 class BackupPolicy:
-    """Declarative backup policy.
+    """Declarative backup policy -- a record of intent, not an executor.
+
+    Nothing in this class, and nothing in this package, runs a backup. The only
+    component in the product that executes backups is
+    :class:`dcc.operations.backup.BackupEngine`, which shells out to ``pg_dump``
+    and ``psql``; ``dcc.dr`` deliberately does not import ``dcc.operations`` so
+    that DR policy bookkeeping stays stdlib-only and importable without a
+    database. Every field here is metadata: what to back up, how often, and how
+    long to keep it.
+
+    The bridge to the engine is :meth:`to_engine_params`, which produces the
+    keyword arguments ``BackupEngine.create_backup`` accepts. It refuses policy
+    types the engine cannot express (CONTINUOUS, SNAPSHOT) instead of silently
+    mapping them onto a full backup -- a policy that claims continuous
+    protection while doing a nightly dump is worse than one that fails loudly.
+
+    Second representation, same concept: the ``dcc.backup_policies`` table read
+    by ``/v2/dr/policies``. Its CHECK constraints do not match this class's
+    enums (``policy_type`` allows only scheduled/continuous/on_demand/snapshot;
+    ``compression`` is none/gzip/zstd/lz4 rather than a boolean; ``status`` is
+    run state, not lifecycle). Converting between the two is therefore lossy and
+    is not attempted here -- see the module-level note below.
 
     Attributes:
         policy_id: Unique identifier.
@@ -179,6 +200,66 @@ class BackupPolicy:
             status=PolicyStatus(data.get("status", "active")),
             custom_cron=data.get("custom_cron"),
         )
+
+    # ------------------------------------------------------------------
+    # Bridge to the real execution engine
+    # ------------------------------------------------------------------
+
+    #: Policy types dcc.operations.backup.BackupEngine can execute. The engine's
+    #: BackupType has exactly these three members; CONTINUOUS and SNAPSHOT are
+    #: schedule/protection intents it has no code path for.
+    ENGINE_BACKUP_TYPES: ClassVar[dict[PolicyType, str]] = {
+        PolicyType.FULL: "full",
+        PolicyType.INCREMENTAL: "incremental",
+        PolicyType.DIFFERENTIAL: "differential",
+    }
+
+    def to_engine_params(self) -> dict[str, Any]:
+        """Keyword arguments for ``BackupEngine.create_backup``.
+
+        Returned values are plain strings matching the engine's ``BackupType``
+        and ``CompressionType`` members, so this module does not have to import
+        ``dcc.operations`` and stays stdlib-only.
+
+        Returns:
+            Dict with ``tenant_id``, ``backup_type``, ``tables``, ``compression``
+            and ``tags`` -- a subset of ``create_backup``'s parameters. Each key
+            is asserted against the engine's real signature in the unit tests,
+            so the two cannot drift apart silently.
+
+        Raises:
+            PolicyValidationError: If ``policy_type`` has no engine equivalent,
+                rather than downgrading it to a full backup.
+        """
+        try:
+            backup_type = self.ENGINE_BACKUP_TYPES[self.policy_type]
+        except KeyError:
+            raise PolicyValidationError(
+                f"policy type {self.policy_type.value!r} has no BackupEngine "
+                f"equivalent; the engine can run "
+                f"{sorted(t.value for t in self.ENGINE_BACKUP_TYPES)}"
+            ) from None
+
+        return {
+            "tenant_id": self.tenant_id,
+            # The engine treats None as "every table"; an empty list here means
+            # the same thing, so translating is what keeps "all" from being
+            # read as "no tables".
+            "tables": list(self.tables) or None,
+            "backup_type": backup_type,
+            "compression": "gzip" if self.compression else "none",
+            "tags": dict(self.tags) or None,
+        }
+
+    def to_retention_params(self) -> dict[str, int]:
+        """Retention fields for ``BackupEngine.apply_retention``.
+
+        ``retention_days`` is an age cap, which is the engine's
+        ``max_age_days``. The engine's per-period counts (keep_daily/weekly/
+        monthly/yearly) have no counterpart on this record, so they are left
+        alone and the engine's own defaults apply.
+        """
+        return {"max_age_days": self.retention_days}
 
 
 @dataclass

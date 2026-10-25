@@ -1,3 +1,15 @@
+# Alert rules for the DCC API.
+#
+# Every series referenced below is contract-checked by
+# tests/unit/test_alert_rule_contract.py: a rule may only reference a metric this
+# repository actually emits (the API's /metrics exposition, or an exporter under
+# monitoring/) or a series listed in that test's external-metric allowlist.
+#
+# The reason is not stylistic. `expr: some_metric > 0` where nothing publishes
+# `some_metric` is a rule that can never fire: the dashboard stays green and the
+# pager stays silent, which is indistinguishable from a healthy system. Rules that
+# cannot currently be backed by a series are kept in this file, commented out and
+# marked INACTIVE with the reason, so the gap is visible instead of deleted.
 groups:
   - name: dcc-api
     rules:
@@ -10,19 +22,48 @@ groups:
           summary: "DCC API is down"
           description: "DCC API has been unreachable for more than 1 minute."
 
-      - alert: DCCDatabaseUnavailable
-        expr: dcc_database_errors_total > 0
-        for: 2m
-        labels:
-          severity: critical
-        annotations:
-          summary: "DCC database errors detected"
-          description: "Database errors have been observed for more than 2 minutes."
+      # ---------------------------------------------------------------------
+      # INACTIVE: no source emits dcc_database_errors_total.
+      #
+      # Nothing in this repository counts database errors. What does exist:
+      #   * the exporter's readiness gauges (dcc_database_ready,
+      #     dcc_database_schema_ok, dcc_database_rls_ok) in
+      #     monitoring/exporter/dcc_exporter.py, and
+      #   * the API's HTTP error counter (api_errors_total), which counts 5xx
+      #     responses, not database faults.
+      # Retargeting this at dcc_database_ready would duplicate the
+      # DCCDatabaseUnhealthy alert in monitoring/prometheus/alerts.yml, so it is
+      # left commented out rather than silently re-labelled as coverage it is not.
+      #
+      # TODO(product decision): either add a database-error counter to the API
+      # (preferred -- the readiness probe only reports up/down, not error rates),
+      # or delete this rule and accept that database faults are covered only by
+      # readiness.
+      # ---------------------------------------------------------------------
+      # - alert: DCCDatabaseUnavailable
+      #   expr: dcc_database_errors_total > 0
+      #   for: 2m
+      #   labels:
+      #     severity: critical
+      #   annotations:
+      #     summary: "DCC database errors detected"
+      #     description: "Database errors have been observed for more than 2 minutes."
 
+      # Was `sum(rate(dcc_api_requests_total{status=~"5.."}[5m])) / sum(rate(...))`.
+      # Two things were wrong with it:
+      #   1. the app publishes api_requests_total, not dcc_api_requests_total
+      #      (src/dcc/api_async.py, metrics_middleware), so the whole expression
+      #      matched no series;
+      #   2. api_requests_total carries only a `route` label -- there is no
+      #      `status` label to filter 5xx on. Server errors are counted separately
+      #      in api_errors_total{type,route}, where _classify_status() maps
+      #      HTTP >= 500 to type="internal" and 504 to type="timeout".
+      # The ratio is therefore server errors / all requests, both counters, both
+      # rate()-d over the same window.
       - alert: DCCHighErrorRate
         expr: |
-          sum(rate(dcc_api_requests_total{status=~"5.."}[5m]))
-          / sum(rate(dcc_api_requests_total[5m])) > 0.05
+          sum(rate(api_errors_total{type=~"internal|timeout"}[5m]))
+          / sum(rate(api_requests_total[5m])) > 0.05
         for: 5m
         labels:
           severity: warning
@@ -30,14 +71,36 @@ groups:
           summary: "DCC API high error rate"
           description: "5xx error rate exceeds 5% over the last 5 minutes."
 
-      - alert: DCCHighLatency
-        expr: |
-          histogram_quantile(0.95,
-            sum(rate(dcc_api_request_duration_seconds_bucket[5m])) by (le, route)
-          ) > 0.5
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "DCC API high latency"
-          description: "p95 latency exceeds 500ms for at least one route over 5 minutes."
+      # ---------------------------------------------------------------------
+      # INACTIVE: no source emits dcc_api_request_duration_seconds_bucket.
+      #
+      # The API records latency with `_METRICS.record_latency(label, elapsed_ms)`
+      # (src/dcc/api_async.py, metrics_middleware). The first positional argument
+      # of record_latency() is the metric NAME, so the histogram family is named
+      # after the route template ("/v2/assets", "unmatched", ...), not after a
+      # stable metric name -- and a name containing "/" is not even legal
+      # Prometheus exposition. The scrape therefore contains no usable latency
+      # family, and this rule could never fire.
+      #
+      # This is an application defect, not a rules defect: the fix is to call
+      # record_latency("api_request_duration_seconds", elapsed_seconds,
+      # labels={"route": label}) in the middleware. That change is out of scope
+      # for this rule set (it belongs to the src/ owner), so the rule stays
+      # commented out until the histogram has a resolvable name.
+      #
+      # TODO(product decision): once the app publishes a stable latency histogram,
+      # restore this rule as
+      #   histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m]))
+      #                            by (le, route)) > 0.5
+      # ---------------------------------------------------------------------
+      # - alert: DCCHighLatency
+      #   expr: |
+      #     histogram_quantile(0.95,
+      #       sum(rate(dcc_api_request_duration_seconds_bucket[5m])) by (le, route)
+      #     ) > 0.5
+      #   for: 5m
+      #   labels:
+      #     severity: warning
+      #   annotations:
+      #     summary: "DCC API high latency"
+      #     description: "p95 latency exceeds 500ms for at least one route over 5 minutes."

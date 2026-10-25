@@ -236,7 +236,30 @@ class FailoverExecution:
 
 @dataclass
 class FailoverResult:
-    """Result of a failover execution."""
+    """Result of a DR failover execution (or rollback) driven by FailoverAutomation.
+
+    This is the DR execution-level shape: it identifies the run by
+    ``execution_id`` and reports step counts and rollback state, so a caller can
+    decide whether to retry, roll back, or escalate after an incident.
+
+    It is NOT ``dcc.operations.ha.FailoverOutcome``, which records a single
+    node-pair move (source/target/duration_ms) with no step detail. The two
+    were once both named ``FailoverResult``; ``FailoverOutcome`` was renamed
+    because the collision was silent.
+
+    Attributes:
+        success: Whether every step (or every rollback step) completed.
+        execution_id: Identifier of the FailoverExecution this summarises.
+        status: Terminal FailoverStatus of the run.
+        message: Human-readable summary, e.g. "failover completed: 7/7 steps".
+        duration_seconds: Wall-clock duration of the run.
+        error: Error text from the failing step, empty on success.
+        steps_completed: Steps that reached COMPLETED.
+        steps_failed: Steps that reached FAILED.
+        steps_total: Steps the run attempted.
+        rolled_back: Whether the run was rolled back.
+        metadata: Additional caller-supplied detail.
+    """
 
     success: bool
     execution_id: str
@@ -390,6 +413,20 @@ class FailoverAutomation:
 
     Coordinates failover procedures, step execution, rollback, and
     audit logging. Thread-safe for concurrent operations.
+
+    Durability: procedures (``<root>/<procedure_id>.json``) and executions
+    (``<root>/_exec_<execution_id>.json``) are written to ``procedure_root``
+    atomically before and after every step run, so a run that was in flight when
+    the process died can still be read back. Procedures are re-loaded at
+    construction; executions are read through on demand by ``get_execution``,
+    ``list_executions`` and ``get_status``.
+
+    What is process-local and NOT durable: the ``_executions`` cache, and the
+    step-handler registry (``register_step_handler``). Handlers are code, not
+    data -- a restarted process must register its own handlers before it can
+    resume, and ``_default_step_handler`` will otherwise simulate the step.
+    There is no resume-from-disk of a half-finished run: a restart shows the
+    run's last written status (``in_progress``) but does not continue it.
 
     Attributes:
         procedure_root: Root directory for procedure storage.
@@ -884,9 +921,15 @@ class FailoverAutomation:
         return sorted(executions, key=lambda e: e.created_at, reverse=True)
 
     def get_status(self) -> dict[str, Any]:
-        """Get overall failover automation status."""
-        with self._lock:
-            executions = list(self._executions.values())
+        """Get overall failover automation status.
+
+        Counts are read through :meth:`list_executions`, which merges the
+        in-memory cache with the ``_exec_*.json`` records on disk. Counting
+        ``self._executions`` alone made a restarted process report
+        ``total_executions: 0`` during precisely the incident it was supposed to
+        report on -- the run records were on disk the whole time.
+        """
+        executions = self.list_executions()
 
         total = len(executions)
         completed = sum(1 for e in executions if e.status == FailoverStatus.COMPLETED)

@@ -205,6 +205,7 @@
           "refId": "A"
         }
       ],
+      "description": "ALWAYS 0 (panel not meaningful yet): the exporter derives this from readyz's checks.tenant_rls, but /readyz never returns that key -- it reports only checks.database and checks.schema (src/dcc/api_async.py, readyz). Until the readiness probe gains an RLS check, this panel shows 0 regardless of actual tenant isolation.",
       "title": "Tenant RLS",
       "type": "stat"
     },
