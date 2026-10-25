@@ -414,34 +414,42 @@ The split is **not** redundant — it is **complementary but unjoined**:
 So `dr/` holds the policy/RTO layer and `operations/` holds the execution layer, with nothing wiring
 them together. That is precisely the missing link, and it is a WIRE argument for `backup.py`.
 
-Genuine overlap does exist in HA: **two different `FailoverResult` classes with the same name**:
+> **STATUS UPDATE — this section is a historical record, actioned since.**
+>
+> The `FailoverResult` collision below was real and is fixed: the `operations/ha.py` class is
+> now `FailoverOutcome`, with a docstring naming the other type so a reader who lands on the
+> wrong one is told which they wanted. The two were never the same concept — `dr` records an
+> execution, `ha` records a single node-pair move — so unifying them would have been wrong.
+>
+> Two claims in this section did not survive verification and are struck in the text below:
+> the "restore bug" (a dump without `CREATE SCHEMA`) does not reproduce, and `ha.py` is not
+> two simulated engines competing for one name.
+
+Genuine overlap did exist in HA: **two different `FailoverResult` classes with the same name**:
 
 ```
 $ .venv/bin/python -c "import dcc.dr as dr, dcc.operations as ops; print(dr.FailoverResult is ops.FailoverResult)"
 dr.FailoverResult: <class 'dcc.dr.failover.FailoverResult'>
-ops.FailoverResult: <class 'dcc.operations.ha.FailoverResult'>
+ops.FailoverResult: <class 'dcc.operations.ha.FailoverResult'>   # now ops.FailoverOutcome
 same object? False
 ```
 
-`dr/failover.py` (33 functions) and `operations/ha.py` (43 functions) both model node failover.
-`dr/failover.py:726` admits its own limits: `"""Default step handler - simulates step execution."""`
-with `# In production, this would perform actual operations`. Two simulated failover engines with
-colliding type names is a real hazard: an importer can bind the wrong `FailoverResult` and
-type-check fine.
+`dr/failover.py` and `operations/ha.py` both model node failover. `dr/failover.py` admits its
+own limits: `"""Default step handler - simulates step execution."""` with `# In production,
+this would perform actual operations`. Two failover models under one type name was a real
+hazard: an importer could bind the wrong one and type-check fine.
 
 ### 2.7 Verdict: **WIRE `backup.py`; DEFER `ha.py`; keep `migrations.py` as-is**
 
-- `backup.py` (1,627 LOC): **WIRE.** It is the only code that performs a real, verifiable operation
-  and it produces artifacts you can inspect, checksum and re-verify. **Cost:** low-to-moderate — two
-  concrete fixes (emit `CREATE SCHEMA dcc;` at the top of the dump or switch to `--create`; stop
-  hard-casting `tenant_id::uuid` / narrow the `except`), then route `dr.BackupPolicy` scheduling
-  through it. **Risk:** the restore bug means any RTO drill run today fails; do not ship the
-  scheduler before the restore test passes. **Breaks on delete:** `tests/test_backup.py` (including
-  `DEFAULT_TABLES` assertions). Nothing in `src/`.
-- `ha.py` (872 LOC): **DEFER**, and de-duplicate against `dr/failover.py` first — pick one failover
-  model, rename one `FailoverResult`.
-- `migrations.py` (687 LOC): **DEFER.** Real-looking, needs a throwaway DB to judge; not worth the
-  time while the restore path is broken.
+- `backup.py` (1,627 LOC): **WIRE — done.** It is the only code that performs a real,
+  verifiable operation and produces artifacts you can inspect, checksum and re-verify. It is
+  now reachable over HTTP (`/v2/backup/runs`), and its `_get_row_counts` defect is fixed.
+  **Cost:** low-to-moderate. The claimed restore bug (a dump missing `CREATE SCHEMA dcc;`) was
+  **withdrawn**: `pg_dump --dbname` emits it, the dump restores into a fresh database with
+  exit 0 and 53 tables. Do not plan work around it.
+- `ha.py` (872 LOC): **DEFER**, and the type collision is resolved — `FailoverResult` is now
+  `FailoverOutcome`.
+- `migrations.py` (687 LOC): **DEFER.** Real-looking, needs a throwaway DB to judge.
 
 ---
 
