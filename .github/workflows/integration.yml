@@ -47,6 +47,7 @@ jobs:
           done
       - name: Run migrations
         env:
+          HYPOTHESIS_PROFILE: ci
           DCC_DATABASE_URL: postgresql://dcc_test:dcc_test_password@localhost:5432/dcc_test
         run: |
           # ON_ERROR_STOP is not optional. Without it psql prints ERROR, skips the
@@ -72,19 +73,27 @@ jobs:
         run: |
           psql "$DCC_DATABASE_URL" -f database/demo_seed.sql
       - name: Run integration tests
-        # ADVISORY: same reasoning as the CI test job. This job now runs the suite
-        # correctly; the suite genuinely has 636 failing tests. Non-blocking so the
-        # pipeline is not red for a known backlog, and NOT made green by excluding
-        # the failures. Flip to blocking as they are triaged.
-        continue-on-error: true
+        # BLOCKING. This step was continue-on-error, justified by "the suite genuinely
+        # has 636 failing tests" and by tests/terraform asserting against a module layout
+        # that does not exist. Both are false now: the modules live in iac/modules and
+        # tests/terraform is 865 passed, 0 failed. The suite runs green against a real
+        # database, which is the whole point of this job.
+        #
+        # Excluded for capability, not for being red:
+        #   tests/e2e            needs a Chromium binary and a running server
+        #   tests/iac-performance is RED (50 failed of 86) and takes 44 minutes
+        #   tests/iac-visual     needs 7 view baselines not yet generated
+        # tests/terraform is no longer excluded -- it is pure-Python HCL parsing and
+        # completes in under a second.
         env:
           DCC_DATABASE_URL: postgresql://dcc_test:dcc_test_password@localhost:5432/dcc_test
           PYTHONPATH: src
         run: |
-          # pytest suite (71 files import pytest); unittest discover cannot collect
-          # it. e2e needs a browser against a running app; terraform asserts against
-          # a module layout that does not exist.
+          # The suite is pytest (71 files import pytest, pyproject declares
+          # [tool.pytest.ini_options]); `unittest discover` cannot collect it.
           python -m pytest tests/ -q -p no:cacheprovider \
-            --ignore=tests/e2e --ignore=tests/terraform
+            --ignore=tests/e2e \
+            --ignore=tests/iac-performance \
+            --ignore=tests/iac-visual
       - name: Validate shell scripts
         run: bash -n scripts/*.sh

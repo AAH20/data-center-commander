@@ -35,15 +35,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # iac/modules, not terraform/modules. The library moved and this matrix was
+        # never updated, so every one of these entries pointed at a directory that does
+        # not exist -- `cd ${{ matrix.module }}` failed before terraform ever ran, on
+        # every module, in every release. A validation matrix that cannot reach its
+        # inputs validates nothing.
         module:
-          - terraform/modules/aws
-          - terraform/modules/aws-compliance
-          - terraform/modules/gcp-compliance
-          - terraform/modules/digitalocean
-          - terraform/modules/ibm
-          - terraform/modules/kvm
-          - terraform/modules/openshift
-          - terraform/modules/integration
+          - iac/modules/aws
+          - iac/modules/aws-compliance
+          - iac/modules/gcp-compliance
+          - iac/modules/digitalocean
+          - iac/modules/ibm
+          - iac/modules/kvm
+          - iac/modules/openshift
+          - iac/modules/integration
     steps:
       - uses: actions/checkout@v4
 
