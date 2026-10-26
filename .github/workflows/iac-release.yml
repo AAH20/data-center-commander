@@ -210,19 +210,21 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/}"
           [ "${{ github.event_name }}" = "workflow_dispatch" ] && VERSION="${{ inputs.version }}"
 
-          # Terraform modules bundle
+          # IaC modules bundle. Packages iac/, not terraform/: the library moved and
+          # iac/ holds 210 .tf files while terraform/ retains 25 stale ones, so bundling
+          # terraform/ shipped a fraction of the product under a name that implied all
+          # of it.
           tar czf "dist/terraform-modules-${VERSION}.tar.gz" \
             --exclude='.terraform' \
             --exclude='*.tfstate*' \
             --exclude='.terraform.lock.hcl' \
-            terraform/
+            iac/
 
-          # OpenTofu modules bundle
-          tar czf "dist/opentofu-modules-${VERSION}.tar.gz" \
-            --exclude='.terraform' \
-            --exclude='*.tfstate*' \
-            --exclude='.terraform.lock.hcl' \
-            opentofu/
+          # There is no separate OpenTofu tree. The HCL is the same and is consumed by
+          # either binary, so a second "opentofu-modules" artifact for every release
+          # while the directory did not exist meant this tar failed and the whole
+          # packaging step aborted -- no artifacts, no checksums, nothing uploaded.
+          # Removed rather than pointed at a sibling directory that would duplicate it.
 
           # Kubernetes manifests bundle
           tar czf "dist/k8s-manifests-${VERSION}.tar.gz" k8s/
@@ -232,11 +234,13 @@ jobs:
             --exclude='.terraform' \
             --exclude='*.tfstate*' \
             --exclude='.terraform.lock.hcl' \
-            terraform/ opentofu/ k8s/
+            iac/ k8s/
 
           # Generate checksums
           cd dist
-          shasum -a 256 *.tar.gz > SHA256SUMS.txt
+          # ./* not *: an unanchored glob can expand to a filename beginning with "-",
+          # which shasum would read as an option (shellcheck SC2035).
+          shasum -a 256 ./*.tar.gz > SHA256SUMS.txt
           cd ..
 
       - name: Upload IaC artifacts

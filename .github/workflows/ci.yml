@@ -64,6 +64,25 @@ jobs:
     # which looked like a concurrency problem and was not one. Raised to 45 so the
     # job can actually finish and report a real number.
     timeout-minutes: 45
+    # A real PostgreSQL, because part of this suite measures a real database: the
+    # /v2/overview provenance tests assert live/synthetic status read from stored rows,
+    # and five of them fail with 503 database_not_configured when none is reachable.
+    # Advertising DCC_DATABASE_URL at a host with no server behind it is worse than
+    # either extreme -- it makes "the database is unreachable" look like a test failure.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dcc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +93,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install -e ".[test]"
+        # checkov is imported by tests/compliance: without it pytest aborts with
+        # "Interrupted: 1 error during collection" and the job fails having run no
+        # compliance tests at all. The suite step below also installs coverage and
+        # checkov again; this one has to be complete so the migration step's tooling
+        # is present.
+        run: pip install -e ".[test,checkov]"
 
       # This gate is BLOCKING. It used to be continue-on-error: true, justified by
       # "636 pre-existing failures, 334 of them terraform tests targeting
@@ -94,6 +118,18 @@ jobs:
       #                        failures would not. Fixing it is its own piece of work.
       #   tests/iac-visual     needs 7 view baselines that have not been generated
       # Everything else runs. If a test in the included set is red, this job fails.
+      - name: Prepare the test database
+        env:
+          DCC_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/dcc_test
+        run: |
+          until pg_isready -h localhost -p 5432; do sleep 1; done
+          # ON_ERROR_STOP is not optional: without it psql prints ERROR, skips the
+          # failing statement and exits 0, so a schema that never built reports success.
+          psql "$DCC_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f database/schema.sql
+          for f in database/migrations/*.sql; do
+            psql "$DCC_DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
       - name: Run test suite
         env:
           PYTHONPATH: src
