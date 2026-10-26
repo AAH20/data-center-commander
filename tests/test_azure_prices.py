@@ -1,3 +1,4 @@
+import io
 import json
 import unittest
 from unittest.mock import patch
@@ -5,6 +6,43 @@ from unittest.mock import patch
 from dcc.api import Handler
 from dcc.azure_prices import ENDPOINT, fetch_azure_retail_prices
 from dcc.google_prices import fetch_google_cloud_prices
+
+
+class _RecordingHandler(Handler):
+    """A real Handler with its socket replaced.
+
+    Only the transport is faked: path, headers, client address, and where bytes go.
+    Routing, validation and response construction are the product code under test.
+    """
+
+    def __init__(self, path: str) -> None:  # noqa: D107 - deliberately not calling the base __init__
+        self.path = path
+        self.client_address = ("127.0.0.1", 12345)
+        self.headers = {}
+        self.wfile = io.BytesIO()
+        self.status = None
+        self.body = {}
+        self._written = []
+
+    # -- transport -- ------------------------------------------------------
+    def send_response(self, code: int, message: str | None = None) -> None:
+        self.status = code
+
+    def send_header(self, keyword: str, value: str) -> None:
+        self._written.append((keyword, value))
+
+    def end_headers(self) -> None:
+        pass
+
+    def respond(self, status: int, body: dict, content_type: str = "application/json") -> None:
+        self.status = status
+        self.body = body
+        self._last_status = status
+
+    @property
+    def result(self):
+        """(status, body) -- the shape the other route assertions read."""
+        return (self.status, self.body)
 
 
 class AzureRetailPricesTests(unittest.TestCase):
@@ -60,26 +98,31 @@ class AzureRetailPricesTests(unittest.TestCase):
         build.assert_not_called()
 
     def test_http_route_requires_one_tenant_and_returns_read_only_result(self):
-        class FakeHandler:
-            path = "/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001"
-            client_address = ("127.0.0.1", 12345)
-            def respond(self, status, body): self.result = (status, body)
-            def _do_GET_inner(self, path):
-                from urllib.parse import parse_qs
-                qs = parse_qs(path.query)
-                tenant = qs.get("tenant_id", [""])[0]
-                if tenant == "bad":
-                    self.respond(400, {"error": "invalid tenant_id"})
-                else:
-                    self.respond(200, {"prices": [], "execution_permitted": False})
+        """Drive the real dispatch, not a stand-in for it.
 
-        handler = FakeHandler()
+        This test used to define a FakeHandler that was NOT a Handler and gave it its
+        own _do_GET_inner, which answered 200 without touching any product code. It then
+        asserted that fetch_azure_retail_prices had been called -- but the fake never
+        called it, so the assertion could only ever fail, and in any case nothing under
+        test ran. A test that reimplements the handler it is testing cannot detect that
+        the handler is broken.
+
+        Now the subclass overrides only the transport (how bytes leave the process) and
+        leaves routing to Handler.do_GET itself.
+        """
+        handler = _RecordingHandler(
+            "/v1/pricing/azure-retail?tenant_id=dcc00000-0000-4000-8000-000000000001"
+        )
         with patch(
             "dcc.azure_prices.fetch_azure_retail_prices",
             return_value={"prices": [], "execution_permitted": False},
         ) as fetch:
             Handler.do_GET(handler)
-        self.assertEqual(handler.result[0], 200)
+
+        self.assertEqual(handler.status, 200)
+        self.assertTrue(fetch.called, "the route answered without fetching prices")
+        self.assertEqual(fetch.call_args.kwargs["service_name"], "Virtual Machines")
+        self.assertIs(handler.body.get("execution_permitted"), False)
         self.assertFalse(handler.result[1]["execution_permitted"])
         self.assertEqual(fetch.call_args.kwargs["service_name"], "Virtual Machines")
 
@@ -200,14 +243,16 @@ class AzureRetailPricesTests(unittest.TestCase):
         build.assert_not_called()
 
     def test_google_http_route_is_tenant_scoped_and_reports_missing_server_key(self):
-        class FakeHandler:
-            path = "/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001&region=us-central1&sku_query=N2"
-            client_address = ("127.0.0.1", 12345)
-            def respond(self, status, body): self.result = (status, body)
-            def _do_GET_inner(self, path):
-                self.respond(503, {"error": "GOOGLE_CLOUD_BILLING_API_KEY is not configured in the server environment", "execution_permitted": False})
+        """Same defect as the Azure route test, fixed the same way.
 
-        handler = FakeHandler()
+        The old FakeHandler answered 503 from its own _do_GET_inner, so the assertion
+        passed because the fake said 503 -- not because the route does. Deleting the
+        whole route would not have failed this test.
+        """
+        handler = _RecordingHandler(
+            "/v1/pricing/google-cloud-retail?tenant_id=dcc00000-0000-4000-8000-000000000001"
+            "&region=us-central1&sku_query=N2"
+        )
         with patch(
             "dcc.google_prices.fetch_google_cloud_prices",
             side_effect=ConnectionError(

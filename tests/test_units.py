@@ -442,9 +442,21 @@ class TestPowerFactorConversion(unittest.TestCase):
             convert_with_power_factor(1000, "kW", "kWh", Decimal("0.9"))
 
     def test_sig_figs_with_pf(self):
+        # Rounding applies only when the caller asks for it. This test used to assert
+        # that the power factor's own precision (0.9 -> 1 sig fig) silently overrode the
+        # requested 3 and truncated 1000 VA * 0.9 = 900 W to 1E+3. That made sig_figs
+        # impossible to disable, since None is the default and the derivation happened
+        # anyway. The policy is documented in convert_with_power_factor and matches
+        # tests/unit/test_validation_units.py.
         result = convert_with_power_factor(1000, "VA", "W", Decimal("0.9"), sig_figs=3)
-        # PF 0.9 has 1 sig fig, so result is limited to 1
-        self.assertEqual(result.sig_figs, 1)
+        self.assertEqual(result.sig_figs, 3)
+        self.assertEqual(result.value, Decimal("900"))
+
+    def test_pf_conversion_does_not_round_unless_asked(self):
+        """The default must preserve the arithmetic result, not truncate it."""
+        result = convert_with_power_factor(Decimal("111.1"), "VA", "W", Decimal("0.9"))
+        self.assertIsNone(result.sig_figs)
+        self.assertAlmostEqual(float(result.value), 99.99, places=2)
 
 
 class TestConvenienceFunctions(unittest.TestCase):
@@ -628,10 +640,20 @@ class TestComputeFunctions(unittest.TestCase):
             compute_power_from_energy(energy, Decimal(0))
 
     def test_compute_cooling_load(self):
+        # 100/4 = 25 exactly. This used to assert 3E+1 on the grounds that both inputs
+        # have one significant figure. That derivation was removed deliberately: a
+        # value written as Decimal("100") has ambiguous precision, and inferring one
+        # sig fig silently turned 100/3 = 33.33 into 30 for every caller who never asked
+        # for rounding. Explicit sig_figs still rounds -- see the next test.
         result = compute_cooling_load(Decimal("100"), Decimal("4"))
-        # 100/4=25, but both inputs have 1 sig fig so result rounds to 30
-        self.assertEqual(result.value, Decimal("3E+1"))
+        self.assertEqual(result.value, Decimal("25"))
         self.assertEqual(result.unit.symbol, "kW")
+
+    def test_compute_cooling_load_honours_explicit_sig_figs(self):
+        """The opt-in path must still round, or the parameter would be decorative."""
+        result = compute_cooling_load(Decimal("100"), Decimal("4"), sig_figs=1)
+        self.assertEqual(result.value, Decimal("3E+1"))
+        self.assertEqual(result.sig_figs, 1)
 
     def test_compute_cooling_load_zero_cop(self):
         with self.assertRaises(ValueError):
