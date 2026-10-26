@@ -455,19 +455,35 @@ class TestAlertRuleContract:
         # And the annotation must exist where a commented-out rule used to be: every
         # file that comments rules out carries the marker next to them.
         marker = "INACTIVE:"
-        commented_out = 0
         for path in rule_files():
             text = path.read_text(encoding="utf-8")
-            commented_out += len(re.findall(r"^\s*#\s*-\s*alert:", text, re.MULTILINE))
             if re.search(r"^\s*#\s*-\s*alert:", text, re.MULTILINE):
                 assert marker in text, (
                     f"{path.relative_to(REPO_ROOT)} disables rules without an "
                     f"'# INACTIVE:' reason -- a reader cannot tell it from active cover"
                 )
-        assert commented_out >= 2, (
-            "expected the rules with no backing series to be retained, commented out, "
-            f"in the rule files; found {commented_out}"
-        )
+
+        # This used to assert that at least two rules were commented out -- i.e. it
+        # asserted the defect itself, and would have gone red on the day both gaps were
+        # closed. The property it was standing in for is "a rule whose series exists is
+        # actually enabled", which is asserted directly instead, together with the
+        # series still being published by the app. A rule left commented out after its
+        # source appeared is the same silent-pager defect in reverse.
+        active = {rule["alert"] for rule in rules()}
+        published = published_metric_names()
+        for alert_name, metric in (
+            ("DCCHighLatency", "api_request_duration_seconds_bucket"),
+            ("DCCDatabaseUnavailable", "api_database_errors_total"),
+        ):
+            assert metric in published, (
+                f"{alert_name} is enabled against {metric}, which /metrics no longer "
+                "publishes -- the rule is now the inert kind"
+            )
+            assert alert_name in active, (
+                f"{alert_name} is backed by {metric}, a series this repository emits, "
+                "but the rule is still commented out in "
+                "monitoring/prometheus/rules/dcc-alerts.yml"
+            )
 
 
 class TestSabotageIsCaught:

@@ -12,6 +12,25 @@ The engine supports:
 - Retention policy enforcement
 - Tenant isolation
 
+Two artifact shapes exist, because ``pg_dump`` produces two:
+
+* **plain** -- a single SQL text file from ``pg_dump --format=plain``. The
+  engine may wrap it in gzip, and it restores through ``psql``.
+* **directory** -- a *directory* from ``pg_dump --format=directory`` (what
+  incremental and differential dumps use, because the plain format has no
+  notion of a partial dump). It cannot be gzipped as a file: ``pg_dump -Fd``
+  already compresses each data file itself. It restores through
+  ``pg_restore --format=directory``.
+
+For a directory artifact the two recorded measurements mean:
+
+* ``size_bytes`` -- the sum of the sizes of the regular files inside the
+  directory. Not the directory inode's size, and not a tar's size: a tar would
+  be a second artifact that ``pg_restore`` cannot read.
+* ``checksum`` -- a SHA-256 over a canonical manifest of (relative path, size,
+  per-file SHA-256), sorted by path, with no mtimes and no absolute paths, so
+  the digest is stable across copies and re-verifiable later.
+
 Pure stdlib implementation: no external dependencies.
 """
 from __future__ import annotations
@@ -118,6 +137,19 @@ class CompressionType(str, Enum):
     GZIP = "gzip"
 
 
+class ArtifactFormat(str, Enum):
+    """On-disk shape of a dump artifact.
+
+    Attributes:
+        PLAIN: One SQL text file, written by ``pg_dump --format=plain``.
+        DIRECTORY: A directory written by ``pg_dump --format=directory``,
+            holding ``toc.dat`` plus one data file per dumped table.
+    """
+
+    PLAIN = "plain"
+    DIRECTORY = "directory"
+
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -140,6 +172,7 @@ class BackupMetadata:
     wal_end: str | None = None
     point_in_time: datetime | None = None
     compression: CompressionType = CompressionType.NONE
+    data_format: ArtifactFormat = ArtifactFormat.PLAIN
     tables: list[str] = field(default_factory=list)
     row_counts: dict[str, int] = field(default_factory=dict)
     error_message: str = ""
@@ -161,6 +194,7 @@ class BackupMetadata:
             "wal_end": self.wal_end,
             "point_in_time": self.point_in_time.isoformat() if self.point_in_time else None,
             "compression": self.compression.value,
+            "data_format": self.data_format.value,
             "tables": list(self.tables),
             "row_counts": dict(self.row_counts),
             "error_message": self.error_message,
@@ -192,6 +226,9 @@ class BackupMetadata:
                 else None
             ),
             compression=CompressionType(data.get("compression", "none")),
+            # Older records predate directory artifacts and were always plain
+            # files, so an absent field is read as "plain" rather than guessed.
+            data_format=ArtifactFormat(data.get("data_format", "plain")),
             tables=list(data.get("tables", [])),
             row_counts=dict(data.get("row_counts", {})),
             error_message=data.get("error_message", ""),
@@ -390,6 +427,91 @@ def verify_checksum(data: bytes, expected: str) -> bool:
     return compute_checksum(data) == expected
 
 
+#: Mixed into every directory-artifact digest as the first line of the pre-image.
+#: Changing the manifest layout changes this tag, so an old digest can never
+#: silently agree with a differently-computed new one.
+DIRECTORY_MANIFEST_TAG = "dcc-dir-manifest-sha256-v1"
+
+
+def iter_artifact_files(path: str | Path) -> list[tuple[str, int]]:
+    """List the regular files in an artifact directory as (relpath, size).
+
+    Sorted by POSIX relative path so the order does not depend on the
+    filesystem's iteration order, and relative so the result does not depend on
+    where the artifact happens to live. Symlinks and other non-regular entries
+    are skipped: ``pg_dump -Fd`` never writes them, and following one could
+    digest a file outside the artifact.
+    """
+    root = Path(path)
+    entries: list[tuple[str, int]] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        for name in filenames:
+            abs_path = Path(dirpath) / name
+            if abs_path.is_symlink() or not abs_path.is_file():
+                continue
+            entries.append((abs_path.relative_to(root).as_posix(), abs_path.stat().st_size))
+    entries.sort(key=lambda entry: entry[0])
+    return entries
+
+
+def directory_size(path: str | Path) -> int:
+    """Total byte size of the regular files inside an artifact directory.
+
+    This is what the artifact occupies and what can be re-measured later. The
+    directory inode's own size is meaningless (a few hundred bytes on APFS,
+    4096 on ext4) and would disagree with itself across filesystems.
+    """
+    root = Path(path)
+    if not root.is_dir():
+        raise BackupError(
+            f"{str(root)!r} is not a directory; cannot measure it as an artifact",
+            "artifact_not_a_directory",
+        )
+    return sum(size for _rel, size in iter_artifact_files(root))
+
+
+def compute_directory_checksum(path: str | Path, chunk_size: int = 65536) -> str:
+    """SHA-256 over a canonical manifest of an artifact directory.
+
+    The pre-image is, in order::
+
+        dcc-dir-manifest-sha256-v1\\n
+        <relpath>\\0<size>\\0<sha256 of file contents>\\n   (for each file, sorted)
+
+    Deliberately excluded: mtimes (they change on copy and on checkout), inode
+    numbers, absolute paths and directory entries. What remains is exactly the
+    content and its layout, so two computations over the same artifact agree,
+    and a copy of the artifact verifies against the original digest.
+    """
+    root = Path(path)
+    if not root.is_dir():
+        raise BackupError(
+            f"{str(root)!r} is not a directory; a directory checksum needs one",
+            "artifact_not_a_directory",
+        )
+
+    digest = hashlib.sha256()
+    digest.update(DIRECTORY_MANIFEST_TAG.encode("utf-8") + b"\n")
+    for rel_path, size in iter_artifact_files(root):
+        file_digest = hashlib.sha256()
+        with open(root / rel_path, "rb") as handle:
+            while True:
+                chunk = handle.read(chunk_size)
+                if not chunk:
+                    break
+                file_digest.update(chunk)
+        digest.update(
+            rel_path.encode("utf-8")
+            + b"\0"
+            + str(size).encode("ascii")
+            + b"\0"
+            + file_digest.hexdigest().encode("ascii")
+            + b"\n"
+        )
+    return digest.hexdigest()
+
+
 # ---------------------------------------------------------------------------
 # Compression utilities
 # ---------------------------------------------------------------------------
@@ -471,7 +593,9 @@ class BackupEngine:
         ├── <tenant_id>/
         │   ├── <backup_id>/
         │   │   ├── metadata.json
-        │   │   ├── data.sql.gz
+        │   │   ├── data.sql(.gz)     # plain-format artifact (full backups)
+        │   │   ├── data.dir/         # directory-format artifact (incremental,
+        │   │   │                     #   differential): toc.dat + NNN.dat(.gz)
         │   │   └── wal/
         │   │       └── ...
         │   └── ...
@@ -484,6 +608,11 @@ class BackupEngine:
     METADATA_FILENAME = "metadata.json"
     DATA_FILENAME = "data.sql"
     COMPRESSED_DATA_FILENAME = "data.sql.gz"
+    #: ``pg_dump --format=directory`` artifact. A directory, not a file, and
+    #: named differently from the plain artifact on purpose: the defect this
+    #: constant exists for was code that could not tell the two apart.
+    DIRECTORY_DATA_DIRNAME = "data.dir"
+    DIRECTORY_TOC_FILENAME = "toc.dat"
     WAL_DIRNAME = "wal"
     RETENTION_FILENAME = "_retention_policy.json"
 
@@ -536,6 +665,18 @@ class BackupEngine:
         """Get the data file path for a backup."""
         name = self.COMPRESSED_DATA_FILENAME if compressed else self.DATA_FILENAME
         return self._backup_dir(tenant_id, backup_id) / name
+
+    def _dir_artifact_path(self, tenant_id: str, backup_id: str) -> Path:
+        """Get the directory-artifact path for a backup."""
+        return self._backup_dir(tenant_id, backup_id) / self.DIRECTORY_DATA_DIRNAME
+
+    def _artifact_path_for(self, tenant_id: str, backup_id: str, meta: BackupMetadata) -> Path:
+        """Where a recorded backup's artifact lives, according to its metadata."""
+        if meta.data_format == ArtifactFormat.DIRECTORY:
+            return self._dir_artifact_path(tenant_id, backup_id)
+        return self._data_path(
+            tenant_id, backup_id, compressed=(meta.compression == CompressionType.GZIP)
+        )
 
     def _wal_dir(self, tenant_id: str, backup_id: str) -> Path:
         """Get the WAL directory for a backup."""
@@ -606,6 +747,23 @@ class BackupEngine:
         comp = CompressionType(compression) if compression is not None else self.default_compression
         table_list = tables if tables is not None else list(DEFAULT_TABLES)
 
+        # The artifact shape follows the dump mode. A full backup is a plain SQL
+        # file (unchanged); incremental and differential dumps - which are
+        # table-scoped partial dumps - are written in pg_dump's directory format,
+        # because the plain format has no partial-dump notion to express them.
+        data_format = (
+            ArtifactFormat.PLAIN
+            if backup_type == BackupType.FULL
+            else ArtifactFormat.DIRECTORY
+        )
+        # For a directory artifact `comp` selects pg_dump's own compression
+        # (-Z), never an external gzip wrapper. For a plain artifact it still
+        # selects the engine's gzip wrapper, exactly as before.
+        if data_format == ArtifactFormat.DIRECTORY:
+            artifact_path = self._dir_artifact_path(tenant_id, backup_id)
+        else:
+            artifact_path = self._data_path(tenant_id, backup_id, compressed=False)
+
         metadata = BackupMetadata(
             backup_id=backup_id,
             tenant_id=tenant_id,
@@ -613,6 +771,7 @@ class BackupEngine:
             status=BackupStatus.RUNNING,
             created_at=start_time,
             compression=comp,
+            data_format=data_format,
             tables=table_list,
             tags=tags or {},
             point_in_time=point_in_time,
@@ -622,6 +781,7 @@ class BackupEngine:
         backup_dir.mkdir(parents=True, exist_ok=True)
         self._write_metadata(metadata)
 
+        final_path = artifact_path
         try:
             # Determine parent for incremental/differential
             parent_id: str | None = None
@@ -633,26 +793,38 @@ class BackupEngine:
                     )
 
             # Run pg_dump
-            data_path = self._data_path(tenant_id, backup_id, compressed=False)
             self._run_pg_dump(
                 dsn=dsn,
-                output_path=data_path,
+                output_path=artifact_path,
                 tables=table_list,
                 backup_type=backup_type,
                 parent_id=parent_id,
+                data_format=data_format,
+                compression=comp,
             )
 
-            # Compress if needed
-            final_path = data_path
-            if comp == CompressionType.GZIP:
-                compressed_path = self._data_path(tenant_id, backup_id, compressed=True)
-                self._compress_file(data_path, compressed_path)
-                data_path.unlink()
-                final_path = compressed_path
-
-            # Compute checksum
-            checksum = compute_file_checksum(final_path)
-            size = final_path.stat().st_size
+            final_path = artifact_path
+            if data_format == ArtifactFormat.DIRECTORY:
+                # No compression step here, and no checksum over the directory
+                # as a file: pg_dump -Fd compressed its own data files and the
+                # artifact is a tree. Size and digest are measured over its
+                # contents instead (see directory_size / compute_directory_checksum).
+                self._assert_restorable(artifact_path)
+                size = directory_size(artifact_path)
+                if size <= 0:
+                    raise BackupError(
+                        f"directory artifact at {str(artifact_path)!r} holds no data",
+                        "empty_artifact",
+                    )
+                checksum = compute_directory_checksum(artifact_path)
+            else:
+                if comp == CompressionType.GZIP:
+                    compressed_path = self._data_path(tenant_id, backup_id, compressed=True)
+                    self._compress_file(artifact_path, compressed_path)
+                    artifact_path.unlink()
+                    final_path = compressed_path
+                checksum = compute_file_checksum(final_path)
+                size = final_path.stat().st_size
 
             # Get row counts
             row_counts = self._get_row_counts(dsn=dsn, tenant_id=tenant_id, tables=table_list)
@@ -681,6 +853,12 @@ class BackupEngine:
             )
 
         except Exception as exc:
+            # A failed attempt must not leave a half-written artifact behind. Its
+            # metadata is kept (status FAILED, reason attached) so the failure is
+            # durable, but an artifact that cannot be trusted is worse than none.
+            self._discard_artifact(artifact_path)
+            if final_path != artifact_path:
+                self._discard_artifact(final_path)
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             metadata = BackupMetadata(
                 **{
@@ -700,6 +878,17 @@ class BackupEngine:
                 error=str(exc),
             )
 
+    def _discard_artifact(self, artifact_path: Path) -> None:
+        """Remove an untrustworthy artifact (file or directory), quietly."""
+        try:
+            if artifact_path.is_dir() and not artifact_path.is_symlink():
+                shutil.rmtree(artifact_path, ignore_errors=True)
+            elif artifact_path.exists() or artifact_path.is_symlink():
+                artifact_path.unlink()
+        except OSError:
+            # Cleanup must never replace the real failure with its own.
+            pass
+
     def _run_pg_dump(
         self,
         *,
@@ -708,8 +897,21 @@ class BackupEngine:
         tables: list[str],
         backup_type: BackupType,
         parent_id: str | None,
+        data_format: ArtifactFormat | None = None,
+        compression: CompressionType = CompressionType.NONE,
     ) -> None:
-        """Execute pg_dump to create a backup file."""
+        """Execute pg_dump to create a backup artifact.
+
+        ``data_format`` decides the dump mode: :attr:`ArtifactFormat.PLAIN` for a
+        single SQL file, :attr:`ArtifactFormat.DIRECTORY` for a ``-Fd`` tree. It
+        defaults to the mode implied by ``backup_type`` so that an existing
+        caller passing only a backup type keeps its behaviour.
+
+        For a directory artifact ``compression`` is handed to ``pg_dump -Z``
+        because that format compresses its own data files; it is *not* applied
+        again by this engine. For a plain artifact ``compression`` is ignored
+        here -- the engine wraps the file afterwards, as it always has.
+        """
         conn = dsn or os.environ.get("DCC_DATABASE_URL", "")
         if not conn:
             raise BackupError(
@@ -717,12 +919,22 @@ class BackupEngine:
                 "database_not_configured",
             )
 
+        if data_format is None:
+            data_format = (
+                ArtifactFormat.PLAIN
+                if backup_type == BackupType.FULL
+                else ArtifactFormat.DIRECTORY
+            )
+
         cmd = [self.pg_dump_path, "--dbname", conn, "--file", str(output_path), "--verbose"]
 
-        if backup_type == BackupType.FULL:
-            cmd.append("--format=plain")
-        else:
+        if data_format == ArtifactFormat.DIRECTORY:
+            # -Fd writes a directory; -Z is the only compression in play, and it
+            # happens inside pg_dump, per data file.
             cmd.append("--format=directory")
+            cmd.extend(["-Z", str(self._pg_dump_compression_level(compression))])
+        else:
+            cmd.append("--format=plain")
 
         for table in tables:
             cmd.extend(["--table", f"dcc.{table}"])
@@ -748,8 +960,70 @@ class BackupEngine:
                 "pg_dump_failed",
             )
 
+    @staticmethod
+    def _pg_dump_compression_level(compression: CompressionType) -> int:
+        """Map a :class:`CompressionType` onto ``pg_dump -Z``'s level scale.
+
+        ``-Z 0`` is pg_dump's "no compression", and 6 is the level the engine
+        used for its own gzip wrapper -- so a directory artifact costs the same
+        disk as before without being compressed twice.
+        """
+        if compression == CompressionType.GZIP:
+            return 6
+        if compression == CompressionType.NONE:
+            return 0
+        raise BackupError(
+            f"unsupported compression for a directory artifact: {compression}",
+            "unsupported_compression",
+        )
+
+    def _assert_restorable(self, artifact_path: Path) -> None:
+        """Refuse to call a dump successful unless pg_restore can read it.
+
+        Reads the archive's table of contents without touching any database. A
+        tree whose TOC ``pg_restore`` cannot parse is not a backup, whatever its
+        size and checksum say -- and a checksum over a directory that cannot be
+        restored would be a fingerprint of un-restorable bytes.
+        """
+        cmd = [self.pg_restore_path, "--list", str(artifact_path)]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except FileNotFoundError:
+            raise BackupError(
+                f"pg_restore not found at {self.pg_restore_path!r}; a directory "
+                "artifact cannot be confirmed restorable without it",
+                "pg_restore_not_found",
+            ) from None
+        except subprocess.TimeoutExpired:
+            raise BackupError("pg_restore --list timed out", "pg_restore_timeout")
+
+        if result.returncode != 0:
+            raise BackupError(
+                "dump artifact is not restorable "
+                f"(pg_restore --list exit {result.returncode}): {result.stderr.strip()}",
+                "backup_not_restorable",
+            )
+        if not result.stdout.strip():
+            raise BackupError(
+                "dump artifact is not restorable: its table of contents is empty",
+                "backup_not_restorable",
+            )
+
     def _compress_file(self, source: Path, dest: Path) -> None:
-        """Compress a file using gzip."""
+        """Compress a file using gzip.
+
+        Refuses a directory outright. ``pg_dump --format=directory`` writes a
+        tree and compresses its own data files (``-Z``); opening that tree as a
+        file is the exact defect this guard exists to make impossible, and the
+        error names the contradiction instead of the errno.
+        """
+        if source.is_dir():
+            raise BackupError(
+                f"refusing to gzip {str(source)!r}: it is a directory-format "
+                "artifact and pg_dump -Fd already compresses its data files "
+                "(-Z); set compression on the dump, not on the artifact",
+                "directory_artifact_compression",
+            )
         with open(source, "rb") as f_in:
             with gzip.open(dest, "wb", compresslevel=6) as f_out:
                 shutil.copyfileobj(f_in, f_out)
@@ -921,13 +1195,16 @@ class BackupEngine:
                 errors=errors,
             )
 
-        # Check data file
-        data_path = self._data_path(tenant_id, backup_id, compressed=(meta.compression == CompressionType.GZIP))
-        if not data_path.exists():
-            # Try uncompressed
-            data_path = self._data_path(tenant_id, backup_id, compressed=False)
-            if not data_path.exists():
-                errors.append(f"data file not found for backup {backup_id!r}")
+        # Check the artifact. A directory artifact is a tree, not a file: it is
+        # measured over the regular files it contains, and its checksum is the
+        # manifest digest rather than a digest of any single file.
+        data_path = self._artifact_path_for(tenant_id, backup_id, meta)
+        if meta.data_format == ArtifactFormat.DIRECTORY:
+            if not data_path.is_dir():
+                errors.append(
+                    f"directory artifact not found for backup {backup_id!r} "
+                    f"(expected {data_path.name}/ beside its metadata)"
+                )
                 return VerificationResult(
                     backup_id=backup_id,
                     valid=False,
@@ -936,10 +1213,65 @@ class BackupEngine:
                     metadata_valid=True,
                     errors=errors,
                 )
+            entries = iter_artifact_files(data_path)
+            if not entries:
+                errors.append(
+                    f"directory artifact for backup {backup_id!r} contains no files"
+                )
+                return VerificationResult(
+                    backup_id=backup_id,
+                    valid=False,
+                    checksum_match=False,
+                    size_match=False,
+                    metadata_valid=True,
+                    errors=errors,
+                )
+            if self.DIRECTORY_TOC_FILENAME not in {rel for rel, _size in entries}:
+                errors.append(
+                    f"directory artifact for backup {backup_id!r} has no "
+                    f"{self.DIRECTORY_TOC_FILENAME}; pg_restore cannot read it"
+                )
+                return VerificationResult(
+                    backup_id=backup_id,
+                    valid=False,
+                    checksum_match=False,
+                    size_match=False,
+                    metadata_valid=True,
+                    errors=errors,
+                )
+            if meta.compression == CompressionType.GZIP and not any(
+                rel.endswith(".gz") for rel, _size in entries
+            ):
+                warnings.append(
+                    "metadata says gzip but the directory holds no compressed data "
+                    "files; pg_dump -Z may not have been honoured"
+                )
+            if meta.compression == CompressionType.NONE and any(
+                rel.endswith(".gz") for rel, _size in entries
+            ):
+                warnings.append(
+                    "metadata says no compression but the directory holds .gz data "
+                    "files; the recorded compression does not describe the artifact"
+                )
+            actual_size = directory_size(data_path)
+        else:
+            if not data_path.exists():
+                # Try uncompressed
+                data_path = self._data_path(tenant_id, backup_id, compressed=False)
+                if not data_path.exists():
+                    errors.append(f"data file not found for backup {backup_id!r}")
+                    return VerificationResult(
+                        backup_id=backup_id,
+                        valid=False,
+                        checksum_match=False,
+                        size_match=False,
+                        metadata_valid=True,
+                        errors=errors,
+                    )
+            actual_size = data_path.stat().st_size
 
         # Verify size
         size_match = True
-        actual_size = data_path.stat().st_size
         if meta.size_bytes > 0 and actual_size != meta.size_bytes:
             size_match = False
             errors.append(
@@ -949,7 +1281,10 @@ class BackupEngine:
         # Verify checksum
         checksum_match = True
         if meta.checksum:
-            actual_checksum = compute_file_checksum(data_path)
+            if meta.data_format == ArtifactFormat.DIRECTORY:
+                actual_checksum = compute_directory_checksum(data_path)
+            else:
+                actual_checksum = compute_file_checksum(data_path)
             if actual_checksum != meta.checksum:
                 checksum_match = False
                 errors.append(
@@ -1036,8 +1371,15 @@ class BackupEngine:
         restore_tables = tables if tables is not None else meta.tables
 
         try:
-            data_path = self._data_path(tenant_id, backup_id, compressed=(meta.compression == CompressionType.GZIP))
-            if not data_path.exists():
+            data_path = self._artifact_path_for(tenant_id, backup_id, meta)
+            if meta.data_format == ArtifactFormat.DIRECTORY:
+                if not data_path.is_dir():
+                    raise RestoreError(
+                        f"directory artifact for backup {backup_id!r} not found at "
+                        f"{str(data_path)!r}; there is nothing to restore",
+                        "artifact_not_found",
+                    )
+            elif not data_path.exists():
                 data_path = self._data_path(tenant_id, backup_id, compressed=False)
 
             rows_restored = self._run_pg_restore(
@@ -1045,6 +1387,7 @@ class BackupEngine:
                 data_path=data_path,
                 tables=restore_tables,
                 tenant_id=tenant_id,
+                data_format=meta.data_format,
             )
 
             completed = datetime.now(timezone.utc)
@@ -1088,14 +1431,30 @@ class BackupEngine:
         data_path: Path,
         tables: list[str],
         tenant_id: str,
+        data_format: ArtifactFormat = ArtifactFormat.PLAIN,
     ) -> int:
-        """Execute pg_restore to restore a backup file."""
+        """Execute the restore for an artifact, honouring its shape.
+
+        A plain artifact is SQL text and goes through ``psql``; a directory
+        artifact is a ``pg_dump -Fd`` archive and goes through
+        ``pg_restore --format=directory``. Using one for the other cannot work,
+        which is why the shape is read from metadata rather than guessed from the
+        path.
+        """
         conn = dsn or os.environ.get("DCC_DATABASE_URL", "")
         if not conn:
             raise RestoreError(
                 "no database connection string provided; set DCC_DATABASE_URL or pass dsn",
                 "database_not_configured",
             )
+
+        # A table-scoped dump carries no CREATE SCHEMA entry, so an empty target
+        # database needs its schema before either path can apply anything.
+        self._ensure_target_schema(conn)
+
+        if data_format == ArtifactFormat.DIRECTORY:
+            self._restore_directory_artifact(conn=conn, data_path=data_path, tables=tables)
+            return self._count_rows(conn, tenant_id, tables)
 
         # Decompress to temp if needed
         work_path = data_path
@@ -1144,22 +1503,107 @@ class BackupEngine:
             if tmp_dir:
                 tmp_dir.cleanup()
 
+    def _ensure_target_schema(self, conn: str) -> None:
+        """Make sure the restore target has the ``dcc`` schema.
+
+        ``pg_dump -t dcc.<table>`` writes no ``CREATE SCHEMA`` entry -- verified
+        against ``pg_restore --list``, which shows TABLE/CONSTRAINT/TABLE DATA
+        entries and nothing else -- so restoring into a fresh database would fail
+        on the first ``CREATE TABLE dcc.<table>``. This is a restore-side
+        prerequisite and does not change what the dump contains.
+        """
+        cmd = [
+            self.psql_path,
+            "--dbname", conn,
+            "--no-psqlrc",
+            "--set", "ON_ERROR_STOP=1",
+            "-c", "CREATE SCHEMA IF NOT EXISTS dcc",
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        except FileNotFoundError:
+            raise RestoreError(
+                f"psql not found at {self.psql_path!r}",
+                "psql_not_found",
+            ) from None
+        except subprocess.TimeoutExpired:
+            raise RestoreError("psql timed out creating the target schema", "psql_timeout")
+
+        if result.returncode != 0:
+            raise RestoreError(
+                "could not prepare the restore target "
+                f"(psql exit {result.returncode}): {result.stderr.strip()}",
+                "restore_target_unprepared",
+            )
+
+    def _restore_directory_artifact(self, *, conn: str, data_path: Path, tables: list[str]) -> None:
+        """Apply a ``pg_dump -Fd`` directory artifact with ``pg_restore -Fd``."""
+        cmd = [
+            self.pg_restore_path,
+            "--format=directory",
+            "--dbname", conn,
+            "--no-owner",
+            "--no-privileges",
+            "--exit-on-error",
+        ]
+        for table in tables:
+            cmd.extend(["--table", table])
+        cmd.append(str(data_path))
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)
+        except FileNotFoundError:
+            raise RestoreError(
+                f"pg_restore not found at {self.pg_restore_path!r}; a "
+                "directory artifact cannot be restored without it",
+                "pg_restore_not_found",
+            ) from None
+        except subprocess.TimeoutExpired:
+            raise RestoreError("pg_restore timed out after 1 hour", "pg_restore_timeout")
+
+        if result.returncode != 0:
+            raise RestoreError(
+                f"pg_restore failed (exit {result.returncode}): {result.stderr.strip()}",
+                "pg_restore_failed",
+            )
+
     def _count_rows(self, conn: str, tenant_id: str, tables: list[str]) -> int:
-        """Count rows in restored tables."""
+        """Count rows in restored tables.
+
+        Each table is counted on its own, and only tables that actually carry a
+        ``tenant_id`` column are counted at all. The previous single try/except
+        around the whole loop meant the first table without that column -- the
+        first name in :data:`DEFAULT_TABLES`, ``tenants``, has no ``tenant_id`` --
+        aborted every remaining count and reported the whole restore as 0 rows.
+        """
         total = 0
         try:
             import psycopg
 
             with psycopg.connect(conn) as c:
                 with c.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT table_name
+                        FROM information_schema.columns
+                        WHERE table_schema = 'dcc' AND column_name = 'tenant_id'
+                        """
+                    )
+                    tenant_scoped = {row[0] for row in cur.fetchall()}
+
                     for table in tables:
-                        cur.execute(
-                            f"SELECT count(*) FROM dcc.{table} WHERE tenant_id = %s::uuid",
-                            (tenant_id,),
-                        )
-                        row = cur.fetchone()
-                        if row:
-                            total += row[0]
+                        if table not in tenant_scoped:
+                            continue
+                        try:
+                            cur.execute(
+                                f'SELECT count(*) FROM dcc."{table}" WHERE tenant_id = %s::uuid',
+                                (tenant_id,),
+                            )
+                            row = cur.fetchone()
+                            if row:
+                                total += row[0]
+                        except Exception:
+                            continue
         except Exception:
             pass
         return total
@@ -1674,6 +2118,7 @@ __all__ = [
     "BackupStatus",
     "RestoreStatus",
     "CompressionType",
+    "ArtifactFormat",
     "BackupMetadata",
     "RestoreMetadata",
     "RetentionPolicy",
@@ -1686,6 +2131,10 @@ __all__ = [
     "DEFAULT_TABLES",
     "compute_checksum",
     "compute_file_checksum",
+    "compute_directory_checksum",
+    "directory_size",
+    "iter_artifact_files",
+    "DIRECTORY_MANIFEST_TAG",
     "verify_checksum",
     "compress_data",
     "decompress_data",

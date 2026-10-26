@@ -22,32 +22,32 @@ groups:
           summary: "DCC API is down"
           description: "DCC API has been unreachable for more than 1 minute."
 
-      # ---------------------------------------------------------------------
-      # INACTIVE: no source emits dcc_database_errors_total.
+      # Re-enabled: the API now emits api_database_errors_total{operation}.
       #
-      # Nothing in this repository counts database errors. What does exist:
-      #   * the exporter's readiness gauges (dcc_database_ready,
-      #     dcc_database_schema_ok, dcc_database_rls_ok) in
-      #     monitoring/exporter/dcc_exporter.py, and
-      #   * the API's HTTP error counter (api_errors_total), which counts 5xx
-      #     responses, not database faults.
-      # Retargeting this at dcc_database_ready would duplicate the
-      # DCCDatabaseUnhealthy alert in monitoring/prometheus/alerts.yml, so it is
-      # left commented out rather than silently re-labelled as coverage it is not.
+      # Where it is incremented (src/dcc/api_async.py, _record_db_error):
+      #   * operation="query"           -- a driver exception that escaped a handler
+      #                                    and reached the metrics middleware on its
+      #                                    way to the framework's error boundary;
+      #   * operation="readiness_probe" -- a failed /readyz database probe, including
+      #                                    the 503 get_pool() raises when the pool
+      #                                    cannot be built or opened.
+      # The family is registered at import, so it is present in /metrics with zero
+      # samples on a healthy process rather than appearing only after the first
+      # failure -- a family that does not exist cannot be alerted on.
       #
-      # TODO(product decision): either add a database-error counter to the API
-      # (preferred -- the readiness probe only reports up/down, not error rates),
-      # or delete this rule and accept that database faults are covered only by
-      # readiness.
-      # ---------------------------------------------------------------------
-      # - alert: DCCDatabaseUnavailable
-      #   expr: dcc_database_errors_total > 0
-      #   for: 2m
-      #   labels:
-      #     severity: critical
-      #   annotations:
-      #     summary: "DCC database errors detected"
-      #     description: "Database errors have been observed for more than 2 minutes."
+      # DECIDED (product): a request-path counter, not the exporter's readiness gauge.
+      # Retargeting this at dcc_database_ready would duplicate DCCDatabaseUnhealthy in
+      # monitoring/prometheus/alerts.yml, and up/down is not the error rate this rule
+      # claims to report. rate() over a counter that only moves on a real failure says
+      # "database faults are happening now", which is what the summary promises.
+      - alert: DCCDatabaseUnavailable
+        expr: sum(rate(api_database_errors_total[5m])) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "DCC database errors detected"
+          description: "Database operations in the request path or the readiness probe have been failing for more than 2 minutes."
 
       # Was `sum(rate(dcc_api_requests_total{status=~"5.."}[5m])) / sum(rate(...))`.
       # Two things were wrong with it:
@@ -71,36 +71,30 @@ groups:
           summary: "DCC API high error rate"
           description: "5xx error rate exceeds 5% over the last 5 minutes."
 
-      # ---------------------------------------------------------------------
-      # INACTIVE: no source emits dcc_api_request_duration_seconds_bucket.
+      # Re-enabled: the latency histogram now exists under a stable name.
       #
-      # The API records latency with `_METRICS.record_latency(label, elapsed_ms)`
-      # (src/dcc/api_async.py, metrics_middleware). The first positional argument
-      # of record_latency() is the metric NAME, so the histogram family is named
-      # after the route template ("/v2/assets", "unmatched", ...), not after a
-      # stable metric name -- and a name containing "/" is not even legal
-      # Prometheus exposition. The scrape therefore contains no usable latency
-      # family, and this rule could never fire.
+      # metrics_middleware calls record_latency("api_request_duration_seconds",
+      # elapsed_seconds, labels={"route": label}) -- name, then seconds, then the route
+      # template as a LABEL. /metrics therefore carries
+      # api_request_duration_seconds_bucket{le, route}. The default buckets contain an
+      # exact 0.5 boundary and run to 60s, so a p95 above 500ms is interpolated between
+      # real bucket bounds instead of being clamped by the top bucket.
       #
-      # This is an application defect, not a rules defect: the fix is to call
-      # record_latency("api_request_duration_seconds", elapsed_seconds,
-      # labels={"route": label}) in the middleware. That change is out of scope
-      # for this rule set (it belongs to the src/ owner), so the rule stays
-      # commented out until the histogram has a resolvable name.
+      # There is NO `status` label on this family: it is one histogram over every
+      # response, so the expression groups by (le, route) only. Server-error share is
+      # DCCHighErrorRate's job (api_errors_total{type, route}), not this rule's.
       #
-      # TODO(product decision): once the app publishes a stable latency histogram,
-      # restore this rule as
-      #   histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m]))
-      #                            by (le, route)) > 0.5
-      # ---------------------------------------------------------------------
-      # - alert: DCCHighLatency
-      #   expr: |
-      #     histogram_quantile(0.95,
-      #       sum(rate(dcc_api_request_duration_seconds_bucket[5m])) by (le, route)
-      #     ) > 0.5
-      #   for: 5m
-      #   labels:
-      #     severity: warning
-      #   annotations:
-      #     summary: "DCC API high latency"
-      #     description: "p95 latency exceeds 500ms for at least one route over 5 minutes."
+      # DECIDED (product): p95 per route above 500ms, 5m window, must hold 5m. Per
+      # route rather than aggregated, because a single slow endpoint is invisible in a
+      # service-wide p95 of a few dozen routes.
+      - alert: DCCHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(api_request_duration_seconds_bucket[5m])) by (le, route)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DCC API high latency"
+          description: "p95 latency exceeds 500ms for at least one route over 5 minutes."

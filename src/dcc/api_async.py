@@ -381,6 +381,64 @@ from .observability.metrics import MetricsEngine as _MetricsEngine  # noqa: E402
 _METRICS = _MetricsEngine()
 _METRICS_EXCLUDED = {"/metrics", "/healthz", "/readyz"}
 
+# Database faults, as a counter rather than an absence.
+#
+# monitoring/prometheus/rules/dcc-alerts.yml carried DCCDatabaseUnavailable commented
+# out because nothing counted database errors: the exporter's readiness gauges are
+# up/down, and api_errors_total counts HTTP status, not causes. A rule over a family
+# nobody emits is a rule that cannot fire, so the fix is the emitter, not the rule.
+#
+# Registered at import, not on first failure. A counter family only appears in
+# /metrics once it has a series, so a family created lazily is ABSENT on a healthy
+# process -- the same silent rule, one layer down. A registered family with no series
+# renders its HELP/TYPE line and no samples, which is the honest state: no database
+# failure observed yet.
+_DB_ERROR_METRIC = "api_database_errors_total"
+_METRICS.registry.register_counter(_DB_ERROR_METRIC)
+
+#: Driver packages whose exceptions mean "the database operation failed". Matched on
+#: the exception's module, never on its message: the message is the string that
+#: carries the DSN, and keying off vendor wording breaks on the next patch release.
+_DB_ERROR_MODULES = frozenset({"psycopg", "psycopg2", "psycopg_pool", "asyncpg"})
+
+#: detail values get_pool() raises when it cannot produce a usable pool. These are
+#: HTTPException, not driver exceptions, and they are the most common real outage.
+_DB_UNAVAILABLE_DETAILS = frozenset(
+    {"database_unavailable", "database_not_configured", "postgres_extra_required"}
+)
+
+
+def _is_database_error(exc: BaseException) -> bool:
+    """True when the exception originated in a database driver."""
+    for cls in type(exc).__mro__:
+        if (cls.__module__ or "").split(".")[0] in _DB_ERROR_MODULES:
+            return True
+    return False
+
+
+def _is_db_failure(exc: BaseException) -> bool:
+    """True when this failure is attributable to the database layer."""
+    if _is_database_error(exc):
+        return True
+    return isinstance(exc, HTTPException) and exc.detail in _DB_UNAVAILABLE_DETAILS
+
+
+def _record_db_error(operation: str, exc: BaseException) -> bool:
+    """Count one failed database operation. Returns True when it was counted.
+
+    `operation` is one of a closed set written at the call sites ("query",
+    "readiness_probe") -- never a table name, a route or a DSN fragment, because an
+    unbounded label on a counter grows the registry without bound.
+
+    The guard is the point: a bug in unrelated code that surfaces as a 500 is not a
+    database fault, and reporting it as one would make the alert fire on the wrong
+    cause. An alert that lies is as bad as an alert that never fires.
+    """
+    if not _is_db_failure(exc):
+        return False
+    _METRICS.increment_error(_DB_ERROR_METRIC, labels={"operation": operation})
+    return True
+
 
 def _classify_status(status_code: int) -> _ErrorType:
     """Map an HTTP status onto the engine's error taxonomy."""
@@ -418,6 +476,14 @@ async def metrics_middleware(request: Request, call_next):
         response = await call_next(request)
         status_code = response.status_code
         return response
+    except Exception as exc:
+        # A database fault that escaped the handler reaches this layer on its way to
+        # ServerErrorMiddleware, which is the only place in the stack that still sees
+        # the exception itself. Counting it here means any route -- present or future
+        # -- that lets a driver error through is counted once, and a route that
+        # handles its own errors is not double-counted.
+        _record_db_error("query", exc)
+        raise
     finally:
         route = request.scope.get("route")
         label = getattr(route, "path", None) or "unmatched"
@@ -639,6 +705,76 @@ async def healthz():
     return {"service": "data-center-commander", "mode": "read_only", "execution_permitted": False}
 
 
+#: Tenant-scoped = the table carries a tenant_id column. Read from pg_attribute rather
+#: than information_schema.columns on purpose: the information schema filters by the
+#: current role's privileges, so a role that cannot see a table would simply not be
+#: asked about it and this check would report "ok" over whatever was left visible --
+#: a green light produced by not looking.
+_TENANT_SCOPED_RLS_SQL = (
+    "SELECT c.relname AS table_name, "
+    "c.relrowsecurity AS rls_enabled, "
+    "c.relforcerowsecurity AS rls_forced "
+    "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = 'dcc' AND c.relkind IN ('r', 'p') "
+    "AND EXISTS ("
+    "  SELECT 1 FROM pg_attribute a "
+    "  WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' "
+    "  AND a.attnum > 0 AND NOT a.attisdropped"
+    ") "
+    "ORDER BY c.relname"
+)
+
+
+async def _assess_tenant_rls(conn) -> dict[str, Any]:
+    """Report whether the tenant-scoped tables are protected by forced RLS.
+
+    This is an assurance signal, not a liveness gate. /readyz keeps answering 200 while
+    the database answers; an unprotected table is a data-exposure bug that needs a
+    migration, and failing readiness for it would pull the instance out of rotation --
+    an outage taken to fix a report.
+
+    The vocabulary is closed on purpose, so a caller branches on a value instead of
+    parsing prose:
+
+      "ok"            every tenant-scoped table has RLS enabled AND forced
+      "missing"       at least one does not; counts in
+                      tenant_rls_unprotected / tenant_rls_tables
+      "not_assessed"  the catalog could not be read, or there was nothing to assess
+
+    Never raises: a failure here must not turn the readiness probe into a 503.
+    """
+    try:
+        rows = await conn.fetch(_TENANT_SCOPED_RLS_SQL)
+    except Exception:
+        logger.warning("tenant RLS assessment query failed", exc_info=True)
+        return {"tenant_rls": "not_assessed"}
+
+    if not rows:
+        # A database with no tenant-scoped tables is not a database this probe
+        # understands; reporting "ok" over an empty result set would be a pass earned
+        # by finding nothing.
+        logger.warning("tenant RLS assessment found no tenant-scoped tables in schema dcc")
+        return {"tenant_rls": "not_assessed"}
+
+    unprotected = [
+        row["table_name"] for row in rows if not (row["rls_enabled"] and row["rls_forced"])
+    ]
+    if unprotected:
+        logger.warning(
+            "row-level security is neither enabled nor forced on %d of %d tenant-scoped "
+            "tables: %s",
+            len(unprotected),
+            len(rows),
+            ", ".join(unprotected[:20]),
+        )
+        return {
+            "tenant_rls": "missing",
+            "tenant_rls_tables": len(rows),
+            "tenant_rls_unprotected": len(unprotected),
+        }
+    return {"tenant_rls": "ok", "tenant_rls_tables": len(rows), "tenant_rls_unprotected": 0}
+
+
 @app.get("/readyz")
 async def readyz():
     try:
@@ -652,10 +788,21 @@ async def readyz():
             if not schema or not all(schema.values()):
                 return JSONResponse(
                     status_code=503,
-                    content={"ready": False, "checks": {"schema": "incomplete"}},
+                    content={
+                        "ready": False,
+                        "checks": {"schema": "incomplete", "tenant_rls": "not_assessed"},
+                    },
                 )
-        return {"ready": True, "checks": {"database": "ok", "schema": "ok"}}
-    except Exception:
+            # Assessed inside the same read-only transaction as the schema probe: one
+            # consistent view, and no second connection spent per probe.
+            rls = await _assess_tenant_rls(conn)
+        return {"ready": True, "checks": {"database": "ok", "schema": "ok", **rls}}
+    except Exception as exc:
+        # The counter the DCCDatabaseUnavailable rule is built on. Incremented here
+        # because a probe failure is a real database operation that really failed --
+        # the one database call this process is guaranteed to make. _record_db_error
+        # declines to count failures that did not come from the database layer.
+        _record_db_error("readiness_probe", exc)
         # Never return str(exc) from an unauthenticated route. A psycopg/asyncpg
         # connection error routinely embeds the DSN -- host, port, database and role --
         # which turns a readiness probe into a reconnaissance endpoint for anyone who can
