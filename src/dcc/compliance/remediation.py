@@ -351,7 +351,7 @@ def get_builtin_playbooks() -> list[RemediationPlaybook]:
                 "Test that sessions expire after the configured timeout",
             ],
             automated=True,
-            command="echo 'export DCC_SESSION_TIMEOUT_MINUTES=240' >> ~/.dcc/env",
+            command="mkdir -p ~/.dcc && echo 'export DCC_SESSION_TIMEOUT_MINUTES=240' >> ~/.dcc/env",
         ),
         RemediationPlaybook(
             name="enable-audit-logging",
@@ -364,7 +364,7 @@ def get_builtin_playbooks() -> list[RemediationPlaybook]:
                 "Test audit log search and retrieval",
             ],
             automated=True,
-            command="echo 'export DCC_AUDIT_ENABLED=true' >> ~/.dcc/env",
+            command="mkdir -p ~/.dcc && echo 'export DCC_AUDIT_ENABLED=true' >> ~/.dcc/env",
         ),
         RemediationPlaybook(
             name="enable-monitoring",
@@ -437,7 +437,7 @@ def get_builtin_playbooks() -> list[RemediationPlaybook]:
                 "Test password policy enforcement",
             ],
             automated=True,
-            command="echo 'export DCC_MIN_PASSWORD_LENGTH=12' >> ~/.dcc/env",
+            command="mkdir -p ~/.dcc && echo 'export DCC_MIN_PASSWORD_LENGTH=12' >> ~/.dcc/env",
         ),
         RemediationPlaybook(
             name="enforce-tls",

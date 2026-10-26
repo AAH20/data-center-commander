@@ -77,7 +77,17 @@ class TestRemediationEngine:
         assert result.status == RemediationStatus.PENDING
         assert "Manual" in result.result
 
-    def test_execute_automated_action(self) -> None:
+    def test_execute_automated_action(self, tmp_path, monkeypatch) -> None:
+        """Run the real command, against a throwaway HOME.
+
+        The action appends to ~/.dcc/env. That directory did not exist on a fresh
+        machine, so the redirect failed with ENOENT and the action reported FAILED --
+        which is what broke CI while passing locally, where ~/.dcc had been created by
+        an earlier run. The command now creates the directory, and this test points HOME
+        at tmp_path so it exercises the fresh-machine path every time instead of
+        depending on whatever the host happens to have.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
         engine = RemediationEngine()
         finding = Finding(
             control_id="SOC2-CC6.2",
@@ -90,7 +100,12 @@ class TestRemediationEngine:
         assert action.automated
 
         result = engine.execute(str(action.action_id))
-        assert result.status == RemediationStatus.COMPLETED
+        assert result.status == RemediationStatus.COMPLETED, result.result
+
+        # The command must have actually written somewhere, not merely returned 0.
+        env_file = tmp_path / ".dcc" / "env"
+        assert env_file.is_file(), "the action reported success without writing ~/.dcc/env"
+        assert "DCC_SESSION_TIMEOUT_MINUTES=240" in env_file.read_text()
 
     def test_execute_dry_run(self) -> None:
         engine = RemediationEngine(dry_run=True)
