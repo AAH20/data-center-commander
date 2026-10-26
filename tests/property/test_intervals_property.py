@@ -279,12 +279,28 @@ def test_downsample_sum_preserves_total(series, target_interval):
 )
 @settings(max_examples=200)
 def test_downsample_mean_within_range(series, target_interval):
-    """Downsampling with MEAN should produce values within the original range."""
+    """Downsampling with MEAN should produce values within the original range.
+
+    Bounds are compared with a relative tolerance, not exactly. A mean is bounded by its
+    inputs in exact arithmetic, but not in IEEE-754: hypothesis found a series where every
+    input was 419430.9315198187 and the computed mean came back 419430.93151981867 --
+    one ULP below the minimum, purely from summing the values. The property is about the
+    aggregation being an average rather than a mis-bucketed blend, so a rounding artifact
+    of ~1e-14 relative is not a violation. The tolerance is tight enough that a real
+    defect -- an off-by-one bucket, a wrong window, a blend across intervals -- is still
+    orders of magnitude outside it.
+    """
     if target_interval > series.interval and target_interval % series.interval == 0:
         original_values = [p.value for p in series.points]
         result = downsample(series, target_interval, Aggregation.MEAN)
+        lo, hi = min(original_values), max(original_values)
+        # Scale the tolerance to the magnitudes involved; an absolute epsilon fails for
+        # values near zero and is meaningless for values near 1e6.
+        tol = 1e-9 * max(1.0, abs(lo), abs(hi))
         for p in result.points:
-            assert min(original_values) <= p.value <= max(original_values)
+            assert lo - tol <= p.value <= hi + tol, (
+                f"mean {p.value} outside [{lo}, {hi}] by more than {tol}"
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -757,7 +757,10 @@ def measure_credential_expiry(store: Any | None = None) -> Measurement:
         if not keys:
             return Measurement(
                 verdict=None,
-                statement="The live key store is empty, so there is no credential lifecycle to judge",
+                statement=(
+                    "Credential expiry cannot be judged: the live key store is empty, so "
+                    "there is no credential lifecycle to assess"
+                ),
                 source="dcc.api_async._API_KEYS",
                 detail={"keys": 0},
             )

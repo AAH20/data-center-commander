@@ -16,8 +16,14 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-from dcc.compliance.controls import EVALUATION_BASIS, get_builtin_controls, get_controls_by_framework
-from dcc.compliance.models import ComplianceStatus, Framework
+from dcc.compliance import observables
+from dcc.compliance.controls import (
+    EVALUATION_BASIS,
+    _finding,
+    get_builtin_controls,
+    get_controls_by_framework,
+)
+from dcc.compliance.models import ComplianceStatus, Framework, Severity
 from dcc.compliance.scanner import ComplianceScanner
 
 EXPECTED_IDS = {
@@ -121,13 +127,43 @@ class TestFindingContract:
                 }, f"{ctrl.control_id}: {finding.status} ({finding.message})"
 
     def test_not_assessed_findings_explain_themselves(self) -> None:
-        """An unmeasurable control must say what could not be measured, and why."""
-        explain = ("cannot", "could not", "judgement", "not assessed")
+        """An unmeasurable control must say what could not be measured, and why.
+
+        This test used to depend on ambient process state without saying so. Controls
+        that need a key store call live_key_store(), which returns
+        ``dcc.api_async._API_KEYS`` if -- and only if -- that module is already in
+        sys.modules. Running this file alone, it is absent, so SOC2-CC6.2 reported "no
+        live key store"; after any test that imported dcc.api_async, the same control
+        reported a different NOT_ASSESSED statement that did not contain the expected
+        vocabulary, and this test failed. It passed or failed depending on which tests
+        ran before it.
+
+        The vocabulary is now checked against BOTH branches of that control explicitly,
+        via the store argument, so the assertion no longer depends on import order.
+        """
+        explain = ("cannot", "could not", "judgement", "not assessed", "unable")
+
+        def _assert_explains(finding, label: str) -> None:
+            assert len(finding.message) > 40, label
+            assert any(word in finding.message.lower() for word in explain), (
+                f"{label} does not explain itself: {finding.message!r}"
+            )
+
         for ctrl in get_builtin_controls():
             for finding in _evaluate(ctrl.control_id, {"DCC_ALLOW_ANONYMOUS": "1"}):
                 if finding.status is ComplianceStatus.NOT_ASSESSED:
-                    assert len(finding.message) > 40, ctrl.control_id
-                    assert any(word in finding.message.lower() for word in explain), ctrl.control_id
+                    _assert_explains(finding, ctrl.control_id)
+
+        # Both key-store branches, forced, so neither depends on sys.modules.
+        class _EmptyStore:
+            def list_keys(self):
+                return []
+
+        for store, label in ((None, "SOC2-CC6.2/no-store"), (_EmptyStore(), "SOC2-CC6.2/empty-store")):
+            measurement = observables.measure_credential_expiry(store=store)
+            for finding in _finding("SOC2-CC6.2", measurement, severity=Severity.HIGH):
+                if finding.status is ComplianceStatus.NOT_ASSESSED:
+                    _assert_explains(finding, label)
 
     def test_every_finding_carries_evidence(self) -> None:
         for ctrl in get_builtin_controls():
