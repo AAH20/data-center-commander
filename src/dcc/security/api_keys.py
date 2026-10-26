@@ -655,7 +655,7 @@ class ApiKeyStore:
             )
         raw_key = generate_api_key()
         record = ApiKey(
-            id=secrets.token_hex(8),
+            id=str(uuid.uuid4()),
             name=name,
             key_hash=hash_api_key(raw_key),
             tenant_id=tenant_id,
@@ -733,7 +733,7 @@ class ApiKeyStore:
             )
         return self._local_put(
             ApiKey(
-                id=secrets.token_hex(8),
+                id=str(uuid.uuid4()),
                 name=name,
                 key_hash=key_hash,
                 tenant_id=tenant_id,
