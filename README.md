@@ -102,10 +102,12 @@ Data Center Commander is a standalone, vendor-neutral operations and decision-su
 The browser-based UI is a single page with 14 `<section class="view">` elements. The left
 rail exposes 12 of them; `view-workloads` and `view-critical` exist in the markup without
 a rail entry. The console shell itself calls twelve `/v2` endpoints. The ten module
-scripts in `ui/` are split across two route families: seven still call `/v1/*`, which
-only the legacy handler in `src/dcc/api.py` serves, and the served FastAPI app answers
-`404` for those paths. Three call `/v2` paths. The rows below cover the sections and the
-panels they render:
+scripts in `ui/` all address the served `/v2` API now; no fetch in `ui/` targets `/v1`
+any more, and the three surviving `/v1` mentions are comments recording where the old
+paths came from (`ui/azure-prices.js:25-26`, `ui/security-dashboard.js:723`). Every one
+of those calls needs the key, which the console gets from the rail's "API key" field or
+from a loopback meta tag — see [Authentication](#authentication). The rows below cover
+the sections and the panels they render:
 
 | Section or panel | Description |
 |---|---|
@@ -237,11 +239,14 @@ export DCC_API_KEYS='<tenant-uuid>:<hash>'
 .venv/bin/python -m uvicorn dcc.api_async:app --host 127.0.0.1 --port 8790
 ```
 
-Open `http://127.0.0.1:8790/` for the console shell. Schema changes go to a new
-database only. `scripts/run-local.py` also exists but starts the legacy
-standard-library handler in `src/dcc/api.py` (routes under `/v1`, no authentication);
-it is not the application documented below. To see a clearly synthetic walkthrough, use
-the separately gated instructions in [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md).
+Open `http://127.0.0.1:8790/` for the console shell, then paste the key into the rail's
+"API key" field: the shell itself loads without one, but every `/v2` panel answers `401`
+until a key is presented. Setting `DCC_UI_API_KEY` to the same key does that for you on a
+loopback connection. Schema changes go to a new database only. `scripts/run-local.py`
+starts this same application — it prints the console and `/docs` URLs — and `--legacy`
+selects the unmounted standard-library handler in `src/dcc/api.py` instead (routes under
+`/v1`, no authentication). To see a clearly synthetic walkthrough, use the separately
+gated instructions in [`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md).
 
 ### Health checks
 
@@ -280,8 +285,10 @@ Test coverage includes:
 Served by `dcc.api_async:app`, the application declares 32 `/v2` operations: 20 `GET`
 and 12 `POST`. It also serves `/healthz`, `/readyz`, `/metrics`, the console shell at
 `/`, the `/assets` static mount and the generated `/docs`, `/redoc` and
-`/openapi.json`. Every `/v2` operation and every file under `/assets` requires an API
-key; `/`, `/metrics` and the generated documentation do not, and carry no tenant data.
+`/openapi.json`. Every `/v2` operation requires an API key. `/`, the `/assets` static
+mount that serves the console's own scripts and HTML fragments, `/healthz`, `/readyz`,
+`/metrics` and the generated documentation do not; none of them carries tenant data, and
+everything that does is under `/v2` and stays behind the key.
 
 The table below was generated from the app's own route table, not from an earlier
 draft:
@@ -324,9 +331,11 @@ Auth rejects a request before the handler runs, yet metrics is outermost, so a 4
 middleware, which is why a new handler cannot omit them.
 
 > `/v1/*` belongs to a different, legacy handler: `src/dcc/api.py`, a standard-library
-> `ThreadingHTTPServer` that `scripts/run-local.py` starts. It serves no `/v2` route and
-> performs no authentication. The FastAPI app serves no `/v1` route; a `/v1` request to
-> it returns `404`. Everything below describes the FastAPI app.
+> `ThreadingHTTPServer` that `scripts/run-local.py --legacy` starts. It serves no `/v2`
+> route and performs no authentication. The FastAPI app serves no `/v1` route: an
+> authenticated `/v1/facilities` there returns `404`, and an unauthenticated one returns
+> `401` because the key check runs before routing ever sees the path. Everything below
+> describes the FastAPI app.
 
 ### Authentication
 
@@ -343,10 +352,38 @@ Missing and invalid keys return the same code so the endpoint is not a key-enume
 oracle. `DCC_ALLOW_ANONYMOUS=true` disables enforcement for local development and logs
 a warning; it is never appropriate in a deployment.
 
-The `/assets` mount is behind the same middleware: `/assets/topology.js` returns `401`
-without a key and `200` with one. A browser `<script src>` cannot send a header, so the
-console shell injects a `<meta name="dcc-api-key">` tag for loopback clients when
-`DCC_UI_API_KEY` is set.
+The console's own files are the exception, and only those files: `/assets/topology.js`
+returns `200` without a key, while `/v2/topology` on the same server returns `401`.
+
+That is not the API being open. The exemption admits a path only when it resolves to a
+file in this repository's `ui/` tree — the shell's module scripts and HTML fragments,
+byte-identical on every deployment and holding no tenant rows. It is derived from the
+route table rather than a written-down prefix: `_console_asset_prefixes()`
+(`src/dcc/api_async.py:614`) counts a mount only when it is a `StaticFiles` instance
+whose directory resolves to `ui/`, so a data route registered under `/assets` later
+would not inherit the exemption, and a mount at `/` is refused outright because it
+would exempt everything. `_is_public_console_asset()` (`:651`) then rejects any path
+carrying a `.` or `..` segment instead of normalising it, so `/assets/../v2/facilities`
+gets `401` rather than a tenant route.
+
+Everything that carries tenant data is under `/v2` and still requires a key. The
+exemption exists because a browser cannot attach a header to a `<script src>`: without
+it the shell loaded while every script tag it emitted answered `401`, which is a blank
+page rather than a secure one.
+
+A customer supplies the key in one of two ways:
+
+- **Typed into the console.** The left rail has a field labelled "API key"
+  (`#apiKeyInput`, `ui/index.html:15`). On change it is stored in this browser's
+  `localStorage` under `dcc-api-key`, and every request the console makes then carries
+  it as `X-API-Key` (`:142-143`, `:301`). The key is not baked into `ui/index.html`, and
+  a `?api_key=` arriving from an old bookmark is read once and scrubbed from the address
+  bar (`:141`).
+- **Injected by the server for a local operator.** When `DCC_UI_API_KEY` is set and the
+  request comes from loopback, `GET /` carries an extra `<meta name="dcc-api-key">` tag
+  (`src/dcc/api_async.py:2836-2847`) that the page reads as its last-resort key. Loopback
+  only: injecting it into a page served to any other host would hand every visitor the
+  credential.
 
 Mint a key:
 
@@ -365,7 +402,7 @@ turns a locked-out configuration into a startup failure instead of a warning.
 | GET | `/readyz` | Database reachability and `dcc.tenants`/`dcc.assets` presence |
 | GET | `/metrics` | Prometheus text exposition, labelled by route template |
 | GET | `/` | Console shell (public, no tenant data) |
-| GET | `/assets/*` | Console JavaScript from `ui/`; behind auth, so a key is required |
+| GET | `/assets/*` | Console scripts and HTML fragments from `ui/`; public, no tenant data |
 | GET | `/docs`, `/redoc`, `/openapi.json` | Generated API documentation; public |
 
 ### Operations
@@ -1173,14 +1210,14 @@ data-center-commander/
 │   ├── SECURITY_AND_GOVERNANCE.md
 │   └── media/       screenshots and overview GIF
 ├── scripts/        local startup, safe bootstrap, fresh-deploy verification
-│   ├── run-local.py            legacy stdlib server (serves /v1)
+│   ├── run-local.py            starts the FastAPI app; --legacy serves /v1
 │   ├── verify-fresh-deploy.sh  schema + all migrations + GET-route smoke test
 │   ├── db-seed-demo.sh
 │   └── db-reset-demo.sh
 ├── src/dcc/        loopback read-model API and domain libraries
 │   ├── api_async.py    served FastAPI app, routing, auth middleware, tenant scoping
 │   ├── pgcompat.py     psycopg3 adapter for the asyncpg-style queries
-│   ├── api.py          legacy stdlib ThreadingHTTPServer (serves /v1 via run-local.py)
+│   ├── api.py          legacy stdlib ThreadingHTTPServer (serves /v1 under run-local.py --legacy)
 │   ├── azure_prices.py Azure retail price client
 │   ├── google_prices.py GCP billing catalog client
 │   ├── adapters/       read-only source adapters
