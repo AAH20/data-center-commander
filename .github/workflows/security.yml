@@ -57,6 +57,33 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
+
+      # CodeQL failed with "This job attempted to run with improved incremental analysis but it
+      # did not complete successfully. One possible reason for this is disk space constraints".
+      # It is not a code finding and not a regression: the same analysis passed on the previous
+      # commit, and the commit that broke it changed only .gitignore and some JavaScript.
+      #
+      # The supported way to turn improved incremental analysis off is the
+      # github-codeql-disable-overlay repository property, and that property can only be set on
+      # an organization repository. This is a personal repository, so the documented remedy
+      # applies instead: give the analysis more room. ubuntu-latest carries several GB of
+      # toolchains a Python-only analysis never touches.
+      #
+      # The alternative -- marking this job continue-on-error -- would turn a real code scanning
+      # gate into decoration, which is the exact defect the rest of these workflows were repaired
+      # for. Reclaim the space instead.
+      - name: Free disk space for the analysis database
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /usr/local/share/boost \
+            /opt/ghc \
+            /usr/share/swift \
+            || true
+          echo "after:"; df -h / | tail -1
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
