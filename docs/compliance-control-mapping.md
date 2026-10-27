@@ -68,7 +68,7 @@ it now reports `0`, because no control reads a variable the application ignores.
 | 3 | `SOC2-CC6.3` | SOC 2 | `DCC_AUDIT_ENABLED` | Access/authentication/permission `event_type`s present in `dcc.evidence_events` (RLS-scoped per tenant) — the evidence a review reads | **Yes** — FAIL ⇄ PASS proven (fixture-only events FAIL; one `auth.*` event PASSes) |
 | 4 | `SOC2-CC7.1` | SOC 2 | `DCC_MONITORING_ENABLED` | Alert rules parsed from `monitoring/prometheus` + `monitoring/iac/prometheus`; every rule over a `dcc_`/`api_`/`iac_` metric must reference a series the exporters or the app actually publish | **Yes** — FAIL ⇄ PASS proven against scratch rule trees with real files |
 | 5 | `SOC2-CC7.2` | SOC 2 | `DCC_IR_PLAN_PATH` | `dcc.incidents` exists with `opened_at`/`detected_at`/`mitigated_at`/`resolved_at`/`incident_commander` | **Yes** — PASS ⇄ FAIL proven (dropping `detected_at` FAILs) |
-| 6 | `ISO27001-A.9.4.1` | ISO 27001 | `DCC_RBAC_ENABLED` | `pg_class`/`pg_policy`: every `dcc` table with `tenant_id` has ROW LEVEL SECURITY **enabled and forced** with ≥1 policy (51 tables) | **Yes** — PASS ⇄ FAIL proven (`DISABLE ROW LEVEL SECURITY`, `NO FORCE`, `DROP POLICY`) |
+| 6 | `ISO27001-A.9.4.1` | ISO 27001 | `DCC_RBAC_ENABLED` | `pg_class`/`pg_policy`: every `dcc` table with `tenant_id` has ROW LEVEL SECURITY **enabled and forced** with ≥1 policy (52 tables, re-counted 2026-10-26) | **Yes** — PASS ⇄ FAIL proven (`DISABLE ROW LEVEL SECURITY`, `NO FORCE`, `DROP POLICY`) |
 | 7 | `ISO27001-A.12.4.1` | ISO 27001 | `DCC_LOG_LEVEL` (consumed by `logging.py`, but a level name is not a log record) | Recorded events exist and every row carries `actor_ref` — an event that does not say who acted is not an audit record | **Yes** — PASS ⇄ FAIL proven (a null `actor_ref` FAILs) |
 | 8 | `ISO27001-A.14.1.1` | ISO 27001 | `DCC_SECURITY_POLICY_PATH` | **`NOT_ASSESSED`** — whether requirements were *analysed* is a document-review judgement. The finding reports which governance documents exist (`docs/SECURITY_AND_GOVERNANCE.md`, …) and asserts nothing about them | **No** — always `NOT_ASSESSED` |
 | 9 | `PCI-1.1` | PCI DSS | `DCC_NETWORK_SEGMENTED` | **`NOT_ASSESSED`** — segmentation is enforced by network devices this process cannot query. NetworkPolicy manifests in the repo are listed as *declared* configuration, explicitly not evidence they are applied | **No** — always `NOT_ASSESSED` |
@@ -93,8 +93,8 @@ fabricated PASS or a fabricated FAIL:
 | `PCI-3.4` | At-rest encryption lives under the Postgres data directory (volume encryption) or in a KMS-managed column; neither is visible to SQL or to this process | Volume-encryption attestation (EBS/LUKS/KMS) or a ciphertext column inventory |
 | `NIST-AU-1` | An audit *policy* is a document; its existence is not its adequacy | Reviewed policy document with approval and review dates |
 
-Two controls can fail but cannot currently pass, for reasons that are true of the
-system rather than of the control:
+Three controls cannot currently reach `PASS`, for reasons that are true of the
+system rather than of the control (statuses as measured 2026-10-26):
 
 * `SOC2-CC6.1` — `PASS` is unreachable while MFA is unimplemented, because the
   control asserts two things and can measure one. This is the honest reading of the
@@ -112,20 +112,59 @@ system rather than of the control:
 Repointing the controls at real state immediately surfaced defects the phantom
 variables had been hiding:
 
-1. **The audit trail does not verify.** `dcc.evidence_events` holds one seeded row
-   whose `event_hash` is the literal string `synthetic-demo-evidence…`, not a digest.
-   `PCI-10.1` therefore FAILs, and `/v2/evidence/verify` would report the same. A
-   seed script is writing a placeholder hash.
-2. **Three of thirteen alert rules for this service can never fire.** They reference
-   `dcc_api_requests_total`, `dcc_api_request_duration_seconds_bucket` and
-   `dcc_database_errors_total`; the application publishes `api_requests_total`,
-   `api_request_duration_seconds` and an error counter with neither name. The error
-   rate, latency and database-error alerts are permanently silent (`SOC2-CC7.1` FAIL).
+1. **The audit trail verifies, on the one row the seed wrote.** `dcc.evidence_events`
+   holds a single seeded event (`demo.fixture.seeded`), and `PCI-10.1` now **PASSes**:
+
+   ```
+   The audit trail holds 1 event(s) across 1 tenant(s) and every hash chain verifies
+   (no edited, inserted or reordered rows)
+   ```
+
+   That is a genuine chain verification over real stored rows, but it certifies a chain
+   of one. Earlier revisions of this section reported `PCI-10.1` as FAIL because the
+   seeded row carried a placeholder hash; that is no longer what the scan reports. What
+   remains unproven is breadth, not correctness: the control has never been exercised
+   over a multi-row chain in this database (the `FAIL` direction is unit-tested —
+   `tests/compliance/test_controls_real_state.py`).
+2. **Alert rules for this service now reference series that exist — with one exception
+   that is a defect in this control, not in the rules.** Re-measured 2026-10-26, the
+   `SOC2-CC7.1` finding reads:
+
+   ```
+   1 of 13 alert rule(s) for this service reference metrics nothing exports
+   (api_request_duration_seconds_bucket), so they can never fire: DCCHighLatency
+   ```
+
+   The three rules this section previously described as permanently silent are fixed:
+   `DCCHighErrorRate` uses `api_errors_total{type=~"internal|timeout"}` and
+   `api_requests_total`, `DCCHighLatency` uses the latency histogram, and
+   `DCCDatabaseUnavailable` uses `api_database_errors_total{operation}`
+   (`monitoring/prometheus/rules/dcc-alerts.yml`). The remaining failure is this control's
+   own metric-name resolution: `_exported_metrics()`
+   (`src/dcc/compliance/observables.py:1252-1276`) scrapes string literals out of the
+   source and never expands Prometheus' histogram suffixes, so
+   `api_request_duration_seconds_bucket` is reported as unexported even though the app's
+   `/metrics` emits it:
+
+   ```
+   GET /metrics, after one request to /v2/overview (excerpt):
+   api_request_duration_seconds_bucket{le="0.25",route="/v2/overview"} 1
+   ...
+   api_request_duration_seconds_bucket{le="+Inf",route="/v2/overview"} 1
+   api_request_duration_seconds_sum{route="/v2/overview"} 0.117376
+   api_request_duration_seconds_count{route="/v2/overview"} 1
+   ```
+
+   So `SOC2-CC7.1` is FAIL for a false positive. Reported rather than papered over: the
+   control's claim "can never fire" is wrong about `DCCHighLatency` on this tree.
 3. **No access events are recorded.** The only evidence event is
    `demo.fixture.seeded`, so a periodic access review has no material to review
    (`SOC2-CC6.3` FAIL).
-4. **Credentials never expire and the database link is cleartext**
-   (`SOC2-CC6.2`, `HIPAA-164.312(e)(1)` FAIL).
+4. **Credentials do not expire and the database link is cleartext.** `SOC2-CC6.2` is
+   `NOT_ASSESSED` on this cluster — "the live key store is empty, so there is no
+   credential lifecycle to assess" — so the expiry gap is not currently being judged at
+   all; from `DCC_API_KEYS` alone it remains a permanent FAIL by construction.
+   `HIPAA-164.312(e)(1)` FAILs: the DSN permits plaintext and the server runs `ssl = off`.
 
 ## Verification
 
@@ -144,6 +183,21 @@ DCC_ALLOW_ANONYMOUS=1 DCC_DATABASE_URL=postgresql://localhost:5432/dcc_demo_loca
 ```
 
 Baseline: `541 passed, 1 skipped` → after: `601 passed, 1 skipped`.
+
+Re-measured 2026-10-26 on `4375603`:
+
+```
+$ .venv/bin/python -m pytest tests/compliance -q -p no:cacheprovider
+601 passed, 1 skipped in 23.76s
+```
+
+and the scan itself:
+
+```
+$ GET /v2/compliance/scan
+summary {"total": 16, "by_status": {"fail": 5, "not_assessed": 7, "pass": 4}}
+configuration_gaps {"affected_controls": 0, ...}
+```
 
 ## Guard against regression
 

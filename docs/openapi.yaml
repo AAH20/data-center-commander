@@ -3,7 +3,28 @@ info:
   title: Data Center Commander API
   version: 0.1.0
   description: |
-    Loopback read-only API for the Data Center Commander local command center.
+    Data Center Commander HTTP API.
+
+    **Which service this describes (measured 2026-10-26).** This document covers
+    the legacy standard-library handler in `src/dcc/api.py`, which serves the
+    `/v1/*` paths below. That handler is unmounted: `scripts/run-local.py` starts
+    `dcc.api_async:app` (FastAPI, `/v2/*`), which is also the `Dockerfile`
+    entrypoint, and the legacy handler is reachable only with `--legacy`. The
+    served application publishes its own contract at `/openapi.json` (and `/docs`).
+
+    Consequence, measured by comparing this file with `dcc.api_async.app.routes`:
+    14 of the paths documented here (`/v1/overview`, `/v1/topology`,
+    `/v1/facilities`, `/v1/assets`, `/v1/workflows`, `/v1/connectors`,
+    `/v1/capacity`, `/v1/evidence`, `/v1/costs`, `/v1/analytics`,
+    `/v1/placement/scenarios`, both `/v1/pricing/*`, and `/assets/{filename}`) are
+    not served by the running application, and all 29 `/v2` paths it does serve
+    are absent from this file. Do not treat this document as the served contract
+    until it is regenerated from `app.openapi()`.
+
+    `/readyz` is the exception: it is the same route on both handlers and the
+    probe semantics below are the served ones (`dcc.api_async`), because that is
+    the process listening on the documented server URL.
+
     All endpoints are unauthenticated and must remain loopback-only.
     Tenant isolation is enforced via PostgreSQL Row-Level Security.
   license:
@@ -84,8 +105,24 @@ paths:
       tags: [Health]
       summary: Readiness probe
       description: |
-        Checks database connectivity, required schema tables, and forced
-        tenant Row-Level Security. Returns 503 if any check fails.
+        Checks database connectivity, the required schema tables, and forced
+        tenant Row-Level Security.
+
+        503 means the instance cannot serve: either the schema is incomplete or
+        the database is unreachable. `tenant_rls` does NOT gate readiness — an
+        unprotected table is a data-exposure finding that needs a migration, and
+        failing readiness for it would take the instance out of rotation (an
+        outage taken to fix a report). A response can therefore be
+        `200 ready:true` with `tenant_rls: missing`.
+
+        Each failure mode reports only the keys it managed to measure, so
+        `checks.database` is absent from the schema-incomplete body and
+        `checks.schema` / `checks.tenant_rls` are absent from the unreachable body.
+
+        Measured from `dcc.api_async` (the served FastAPI app) on 2026-10-26:
+        `{"ready": true, "checks": {"database": "ok", "schema": "ok",
+        "tenant_rls": "ok", "tenant_rls_tables": 52,
+        "tenant_rls_unprotected": 0}}`.
       responses:
         '200':
           description: All readiness checks passed
@@ -94,9 +131,6 @@ paths:
               schema:
                 type: object
                 properties:
-                  service:
-                    type: string
-                    example: data-center-commander
                   ready:
                     type: boolean
                     example: true
@@ -105,25 +139,41 @@ paths:
                     properties:
                       database:
                         type: string
-                        enum: [ok, unavailable, not_configured]
+                        enum: [ok]
                       schema:
                         type: string
-                        enum: [ok, incomplete, unchecked]
+                        enum: [ok]
                       tenant_rls:
                         type: string
-                        enum: [ok, not_enforced, unchecked]
-                  execution_permitted:
-                    type: boolean
-                    example: false
+                        enum: [ok, missing, not_assessed]
+                        description: |
+                          Whether every tenant-scoped table (one carrying a
+                          `tenant_id` column) has RLS both ENABLED and FORCED.
+                          `ok` — all are protected. `missing` — at least one is
+                          not; the counts below say how many. `not_assessed` —
+                          the catalog could not be read, or the schema held no
+                          tenant-scoped table to assess (a pass earned by finding
+                          nothing is not reported as a pass).
+                      tenant_rls_tables:
+                        type: integer
+                        description: Tenant-scoped tables the assessment saw. Present when `tenant_rls` is `ok` or `missing`.
+                        example: 52
+                      tenant_rls_unprotected:
+                        type: integer
+                        description: Tenant-scoped tables lacking enabled-and-forced RLS. `0` when `tenant_rls` is `ok`.
+                        example: 0
         '503':
-          description: One or more readiness checks failed
+          description: |
+            The instance cannot serve. Body is one of two measured shapes:
+            `{"ready": false, "checks": {"schema": "incomplete", "tenant_rls":
+            "not_assessed"}}` or `{"ready": false, "checks": {"database":
+            "unreachable"}}`. The error detail is logged, never returned: a
+            driver error routinely embeds the DSN.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  service:
-                    type: string
                   ready:
                     type: boolean
                     example: false
@@ -132,13 +182,16 @@ paths:
                     properties:
                       database:
                         type: string
+                        enum: [unreachable]
+                        description: Present only when the pool could not be built, or the database did not answer.
                       schema:
                         type: string
+                        enum: [incomplete]
+                        description: Present only when `dcc.tenants` or `dcc.assets` is missing.
                       tenant_rls:
                         type: string
-                  execution_permitted:
-                    type: boolean
-                    example: false
+                        enum: [not_assessed]
+                        description: 'Reported alongside `schema: incomplete`; RLS is never assessed when the schema is not there.'
   /v1/overview:
     get:
       tags: [Overview]

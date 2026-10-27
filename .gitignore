@@ -39,3 +39,7 @@ monitoring/alertmanager/data/
 
 # Sentinel test cache (created by `sentinel test`; not source)
 policies/sentinel/.sentinel/
+
+# Hermes wave scratch
+.hermes-wave-manifest.json
+.hermes-evidence/

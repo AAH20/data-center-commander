@@ -205,7 +205,7 @@
           "refId": "A"
         }
       ],
-      "description": "ALWAYS 0 (panel not meaningful yet): the exporter derives this from readyz's checks.tenant_rls, but /readyz never returns that key -- it reports only checks.database and checks.schema (src/dcc/api_async.py, readyz). Until the readiness probe gains an RLS check, this panel shows 0 regardless of actual tenant isolation.",
+      "description": "Reads dcc_database_rls_ok. The exporter sets it to 1 when readyz checks.tenant_rls == \"ok\" and 0 otherwise (monitoring/exporter/dcc_exporter.py:59), so 1 means every tenant-scoped table has RLS enabled AND forced. 0 conflates three states the exporter does not distinguish: tenant_rls=missing, tenant_rls=not_assessed, and /readyz unreachable. Read /readyz for checks.tenant_rls and checks.tenant_rls_unprotected to tell them apart. Measured 2026-10-26 against the local demo database: tenant_rls=ok, tenant_rls_tables=52, tenant_rls_unprotected=0, so this panel reads 1.",
       "title": "Tenant RLS",
       "type": "stat"
     },

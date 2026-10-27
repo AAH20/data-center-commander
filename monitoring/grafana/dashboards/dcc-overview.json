@@ -176,12 +176,12 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(dcc_api_request_duration_seconds_bucket[5m])) by (le, route))",
+          "expr": "histogram_quantile(0.95, sum(rate(api_request_duration_seconds_bucket[5m])) by (le, route))",
           "legendFormat": "{{route}} p95",
           "refId": "A"
         }
       ],
-      "description": "EMPTY BY DESIGN (no producer): the API records latency with the route template as the metric NAME (record_latency(label, ...) in src/dcc/api_async.py), so dcc_api_request_duration_seconds_bucket is never published. The panel renders nothing until the app publishes a stable latency histogram; see the TODO in monitoring/prometheus/rules/dcc-alerts.yml.",
+      "description": "Reads api_request_duration_seconds_bucket, published by metrics_middleware in src/dcc/api_async.py with the route template as a LABEL (route=...), in seconds. The buckets exist: the app's /metrics emits api_request_duration_seconds_bucket{le=\"0.25\",route=\"/v2/overview\"} and the le=\"+Inf\" terminator, plus _sum and _count. Grouping is by (le, route) because the histogram carries no status label. A route with no traffic in the window returns no series, not zero.",
       "title": "p95 Latency by Route",
       "type": "timeseries"
     },
@@ -309,12 +309,12 @@
             "type": "prometheus",
             "uid": "Prometheus"
           },
-          "expr": "dcc_database_errors_total",
+          "expr": "sum(rate(api_database_errors_total[5m]))",
           "legendFormat": "DB Errors",
           "refId": "A"
         }
       ],
-      "description": "EMPTY BY DESIGN (no producer): no metric counts database errors. The exporter publishes readiness (dcc_database_ready) and the API counts HTTP 5xx in api_errors_total -- neither is a database fault counter. Add one in the app, or delete this panel.",
+      "description": "Reads api_database_errors_total{operation}, registered at import time in src/dcc/api_async.py and incremented only for failures attributable to the database layer: operation=query when a driver error escapes a handler, operation=readiness_probe when /readyz cannot reach the database. Shown as a per-second rate over 5m, the same series the DCCDatabaseUnavailable alert rule uses. A healthy process publishes the family with no samples, so an empty panel means no database fault has been observed -- not that the metric is missing.",
       "title": "Database Errors",
       "type": "stat"
     },
