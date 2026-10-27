@@ -212,9 +212,9 @@
   async function fetchApi(path) {
     const params = new URLSearchParams({ tenant_id: tenant });
     if (syntheticDemo) params.set("demo", "synthetic");
-    const r = await fetch(`${path}?${params}`, { cache: "no-store" });
+    const r = await window.dccFetch(`${path}?${params}`, { cache: "no-store" });
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || `${path} unavailable`);
+    if (!r.ok) throw window.dccError(path, r, d);
     return d;
   }
 
@@ -746,7 +746,7 @@
       banner.className = synth ? "ops-banner warn" : "ops-banner info";
       loaded = true;
     } catch (err) {
-      banner.textContent = `Operations monitoring unavailable: ${err.message}. Verify PostgreSQL connection and schema.`;
+      banner.textContent = `Operations monitoring unavailable: ${err.message}.${window.dccFailureHint(err)}`;
       banner.className = "ops-banner critical";
     } finally {
       document.querySelector("#opsRefresh").disabled = false;

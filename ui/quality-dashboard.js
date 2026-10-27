@@ -739,9 +739,9 @@
     try {
       const params = new URLSearchParams({ tenant_id: tenant, window_days: days });
       if (new URLSearchParams(location.search).get("demo") === "synthetic") params.set("demo", "synthetic");
-      const response = await fetch(`/v2/analytics?${params}`, { cache: "no-store" });
+      const response = await window.dccFetch(`/v2/analytics?${params}`, { cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      if (!response.ok) throw window.dccError("/v2/analytics", response, data);
 
       const scores = computeScores(data);
       const anomalies = detectAnomalies(data);
@@ -759,7 +759,7 @@
       statusEl.textContent = `Quality snapshot · ${data.window_days}-day window · ${scores.observedCount} KPI signals · ${anomalies.length} alerts · ${synth ? "synthetic provenance present" : "source lineage attached"} · refreshed ${new Date().toLocaleTimeString()}`;
       statusEl.className = synth ? "banner warn" : "banner info";
     } catch (err) {
-      statusEl.textContent = `Quality metrics unavailable: ${err.message}. Verify PostgreSQL connection and schema.`;
+      statusEl.textContent = `Quality metrics unavailable: ${err.message}.${window.dccFailureHint(err)}`;
       statusEl.className = "banner warn";
     } finally {
       document.querySelector("#qdRefresh").disabled = false;

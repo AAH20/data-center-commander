@@ -42,4 +42,39 @@ document.querySelector("#dccSetupCancel").addEventListener("click",()=>dialog.cl
 document.querySelector("#dccOpenIntegrations").addEventListener("click",()=>{dialog.close();document.querySelector('[data-view="integrations"]')?.click();});
 document.querySelector("#dccSetupForm").addEventListener("submit",event=>{event.preventDefault();const form=new FormData(event.currentTarget);saved.profile=String(form.get("profile"));saved.objective=String(form.get("objective"));saved.saved_at=new Date().toISOString();localStorage.setItem(key,JSON.stringify(saved));paint();dialog.close();});
 const exportButton=document.createElement("button");exportButton.type="button";exportButton.textContent="Export due-diligence snapshot";document.querySelector(".dcc-actions").prepend(exportButton);
-exportButton.addEventListener("click",async()=>{const tenant=new URLSearchParams(location.search).get("tenant_id");const names=["overview","facilities","assets","connectors","analytics","capacity","evidence","costs"];const pack={product:"Data Center Commander",generated_at:new Date().toISOString(),tenant_id:tenant||null,scope:"tenant-scoped read-only snapshot",execution_permitted:false,profile:{organization:saved.profile||null,objective:saved.objective||null,preferences_local_only:true},claims_policy:"Source state and synthetic provenance are reported as returned; this file is not a certification, audit opinion, vendor quote, or production readiness attestation.",sections:{}};await Promise.all(names.map(async name=>{try{const response=await fetch(`/v2/${name}?tenant_id=${encodeURIComponent(tenant||"")}`,{cache:"no-store"}),data=await response.json();pack.sections[name]=response.ok?data:{unavailable:data.error||`HTTP ${response.status}`}}catch(error){pack.sections[name]={unavailable:error.message}}}));const blob=new Blob([JSON.stringify(pack,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="dcc-due-diligence-snapshot.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+/**
+ * Reports where the snapshot export stands. Screen readers announce it, and the
+ * operator sees why a download did not happen instead of a file full of
+ * "unavailable" sections that reads like an empty estate.
+ */
+const exportStatus=document.createElement("span");exportStatus.className="dcc-tag";exportStatus.id="dccExportStatus";exportStatus.setAttribute("role","status");exportStatus.textContent="Snapshot not exported yet";exportButton.after(exportStatus);
+exportButton.addEventListener("click",async()=>{
+  const tenant=new URLSearchParams(location.search).get("tenant_id");
+  const names=["overview","facilities","assets","connectors","analytics","capacity","evidence","costs"];
+  const pack={product:"Data Center Commander",generated_at:new Date().toISOString(),tenant_id:tenant||null,scope:"tenant-scoped read-only snapshot",execution_permitted:false,profile:{organization:saved.profile||null,objective:saved.objective||null,preferences_local_only:true},claims_policy:"Source state and synthetic provenance are reported as returned; this file is not a certification, audit opinion, vendor quote, or production readiness attestation.",sections:{}};
+  exportStatus.textContent="Exporting…";
+  /* Every section goes through window.dccFetch so the API key rides along. A bare
+     fetch() here returned 401 under enforced auth and the pack recorded
+     "missing_credentials" as if the data were merely absent. */
+  await Promise.all(names.map(async name=>{
+    const path=`/v2/${name}`;
+    try{
+      const response=await window.dccFetch(`${path}?tenant_id=${encodeURIComponent(tenant||"")}`,{cache:"no-store"});
+      let data=null;try{data=await response.json()}catch(parseError){data=null}
+      pack.sections[name]=response.ok?data:{unavailable:window.dccApiError(path,response,data)};
+    }catch(error){pack.sections[name]={unavailable:error.message}}
+  }));
+  const failed=Object.entries(pack.sections).filter(([,section])=>section&&section.unavailable);
+  if(failed.length===names.length){
+    exportStatus.textContent=`Snapshot not exported: ${failed[0][1].unavailable}`;
+    return;
+  }
+  if(failed.length){
+    pack.unavailable_sections=failed.map(([name,section])=>({section:name,reason:section.unavailable}));
+    exportStatus.textContent=`Snapshot exported with ${failed.length} unavailable section(s): ${failed[0][1].unavailable}`;
+  }else{
+    exportStatus.textContent="Snapshot exported: all sections readable.";
+  }
+  const blob=new Blob([JSON.stringify(pack,null,2)],{type:"application/json"}),url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download="dcc-due-diligence-snapshot.json";a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+});

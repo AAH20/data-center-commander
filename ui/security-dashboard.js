@@ -678,22 +678,9 @@
 
   // ─── Main load ──────────────────────────────────────────────────────────────
 
-  /**
-   * Builds a readable message from a failed API response body.
-   * FastAPI validation failures carry `detail` (a string or a list of errors) rather
-   * than `error`, so both shapes are handled instead of showing "[object Object]".
-   * @param {Object} body - Parsed JSON response body
-   * @param {Response} resp - The response, used for the status code
-   * @returns {string} Human-readable error text
-   */
-  function apiErrorText(body, resp) {
-    if (typeof body?.detail === "string") return body.detail;
-    if (typeof body?.error === "string") return body.error;
-    if (Array.isArray(body?.detail) && body.detail.length) {
-      return body.detail.map((d) => d.msg || d.type || "invalid request").join("; ");
-    }
-    return `HTTP ${resp.status}`;
-  }
+  /* Error text comes from window.dccApiError (index.html), which already handles the
+     `detail`/`error`/422-list shapes AND names 401 as an authentication problem. The
+     local apiErrorText copy is gone so the two cannot drift apart. */
 
   /**
    * Loads security data from the API and renders all dashboard components.
@@ -719,18 +706,18 @@
       }
 
       const [evidenceResp, workflowsResp, connectorsResp] = await Promise.all([
-        fetch(`/v2/evidence?${params}`, { cache: "no-store" }),
-        fetch(`/v2/workflows?${params}`, { cache: "no-store" }),
-        fetch(`/v2/connectors?${params}`, { cache: "no-store" }),
+        window.dccFetch(`/v2/evidence?${params}`, { cache: "no-store" }),
+        window.dccFetch(`/v2/workflows?${params}`, { cache: "no-store" }),
+        window.dccFetch(`/v2/connectors?${params}`, { cache: "no-store" }),
       ]);
 
       const evidenceData = await evidenceResp.json();
       const workflowsData = await workflowsResp.json();
       const connectorsData = await connectorsResp.json();
 
-      if (!evidenceResp.ok) throw new Error(apiErrorText(evidenceData, evidenceResp));
-      if (!workflowsResp.ok) throw new Error(apiErrorText(workflowsData, workflowsResp));
-      if (!connectorsResp.ok) throw new Error(apiErrorText(connectorsData, connectorsResp));
+      if (!evidenceResp.ok) throw window.dccError("/v2/evidence", evidenceResp, evidenceData);
+      if (!workflowsResp.ok) throw window.dccError("/v2/workflows", workflowsResp, workflowsData);
+      if (!connectorsResp.ok) throw window.dccError("/v2/connectors", connectorsResp, connectorsData);
 
       // /v2 collection routes answer with a pagination envelope ({items,total,...}),
       // not the bare arrays the old /v1 handlers returned. Unwrap before rendering,
@@ -761,7 +748,7 @@
       `;
       statusEl.className = hasCritical ? "sd-banner critical" : hasViolations ? "sd-banner warn" : "sd-banner info";
     } catch (err) {
-      statusEl.textContent = `Security monitoring unavailable: ${err.message}. Verify PostgreSQL connection and schema.`;
+      statusEl.textContent = `Security monitoring unavailable: ${err.message}.${window.dccFailureHint(err)}`;
       statusEl.className = "sd-banner warn";
     } finally {
       document.querySelector("#sdRefresh").disabled = false;
@@ -769,44 +756,36 @@
   }
 
   // ─── Wire events ────────────────────────────────────────────────────────────
+  /**
+   * Re-renders the audit table for the current filters.
+   *
+   * A 401 here used to render an empty table, because the code only checked
+   * `r.json()` and the catch ran for transport errors alone: an unauthenticated
+   * console looked like a tenant with no audit events. Check r.ok and report.
+   * @returns {Promise<void>}
+   */
+  async function refreshAuditTable() {
+    const tenant = new URLSearchParams(location.search).get("tenant_id");
+    if (!tenant) return;
+    const params = new URLSearchParams({ tenant_id: tenant });
+    if (new URLSearchParams(location.search).get("demo") === "synthetic") {
+      params.set("demo", "synthetic");
+    }
+    const statusEl = document.querySelector("#sdStatus");
+    try {
+      const r = await window.dccFetch(`/v2/evidence?${params}`, { cache: "no-store" });
+      const d = await r.json();
+      if (!r.ok) throw window.dccError("/v2/evidence", r, d);
+      renderAuditTable(d.items || []);
+    } catch (e) {
+      statusEl.textContent = `Audit filter refresh failed: ${e.message}`;
+      statusEl.className = "sd-banner warn";
+    }
+  }
   document.querySelector("#sdRefresh").addEventListener("click", loadSecurity);
-  document.querySelector("#sdAuditSearch").addEventListener("input", () => {
-    // Re-render audit table with filter
-    const tenant = new URLSearchParams(location.search).get("tenant_id");
-    if (!tenant) return;
-    const params = new URLSearchParams({ tenant_id: tenant });
-    if (new URLSearchParams(location.search).get("demo") === "synthetic") {
-      params.set("demo", "synthetic");
-    }
-    fetch(`/v2/evidence?${params}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => renderAuditTable(d.items || []))
-      .catch((e) => { document.querySelector("#sdStatus").textContent = `Audit filter refresh failed: ${e.message}`; });
-  });
-  document.querySelector("#sdAuditType").addEventListener("change", () => {
-    const tenant = new URLSearchParams(location.search).get("tenant_id");
-    if (!tenant) return;
-    const params = new URLSearchParams({ tenant_id: tenant });
-    if (new URLSearchParams(location.search).get("demo") === "synthetic") {
-      params.set("demo", "synthetic");
-    }
-    fetch(`/v2/evidence?${params}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => renderAuditTable(d.items || []))
-      .catch((e) => { document.querySelector("#sdStatus").textContent = `Audit filter refresh failed: ${e.message}`; });
-  });
-  document.querySelector("#sdAuditSeverity").addEventListener("change", () => {
-    const tenant = new URLSearchParams(location.search).get("tenant_id");
-    if (!tenant) return;
-    const params = new URLSearchParams({ tenant_id: tenant });
-    if (new URLSearchParams(location.search).get("demo") === "synthetic") {
-      params.set("demo", "synthetic");
-    }
-    fetch(`/v2/evidence?${params}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => renderAuditTable(d.items || []))
-      .catch((e) => { document.querySelector("#sdStatus").textContent = `Audit filter refresh failed: ${e.message}`; });
-  });
+  document.querySelector("#sdAuditSearch").addEventListener("input", refreshAuditTable);
+  document.querySelector("#sdAuditType").addEventListener("change", refreshAuditTable);
+  document.querySelector("#sdAuditSeverity").addEventListener("change", refreshAuditTable);
   document.querySelector("#sdExport").addEventListener("click", () => {
     const tenant = new URLSearchParams(location.search).get("tenant_id");
     const report = {

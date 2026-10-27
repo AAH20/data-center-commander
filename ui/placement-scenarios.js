@@ -40,9 +40,9 @@
     const tenant = tenantId();
     if (!validTenant(tenant)) { status.textContent = "Select/configure a UUID tenant before loading saved drafts."; list.replaceChildren(); return; }
     try {
-      const response = await (window.dccFetch||fetch)("/v2/placement/scenarios?tenant_id=" + encodeURIComponent(tenant), {cache:"no-store"});
+      const response = await window.dccFetch("/v2/placement/scenarios?tenant_id=" + encodeURIComponent(tenant), {cache:"no-store"});
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "database unavailable");
+      if (!response.ok) throw window.dccError("/v2/placement/scenarios", response, body);
       const items = body.scenarios || [];
       list.innerHTML = items.length ? "<ul>" + items.map(item => "<li><strong>" + esc(item.name) + "</strong> · draft snapshot · " + esc(new Date(item.created_at).toLocaleString()) + " · SHA-256 " + esc(String(item.payload_sha256).slice(0,12)) + "…</li>").join("") + "</ul>" : '<p class="empty">No saved comparison drafts for this tenant.</p>';
       status.textContent = items.length + " saved draft snapshot(s) · read-only list · no approval implied.";
@@ -56,9 +56,9 @@
     if (!validTenant(tenant)) { status.textContent = "A valid UUID tenant is required; the snapshot was not sent."; return; }
     save.disabled = true;
     try {
-      const response = await (window.dccFetch||fetch)("/v2/placement/scenarios", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenant_id:tenant,name:name.value.trim(),payload})});
+      const response = await window.dccFetch("/v2/placement/scenarios", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tenant_id:tenant,name:name.value.trim(),payload})});
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error || "database unavailable");
+      if (!response.ok) throw window.dccError("/v2/placement/scenarios", response, body);
       status.textContent = "Draft snapshot saved to this tenant’s PostgreSQL database. It is not an approved estimate or placement decision.";
       await refresh();
     } catch (error) {

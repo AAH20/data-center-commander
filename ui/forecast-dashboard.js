@@ -639,9 +639,9 @@
         if (new URLSearchParams(location.search).get("demo") === "synthetic") {
           params.set("demo", "synthetic");
         }
-        const resp = await fetch(`/v2/analytics?${params}`, { cache: "no-store" });
+        const resp = await window.dccFetch(`/v2/analytics?${params}`, { cache: "no-store" });
         const data = await resp.json();
-        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        if (!resp.ok) throw window.dccError("/v2/analytics", resp, data);
         currentData = data;
 
         const series = data.kpi_series || [];
@@ -726,7 +726,7 @@
           refreshed ${new Date().toLocaleTimeString()}
         `;
       } catch (err) {
-        document.querySelector("#fd-status").textContent = `Forecast unavailable: ${err.message}. Verify PostgreSQL connection and schema.`;
+        document.querySelector("#fd-status").textContent = `Forecast unavailable: ${err.message}.${window.dccFailureHint(err)}`;
       } finally {
         document.querySelector("#fd-refresh").disabled = false;
       }

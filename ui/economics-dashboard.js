@@ -151,9 +151,9 @@
     if (!tenant) return null;
     const params = new URLSearchParams({tenant_id: tenant});
     if (syntheticDemo) params.set("demo", "synthetic");
-    const r = await fetch(`/v2/costs?${params}`, {cache:"no-store"});
+    const r = await window.dccFetch(`/v2/costs?${params}`, {cache:"no-store"});
     const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "costs unavailable");
+    if (!r.ok) throw window.dccError("/v2/costs", r, d);
     return d;
   }
 
@@ -694,7 +694,7 @@
       renderPrices(data);
       loaded = true;
     } catch (err) {
-      showBanner("warn", `Cost intelligence unavailable: ${err.message}`);
+      showBanner("warn", `Cost intelligence unavailable: ${err.message}.${window.dccFailureHint(err)}`);
     }
   }
 

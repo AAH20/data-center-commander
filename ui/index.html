@@ -302,7 +302,9 @@ document.querySelector('#refreshOperations')?.addEventListener('click',()=>loadO
 </script><script id="command-center-interactions">
 let analyticsSnapshot=null, workflowSnapshot=[], refreshClock=null;
 async function scopedGet(path,extra={}){const params=new URLSearchParams({tenant_id:tenant||"",...extra});if(syntheticDemoMode)params.set('demo','synthetic');const response=await _fetch(`${path}?${params}`,{cache:"no-store"});return readJson(path,response)}
-function showView(name){document.querySelectorAll(".view").forEach(view=>view.classList.toggle("active",view.id===`view-${name}`));document.querySelectorAll(".nav [data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));const active=document.querySelector(`.nav [data-view="${name}"]`);document.querySelector("#crumb").textContent=active?active.textContent.trim():name;history.replaceState(null,"",`#${name}`);if(name==="analytics")loadAnalytics().catch(showAnalyticsError);if(name==="workflows")renderWorkflowQueue();if(name==="governance")loadGovernance();if(name==="operations")loadOperations();/* Deferred module views load their own data. The economics dashboard only auto-loaded
+function showView(name){document.querySelectorAll(".view").forEach(view=>view.classList.toggle("active",view.id===`view-${name}`));document.querySelectorAll(".nav [data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));const active=document.querySelector(`.nav [data-view="${name}"]`);document.querySelector("#crumb").textContent=active?active.textContent.trim():name;/* Keep ?tenant_id and ?demo: replaceState("#security") dropped the query string entirely, and
+   every module re-reads tenant_id from location.search, so one nav click made them all report
+   "Select a tenant" and stop requesting data. */history.replaceState(null,"",`${location.pathname}${location.search}#${name}`);if(name==="analytics")loadAnalytics().catch(showAnalyticsError);if(name==="workflows")renderWorkflowQueue();if(name==="governance")loadGovernance();if(name==="operations")loadOperations();/* Deferred module views load their own data. The economics dashboard only auto-loaded
    when the hash was already #economics, so arriving via the nav button never ran it and
    its banner stayed empty -- the view looked broken rather than empty. Each is optional
    chained because the module may not have loaded yet. */if(name==="economics")window.loadEconomicsDashboard?.()}
@@ -313,7 +315,26 @@ function showView(name){document.querySelectorAll(".view").forEach(view=>view.cl
    could never navigate or read page state. dccFetch carries the API key header, which
    a bare fetch() in a module would omit and get a 401. */
 window.showView=showView;
+/* dccFetch returns the raw Response and does NOT throw on a non-2xx status: it is a
+   header-carrying drop-in for fetch, so the caller still owns response.ok. dccJson is
+   the variant that parses and throws, with apiError's 401/403 wording attached and the
+   status preserved on the error, so a module cannot render an empty table for a 401. */
 window.dccFetch=(u,o)=>_fetch(u,o);
+/* Message text only, for the sites that store a reason in a report. */
+window.dccApiError=(path,response,body)=>apiError(path,response,body).message;
+/* Error object with .status preserved, for the sites that throw and let a catch
+   distinguish an authentication failure from a database one. */
+window.dccError=(path,response,body)=>{const error=apiError(path,response,body);error.status=response.status;return error};
+window.dccJson=async(u,o)=>{
+  const response=await _fetch(u,o);
+  let body=null;
+  try{body=await response.json()}catch(e){body=null}
+  if(!response.ok)throw window.dccError(String(u),response,body);
+  return body;
+};
+/* Trailing diagnosis for a module banner. A 401 is a credential problem; telling the
+   operator to check PostgreSQL for it sends them to the wrong subsystem. */
+window.dccFailureHint=err=>(err&&(err.status===401||err.status===403))?"":" Verify PostgreSQL connection and schema.";
 window.getTenantId=()=>{const el=document.getElementById("tenantInput");const v=el?el.value.trim():"";return v||localStorage.getItem("dcc-tenant")||new URLSearchParams(location.search).get("tenant_id")||""};
 
 document.querySelectorAll(".nav [data-view]").forEach(button=>button.addEventListener("click",()=>showView(button.dataset.view)));

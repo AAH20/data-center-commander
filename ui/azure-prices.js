@@ -118,8 +118,8 @@
     }
     googleStatus.textContent = "Contacting Google Cloud Billing Catalog…"; googleResults.hidden = true;
     try {
-      const response = await fetch(`${PRICING_ROUTES.google}?${query}`, {cache: "no-store"});
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const response = await window.dccFetch(`${PRICING_ROUTES.google}?${query}`, {cache: "no-store"});
+      const data = await response.json(); if (!response.ok) throw window.dccError(PRICING_ROUTES.google, response, data);
       const table = document.createElement("table"), head = table.createTHead().insertRow(), body = table.createTBody();
       ["SKU description", "SKU ID", "Region", "Usage type", "Price", "Unit", "Effective", "Tier detail", "Estimate draft"].forEach(label => { const th = document.createElement("th"); th.textContent = label; head.append(th); });
       for (const item of data.prices || []) {
@@ -162,8 +162,8 @@
     }
     status.textContent = "Contacting the fixed Azure retail catalog endpoint…"; host.hidden = true;
     try {
-      const response = await fetch(`${PRICING_ROUTES.azure}?${query}`, {cache: "no-store"});
-      const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      const response = await window.dccFetch(`${PRICING_ROUTES.azure}?${query}`, {cache: "no-store"});
+      const data = await response.json(); if (!response.ok) throw window.dccError(PRICING_ROUTES.azure, response, data);
       latest = data;
       const table = document.createElement("table"), head = table.createTHead().insertRow(), body = table.createTBody();
       [...labels, "Estimate draft"].forEach(label => { const th = document.createElement("th"); th.textContent = label; head.append(th); });
