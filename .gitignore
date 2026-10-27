@@ -43,3 +43,7 @@ policies/sentinel/.sentinel/
 # Hermes wave scratch
 .hermes-wave-manifest.json
 .hermes-evidence/
+
+# iac-visual run output (baselines are the reference)
+tests/iac-visual/screenshots/
+tests/iac-visual/summary.json

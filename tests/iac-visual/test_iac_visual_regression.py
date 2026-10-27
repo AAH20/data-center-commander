@@ -32,6 +32,13 @@ def _run_visual_regression(update_baseline: bool = False) -> dict:
     env = os.environ.copy()
     env["DCC_BASE_URL"] = BASE_URL
 
+    # summary.json is tracked in git, so a previous run's file is always on disk.
+    # Without removing it, a harness that exits before producing results (server
+    # down -> exit 2) was scored against the last good summary and reported green
+    # with no server running at all. Delete it first: a summary now proves this
+    # run wrote one.
+    SUMMARY_FILE.unlink(missing_ok=True)
+
     result = subprocess.run(
         cmd,
         capture_output=True,
@@ -43,12 +50,23 @@ def _run_visual_regression(update_baseline: bool = False) -> dict:
 
     if not SUMMARY_FILE.exists():
         pytest.fail(
-            f"IaC visual regression did not produce a summary.\n"
+            f"IaC visual regression did not produce a summary (node exit {result.returncode}).\n"
             f"stdout: {result.stdout}\n"
             f"stderr: {result.stderr}"
         )
 
-    return json.loads(SUMMARY_FILE.read_text())
+    summary = json.loads(SUMMARY_FILE.read_text())
+    # 0 = every view passed (or baselines were saved), 1 = view-level failures,
+    # which the assertions below report per view. Anything else is the harness
+    # itself failing (2 = application never answered /healthz), and a summary
+    # cannot make that green.
+    if result.returncode not in (0, 1):
+        pytest.fail(
+            f"IaC visual regression exited {result.returncode}.\n"
+            f"stdout: {result.stdout}\n"
+            f"stderr: {result.stderr}"
+        )
+    return summary
 
 
 @pytest.fixture(scope="session")
