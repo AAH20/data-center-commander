@@ -100,6 +100,31 @@ jobs:
         # is present.
         run: pip install -e ".[test,checkov]"
 
+      # tests/iac-performance shells out to `terraform` and `opa`. Without them the
+      # directory does not fail -- it reports "22 passed, 71 skipped", which is green and
+      # covers one fifth of itself. The verify step below turns that silent skip into a
+      # loud failure, because a gate that reports success for work it did not do is the
+      # exact defect this workflow has spent its life removing.
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install Open Policy Agent
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sSL -o "$RUNNER_TEMP/bin/opa" \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x "$RUNNER_TEMP/bin/opa"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Verify IaC test tools are present
+        # If either binary is missing the performance suite degrades to skips instead of
+        # failures, so verify them here rather than trusting the suite's green.
+        run: |
+          terraform version
+          opa version
+
       # This gate is BLOCKING. It used to be continue-on-error: true, justified by
       # "636 pre-existing failures, 334 of them terraform tests targeting
       # terraform/modules/aws/vpc". That layout no longer exists -- the modules moved to
@@ -112,11 +137,8 @@ jobs:
       #
       # Excluded, each for a stated capability gap rather than for being red:
       #   tests/e2e            needs a Chromium binary and a running server
-      #   tests/iac-performance is RED (50 failed, 21 passed, 15 skipped) AND takes 44
-      #                        minutes. Excluded because it does not pass, not because
-      #                        it is slow -- the slowness would be tolerable, the 50
-      #                        failures would not. Fixing it is its own piece of work.
-      #   tests/iac-visual     needs 7 view baselines that have not been generated
+      #   tests/iac-visual     needs a running server plus 7 baselines generated on the
+      #                        same platform as the gate; fonts differ per runner image
       #   tests/performance    wall-clock microbenchmarks. This job is a 3-way Python
       #                        matrix on shared runners, and they are the noisiest thing
       #                        in it: a 0.14 ms budget was exceeded by 0.01 ms on one
@@ -124,6 +146,11 @@ jobs:
       #                        integration workflow. Timing assertions belong in a
       #                        dedicated job, not in a parallel matrix -- the same
       #                        numbers are still enforced there.
+      #
+      # tests/iac-performance USED to be excluded here because it was red: 50 failed, 21
+      # passed, 15 skipped, 44 minutes. It is now 92 passed, 1 skipped in 65 seconds, and
+      # it runs in this job. Excluding a green tier because it used to be red is how a
+      # gate shrinks to nothing while still looking like one.
       # Everything else runs. If a test in the included set is red, this job fails.
       - name: Prepare the test database
         env:
@@ -158,7 +185,6 @@ jobs:
           pip install -e ".[test,checkov]" coverage
           coverage run -m pytest tests/ -q -p no:cacheprovider \
             --ignore=tests/e2e \
-            --ignore=tests/iac-performance \
             --ignore=tests/iac-visual \
             --ignore=tests/performance
           coverage report -m
