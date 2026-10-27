@@ -42,6 +42,7 @@ timeout. A compliance scan that hangs is a compliance scan nobody runs.
 
 from __future__ import annotations
 
+import ast
 import os
 import re
 import sys
@@ -1202,6 +1203,58 @@ _PROMQL_NOISE = {
 _LABEL_BLOCK = re.compile(r"\{[^}]*\}")
 _CALL_OR_IDENT = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
+#: Calls that fix a metric family's TYPE, and therefore the series its exposition
+#: carries. ``Histogram("x")``/``Summary("x")`` are prometheus_client registrations
+#: (the exporters use them); the application's MetricsEngine takes the family name as
+#: a plain argument instead of naming a class, so its recording methods are
+#: declarations too. Counters and gauges appear in neither set: they emit the name
+#: they were registered under and nothing else.
+_HISTOGRAM_REGISTRARS = frozenset({"record_latency", "register_histogram", "timed", "Histogram"})
+_SUMMARY_REGISTRARS = frozenset({"Summary"})
+_HISTOGRAM_DERIVED = ("_bucket", "_sum", "_count")
+_SUMMARY_DERIVED = ("_sum", "_count")
+
+
+def _declared_families(paths: list[Path]) -> dict[str, frozenset[str]]:
+    """Families whose type is stated by a real call, mapped to their derived series.
+
+    Parsed with ``ast`` rather than matched as text because a call written inside a
+    docstring is not a declaration. ``MetricsEngine``'s own docstring shows
+    ``record_latency("api_request", ...)`` as an example; reading that as a histogram
+    would make a rule over ``api_request_bucket`` pass while nothing emits it, which is
+    the failure mode this control exists to prevent. Only syntactic calls count, so
+    type knowledge comes from code that runs.
+
+    A file that will not parse contributes no type information. That direction is
+    deliberate: an unparseable source must not license suffixes for anything.
+    """
+    families: dict[str, frozenset[str]] = {}
+    for path in paths:
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+        except (OSError, SyntaxError, ValueError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute):
+                called = func.attr
+            elif isinstance(func, ast.Name):
+                called = func.id
+            else:
+                continue
+            if called in _HISTOGRAM_REGISTRARS:
+                derived = _HISTOGRAM_DERIVED
+            elif called in _SUMMARY_REGISTRARS:
+                derived = _SUMMARY_DERIVED
+            else:
+                continue
+            family = node.args[0]
+            if isinstance(family, ast.Constant) and isinstance(family.value, str):
+                families[family.value] = frozenset(derived)
+    return families
+
 
 def _parse_alert_rules(root: Path) -> tuple[list[dict[str, Any]], list[str]]:
     """Read Prometheus rule files. Returns (rules, parse_errors)."""
@@ -1250,11 +1303,25 @@ def _rule_metrics(expr: str) -> set[str]:
 
 
 def _exported_metrics() -> set[str]:
-    """Metric names this repository's processes actually publish.
+    """Series names this repository's processes actually publish.
 
-    Built from the code that produces exposition: the Prometheus exporters, the
-    application metrics module, and the metric names ``api_async`` records. ``up``
-    is added because Prometheus synthesises it for every scrape target.
+    Two sources, because a name and its type come from different places:
+
+    * **Names** from the code that produces exposition: the Prometheus exporters, the
+      application metrics module, and the metric names ``api_async`` records. ``up``
+      is added because Prometheus synthesises it for every scrape target.
+    * **Types** from ``_declared_families``, which reads real registration calls. A
+      Prometheus histogram family ``x`` exposes ``x_bucket``, ``x_sum`` and ``x_count``
+      and no bare ``x`` sample; a summary exposes ``x`` (with a ``quantile`` label),
+      ``x_sum`` and ``x_count``. Neither name appears as a string literal anywhere, so
+      a literal-only scan reports a rule over ``x_bucket`` as pointing at nothing while
+      ``/metrics`` emits fourteen such lines.
+
+    Suffixes are granted only to families a declaration names, so they are not a
+    blanket allowance. A gauge or counter family gets nothing derived from it:
+    ``iac_compliance_score_bucket`` stays missing because nothing declares that family
+    a histogram. That asymmetry is the point -- a control that accepts any plausible
+    name reports nothing.
     """
     repo = Path(__file__).resolve().parents[3]
     sources = [
@@ -1263,16 +1330,20 @@ def _exported_metrics() -> set[str]:
         repo / "src" / "dcc" / "observability",
         repo / "src" / "dcc" / "api_async.py",
     ]
+    paths: list[Path] = []
+    for source in sources:
+        paths.extend([source] if source.is_file() else sorted(source.rglob("*.py")))
+
     literal = re.compile(r"[\"']([a-z][a-z0-9_]{2,})[\"']")
     names: set[str] = {"up"}
-    for source in sources:
-        paths = [source] if source.is_file() else sorted(source.rglob("*.py"))
-        for path in paths:
-            try:
-                text = path.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                continue
-            names.update(literal.findall(text))
+    for path in paths:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        names.update(literal.findall(text))
+    for family, derived in _declared_families(paths).items():
+        names.update(f"{family}{suffix}" for suffix in derived)
     return names
 
 
