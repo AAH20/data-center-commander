@@ -185,9 +185,9 @@ jobs:
             -v \
             --tb=short \
             --cov=. \
-            --cov-report=xml:coverage-$GROUP_SLUG.xml \
-            --cov-report=html:htmlcov-$GROUP_SLUG \
-            --junitxml=test-results-$GROUP_SLUG.xml \
+            --cov-report="xml:coverage-$GROUP_SLUG.xml" \
+            --cov-report="html:htmlcov-$GROUP_SLUG" \
+            --junitxml="test-results-$GROUP_SLUG.xml" \
             -n auto \
             --timeout=300
 
@@ -892,11 +892,17 @@ jobs:
   integration-tests:
     # Requires a container registry and a Kubernetes cluster, neither of which is
     # provisioned. Gated on a repository variable so it activates when they exist.
-    if: vars.SOC_PIPELINE_ENABLED == 'true'
+    #
+    # Both conditions are required. The repository-variable gate says the
+    # infrastructure exists; !inputs.skip_tests is the manual-dispatch opt-out.
+    # (For push/PR/schedule events `inputs` is empty, so inputs.skip_tests is
+    # null and !null is true, i.e. the opt-out only bites on a dispatch.)
+    if: |
+      vars.SOC_PIPELINE_ENABLED == 'true' &&
+      !inputs.skip_tests
     name: Integration Tests (Docker Compose)
     runs-on: ubuntu-latest
     needs: [build-iac-scanner, build-logging-stack, validate-autoscaling]
-    if: ${{ !inputs.skip_tests }}
     services:
       docker:
         image: docker:24-dind
@@ -958,8 +964,8 @@ jobs:
         run: |
           echo "=== Running IaC Scanner (CI mode) ==="
           docker run --rm \
-            -v $(pwd)/terraform:/iac:ro \
-            -v $(pwd)/policies:/app/policies:ro \
+            -v "$(pwd)/terraform:/iac:ro" \
+            -v "$(pwd)/policies:/app/policies:ro" \
             -v /tmp/reports:/reports \
             ${{ env.REGISTRY }}/${{ env.IAC_IMAGE_NAME }}:${{ github.sha }} \
             -d /iac \
@@ -989,12 +995,17 @@ jobs:
   deploy-preflight:
     # Requires a container registry and a Kubernetes cluster, neither of which is
     # provisioned. Gated on a repository variable so it activates when they exist.
-    if: vars.SOC_PIPELINE_ENABLED == 'true'
+    #
+    # Both conditions are required: the variable says the infrastructure exists,
+    # and the trigger expression says this run is allowed to deploy at all
+    # (main-branch push, or a manual dispatch that did not pass skip_deploy).
+    if: |
+      vars.SOC_PIPELINE_ENABLED == 'true' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && !inputs.skip_deploy)
+      )
     name: Deploy Preflight
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && !inputs.skip_deploy)
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
     steps:
@@ -1013,11 +1024,16 @@ jobs:
   deploy:
     # Requires a container registry and a Kubernetes cluster, neither of which is
     # provisioned. Gated on a repository variable so it activates when they exist.
-    if: vars.SOC_PIPELINE_ENABLED == 'true'
+    #
+    # Both conditions are required. The variable is the infrastructure gate;
+    # the preflight output is the KUBE_CONFIG gate, so an unset secret still
+    # skips the deploy instead of failing it on an empty kubeconfig.
+    if: |
+      vars.SOC_PIPELINE_ENABLED == 'true' &&
+      needs.deploy-preflight.outputs.enabled == 'true'
     name: Deploy to Kubernetes
     runs-on: ubuntu-latest
     needs: [integration-tests, soc-compliance, validate-autoscaling, deploy-preflight]
-    if: needs.deploy-preflight.outputs.enabled == 'true'
     environment:
       name: ${{ inputs.environment || 'dev' }}
       url: https://kibana.local
@@ -1126,13 +1142,15 @@ jobs:
   soc-post-deploy:
     # Requires a container registry and a Kubernetes cluster, neither of which is
     # provisioned. Gated on a repository variable so it activates when they exist.
-    if: vars.SOC_PIPELINE_ENABLED == 'true'
+    #
+    # Both conditions are required: the variable is the infrastructure gate, and
+    # the deploy result keeps this audit off a cluster we never deployed to.
+    if: |
+      vars.SOC_PIPELINE_ENABLED == 'true' &&
+      needs.deploy.result == 'success'
     name: SOC Post-Deploy Monitoring
     runs-on: ubuntu-latest
     needs: deploy
-    # Only audit a cluster we actually deployed to; deploy is skipped when
-    # KUBE_CONFIG is absent, and a skipped dependency already yields skipped.
-    if: needs.deploy.result == 'success'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -1155,6 +1173,10 @@ jobs:
 
           # Check all pods are running
           echo "[CHECK] Pod status..."
+          # shellcheck disable=SC2126
+          # `grep -c` is what SC2126 suggests, but grep exits 1 when the count is
+          # zero -- under the runner's `bash -e` that would fail the step exactly
+          # when every pod is running. `grep | wc -l` always exits 0.
           not_running=$(kubectl -n data-center-commander get pods --no-headers | grep -v "Running\|Completed" | wc -l)
           if [ "$not_running" -eq 0 ]; then
             echo "  ✓ All pods running"
@@ -1206,23 +1228,29 @@ jobs:
           merge-multiple: false
 
       - name: Generate pipeline summary
+        # One redirect for the whole block: SC2129 (19 separate appends) and the
+        # SC2086 warnings on the unquoted $GITHUB_STEP_SUMMARY all come from
+        # repeating `>> $GITHUB_STEP_SUMMARY` per line. Grouping is the fix
+        # shellcheck asks for and appends in the same order.
         run: |
-          echo "# Pipeline Summary Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build IaC Scanner | ${{ needs.build-iac-scanner.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build Logging Stack | ${{ needs.build-logging-stack.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| IaC Policy Scan | ${{ needs.scan-iac-policies.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Container Image Scan | ${{ needs.scan-container-images.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SOC Compliance | ${{ needs.soc-compliance.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| AutoScaling Validation | ${{ needs.validate-autoscaling.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Deploy | ${{ needs.deploy.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SOC Post-Deploy | ${{ needs.soc-post-deploy.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "# Pipeline Summary Report"
+            echo ""
+            echo "| Stage | Status |"
+            echo "|-------|--------|"
+            echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} |"
+            echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅' || '❌' }} |"
+            echo "| Build IaC Scanner | ${{ needs.build-iac-scanner.result == 'success' && '✅' || '❌' }} |"
+            echo "| Build Logging Stack | ${{ needs.build-logging-stack.result == 'success' && '✅' || '❌' }} |"
+            echo "| IaC Policy Scan | ${{ needs.scan-iac-policies.result == 'success' && '✅' || '❌' }} |"
+            echo "| Container Image Scan | ${{ needs.scan-container-images.result == 'success' && '✅' || '❌' }} |"
+            echo "| SOC Compliance | ${{ needs.soc-compliance.result == 'success' && '✅' || '❌' }} |"
+            echo "| AutoScaling Validation | ${{ needs.validate-autoscaling.result == 'success' && '✅' || '❌' }} |"
+            echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅' || '❌' }} |"
+            echo "| Deploy | ${{ needs.deploy.result == 'success' && '✅' || '❌' }} |"
+            echo "| SOC Post-Deploy | ${{ needs.soc-post-deploy.result == 'success' && '✅' || '❌' }} |"
+            echo ""
+            echo "**Commit:** ${{ github.sha }}"
+            echo "**Branch:** ${{ github.ref_name }}"
+            echo "**Triggered by:** ${{ github.actor }}"
+          } >> "$GITHUB_STEP_SUMMARY"
