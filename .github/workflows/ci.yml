@@ -183,7 +183,7 @@ jobs:
           # pytest, pyproject declares [tool.pytest.ini_options]), so unittest reported
           # them as _FailedTest collection errors and the job could never pass.
           pip install -e ".[test,checkov]" coverage
-          coverage run -m pytest tests/ -q -p no:cacheprovider \
+          coverage run -m pytest tests/ -q -p no:cacheprovider -rs \
             --ignore=tests/e2e \
             --ignore=tests/iac-visual \
             --ignore=tests/performance
