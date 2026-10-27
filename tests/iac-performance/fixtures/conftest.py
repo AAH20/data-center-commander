@@ -17,8 +17,14 @@ from utils.checkov_utils import CheckovRunner  # noqa: E402
 from utils.rego_utils import OpaRunner, create_opa_input  # noqa: E402
 from utils.terraform_utils import TerraformRunner  # noqa: E402
 
-# Path to the project's policy directories
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+# Path to the project's policy directories.
+# This file lives at tests/iac-performance/fixtures/conftest.py, i.e. FOUR levels
+# below the repo root. It used to compute three, resolving to tests/ -- so
+# REGO_POLICY_DIR was tests/policies/rego, which does not exist. Every
+# OPA-backed test skipped with "Policy not found", and every checkov
+# custom-policy scan was pointed at a missing directory and quietly fell back to
+# checkov's built-in checks while still reporting a full scan.
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 REGO_POLICY_DIR = PROJECT_ROOT / "policies" / "rego"
 CHECKOV_POLICY_DIR = PROJECT_ROOT / "policies" / "checkov"
 

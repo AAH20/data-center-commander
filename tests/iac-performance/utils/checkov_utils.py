@@ -43,10 +43,43 @@ class CheckovResult:
     stderr: str
     elapsed_ms: float
     success: bool
-    parsed_output: dict | None = None
+    parsed_output: dict | list | None = None
     passed_checks: int = 0
     failed_checks: int = 0
     skipped_checks: int = 0
+    # How many resources checkov actually parsed. A scan that parsed zero
+    # resources finishes quickly and reports no failures, so a timing-only
+    # assertion over it measures process startup and nothing else.
+    resource_count: int = 0
+
+    @property
+    def checks_evaluated(self) -> int:
+        return self.passed_checks + self.failed_checks
+
+
+def checkov_env() -> dict[str, str]:
+    """Environment for checkov subprocesses: deterministic and offline.
+
+    Measured on this machine, one `checkov -d . --output json` over a single
+    resource took 16.2 s wall for 2.5 s of user CPU. The 13 s difference was
+    checkov calling Prisma Cloud for policy metadata before scanning: with the
+    call blocked it takes 4.5 s, and `--skip-download` (added to every scan
+    below) drops the call entirely with byte-identical findings. That call is
+    also what made the scan timings bimodal -- 5 s to 90 s for the same work --
+    which is why the timing assertions in this suite were flaky.
+
+    The proxy variables are a second line of defence: if a future checkov
+    regression reintroduces egress, it fails against a closed loopback port in
+    milliseconds instead of hanging until a remote timeout. `no_proxy` keeps
+    localhost reachable. Nothing this suite measures needs the network -- checkov
+    is a static analyser and terraform uses the built-in provider.
+    """
+    env = dict(os.environ)
+    dead_proxy = "http://127.0.0.1:1"
+    env["HTTP_PROXY"] = env["http_proxy"] = dead_proxy
+    env["HTTPS_PROXY"] = env["https_proxy"] = dead_proxy
+    env["NO_PROXY"] = env["no_proxy"] = "127.0.0.1,localhost"
+    return env
 
 
 class CheckovRunner:
@@ -55,6 +88,7 @@ class CheckovRunner:
     def __init__(self, checkov_bin: str = "checkov"):
         self.checkov_bin = checkov_bin
         self._cmd = resolve_checkov_command(checkov_bin)
+        self.env = checkov_env()
         if self._cmd is None:
             raise RuntimeError(
                 f"Checkov binary not found: {checkov_bin}. "
@@ -73,11 +107,12 @@ class CheckovRunner:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=self.env,
             )
             elapsed_ms = (time.perf_counter() - start) * 1000
 
             parsed = None
-            passed = failed = skipped = 0
+            passed = failed = skipped = resources = 0
             try:
                 parsed = json.loads(result.stdout)
                 if isinstance(parsed, dict):
@@ -85,6 +120,15 @@ class CheckovRunner:
                     passed = summary.get("passed", 0)
                     failed = summary.get("failed", 0)
                     skipped = summary.get("skipped", 0)
+                    resources = summary.get("resource_count", 0)
+                elif isinstance(parsed, list):
+                    # Multiple frameworks are reported as a list of documents.
+                    for doc in parsed:
+                        summary = (doc or {}).get("summary", {})
+                        passed += summary.get("passed", 0)
+                        failed += summary.get("failed", 0)
+                        skipped += summary.get("skipped", 0)
+                        resources += summary.get("resource_count", 0)
             except json.JSONDecodeError:
                 parsed = None
 
@@ -94,11 +138,14 @@ class CheckovRunner:
                 stdout=result.stdout,
                 stderr=result.stderr,
                 elapsed_ms=elapsed_ms,
-                success=result.returncode == 0,
+                # checkov exits 1 when any check fails. That is a scan result,
+                # not a broken invocation: "the scan ran and found problems".
+                success=result.returncode in (0, 1) and parsed is not None,
                 parsed_output=parsed,
                 passed_checks=passed,
                 failed_checks=failed,
                 skipped_checks=skipped,
+                resource_count=resources,
             )
         except subprocess.TimeoutExpired:
             elapsed_ms = (time.perf_counter() - start) * 1000
@@ -123,11 +170,15 @@ class CheckovRunner:
         """Run checkov scan on a directory."""
         # `framework` is accepted for API symmetry but not forwarded: checkov has
         # no --framework flag and auto-detects the framework from file extensions.
+        # `--skip-download` keeps checkov from calling Prisma Cloud for policy
+        # metadata: measured 16.2 s wall vs 4.5 s for the same scan, with
+        # identical findings. See checkov_env().
         args = [
             "-d",
             directory,
             "--output",
             output_format,
+            "--skip-download",
         ]
         if check:
             for c in check:
@@ -154,6 +205,7 @@ class CheckovRunner:
             file_path,
             "--output",
             output_format,
+            "--skip-download",
         ]
         if check:
             for c in check:
@@ -179,6 +231,7 @@ class CheckovRunner:
             output_format,
             "--external-checks-dir",
             policy_dir,
+            "--skip-download",
         ]
         return self._run(args, timeout=timeout)
 

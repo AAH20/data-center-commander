@@ -2,188 +2,155 @@
 Terraform Drift Detection Performance Tests.
 
 Tests the performance of detecting configuration drift between
-the desired state (terraform config) and actual state (cloud resources).
+the desired state (terraform config) and actual state.
+
+Drift is only meaningful if there IS state to compare against, so every test
+here applies the configuration first (against the built-in provider, so state
+is local and no cloud resource is created) and then reconciles or plans over
+it. The assertion that makes these tests non-vacuous is the pair:
+
+    plan over unchanged state     -> exit 0, changes_present False
+    plan over edited configuration -> exit 2, changes_present True
+
+The old suite asserted `result.success` on a `-detailed-exitcode` plan, which
+treats exit code 2 -- the documented "changes present" result -- as a failure,
+and it never wrote state at all, so every refresh was a no-op over an empty
+state file and every drift plan saw "N to add" instead of drift.
+
+Budgets are 30-80x the measured cost of the same operation over real local
+state (see docs/iac-performance.md).
 """
+
+from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 from utils.terraform_utils import (
     TerraformRunner,
-    cleanup_workspace,
-    create_terraform_workspace,
     generate_terraform_config,
+    plan_change_count,
+    rewrite_main_tf,
+    terraform_workspace,
 )
 
-# Performance thresholds for drift detection (in milliseconds)
-DRIFT_THRESHOLDS = {
-    "refresh_small": 30_000,  # 30s for small config refresh
-    "refresh_medium": 60_000,  # 60s for medium config refresh
-    "refresh_large": 120_000,  # 120s for large config refresh
-    "plan_drift_small": 15_000,  # 15s for small config drift plan
-    "plan_drift_medium": 45_000,  # 45s for medium config drift plan
-    "plan_drift_large": 120_000,  # 120s for large config drift plan
-    "state_list_small": 5_000,  # 5s for small config state list
-    "state_list_medium": 15_000,  # 15s for medium config state list
-    "state_list_large": 30_000,  # 30s for large config state list
+# Measured medians over 5-100 local resources: refresh 31-58 ms, state list
+# 25-27 ms, drift plan 29-58 ms. Budgets are sized against the failure mode --
+# a refresh or plan that reaches a cloud API waits ~15 s for IMDS to time out --
+# rather than against the measurement, so a 50x slower runner still passes and
+# the historical failure still fails.
+BUDGET_MS = {
+    "refresh": 3_000,
+    "state_list": 1_500,
+    "plan": 3_000,
 }
+
+SCALING_FLOOR_MS = 1_000
+SCALING_PER_RESOURCE_MS = 15
+
+
+def budget_for(resource_count: int) -> float:
+    return SCALING_FLOOR_MS + resource_count * SCALING_PER_RESOURCE_MS
+
+
+def _apply_and_verify(runner: TerraformRunner, resource_count: int) -> None:
+    """init + apply, and fail loudly if state does not hold resource_count."""
+    init_result = runner.init(backend=False)
+    assert init_result.success, f"terraform init failed: {init_result.stderr}"
+    apply_result = runner.apply()
+    assert apply_result.success, f"terraform apply failed: {apply_result.stderr}"
+    listed = runner.state_list()
+    assert listed.success, f"terraform state list failed: {listed.stderr}"
+    addresses = listed.stdout.split()
+    assert len(addresses) == resource_count, (
+        f"expected {resource_count} resources in state before measuring drift, "
+        f"got {len(addresses)}: {addresses[:5]}..."
+    )
 
 
 @pytest.mark.terraform
 class TestDriftDetectionPerformance:
     """Test drift detection performance across different config sizes."""
 
-    def test_refresh_small_config(self, terraform_runner, small_terraform_config, temp_workspace):
-        """Test terraform refresh (drift detection) with a small configuration."""
-        workspace = create_terraform_workspace(small_terraform_config, temp_workspace)
-        try:
+    @pytest.mark.parametrize("size,resource_count", [("small", 5), ("medium", 25), ("large", 100)])
+    def test_refresh_config(self, terraform_runner, temp_workspace, size, resource_count):
+        """terraform refresh over existing state, within budget."""
+        config = generate_terraform_config(resource_count=resource_count)
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, resource_count)
 
             result = runner.refresh()
             assert result.success, f"terraform refresh failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["refresh_small"], (
-                f"refresh took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['refresh_small']}ms"
+            # Structural: refresh must have reloaded the state it was given.
+            assert "Refreshing state..." in result.combined_output, (
+                "refresh did not report reconciling any state, so it measured "
+                f"nothing:\n{result.combined_output[:800]}"
             )
-        finally:
-            cleanup_workspace(workspace)
-
-    def test_refresh_medium_config(self, terraform_runner, medium_terraform_config, temp_workspace):
-        """Test terraform refresh with a medium configuration."""
-        workspace = create_terraform_workspace(medium_terraform_config, temp_workspace)
-        try:
-            runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
-
-            result = runner.refresh()
-            assert result.success, f"terraform refresh failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["refresh_medium"], (
-                f"refresh took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['refresh_medium']}ms"
+            assert result.elapsed_ms < BUDGET_MS["refresh"], (
+                f"{size} refresh took {result.elapsed_ms:.1f}ms, "
+                f"budget: {BUDGET_MS['refresh']}ms"
             )
-        finally:
-            cleanup_workspace(workspace)
 
-    def test_refresh_large_config(self, terraform_runner, large_terraform_config, temp_workspace):
-        """Test terraform refresh with a large configuration."""
-        workspace = create_terraform_workspace(large_terraform_config, temp_workspace)
-        try:
+    @pytest.mark.parametrize("size,resource_count", [("small", 5), ("medium", 25), ("large", 100)])
+    def test_drift_plan_config(self, terraform_runner, temp_workspace, size, resource_count):
+        """plan -detailed-exitcode must report no drift, then drift, in budget."""
+        config = generate_terraform_config(resource_count=resource_count)
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, resource_count)
 
-            result = runner.refresh()
-            assert result.success, f"terraform refresh failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["refresh_large"], (
-                f"refresh took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['refresh_large']}ms"
+            # No drift: state matches configuration.
+            clean = runner.plan(detailed_exitcode=True)
+            assert clean.success, f"terraform plan failed: {clean.stderr}"
+            assert clean.returncode == 0, (
+                f"plan over unchanged state reported changes (exit {clean.returncode}):\n"
+                f"{clean.stdout[-1200:]}"
             )
-        finally:
-            cleanup_workspace(workspace)
+            assert clean.changes_present is False
 
-    def test_drift_plan_small(self, terraform_runner, small_terraform_config, temp_workspace):
-        """Test drift detection via plan with detailed exit code (small config)."""
-        workspace = create_terraform_workspace(small_terraform_config, temp_workspace)
-        try:
-            runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            # Drift: same addresses, different desired values.
+            drifted = generate_terraform_config(resource_count=resource_count, drift=True)
+            rewrite_main_tf(workspace, drifted)
 
-            # Plan with detailed exit code: 0 = no changes, 1 = error, 2 = changes present
-            result = runner.plan(detailed_exitcode=True)
-            assert result.success, f"terraform plan failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["plan_drift_small"], (
-                f"drift plan took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['plan_drift_small']}ms"
+            detected = runner.plan(detailed_exitcode=True)
+            assert detected.success, f"drift plan failed: {detected.stderr}"
+            assert detected.returncode == 2, (
+                f"plan did not detect drift after the configuration changed "
+                f"(exit {detected.returncode}):\n{detected.stdout[-1200:]}"
             )
-        finally:
-            cleanup_workspace(workspace)
-
-    def test_drift_plan_medium(self, terraform_runner, medium_terraform_config, temp_workspace):
-        """Test drift detection via plan with detailed exit code (medium config)."""
-        workspace = create_terraform_workspace(medium_terraform_config, temp_workspace)
-        try:
-            runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
-
-            result = runner.plan(detailed_exitcode=True)
-            assert result.success, f"terraform plan failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["plan_drift_medium"], (
-                f"drift plan took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['plan_drift_medium']}ms"
+            assert detected.changes_present is True
+            assert plan_change_count(detected) == resource_count, (
+                f"drift plan should report {resource_count} changed resources, "
+                f"reported {plan_change_count(detected)}:\n{detected.stdout[-1200:]}"
             )
-        finally:
-            cleanup_workspace(workspace)
-
-    def test_drift_plan_large(self, terraform_runner, large_terraform_config, temp_workspace):
-        """Test drift detection via plan with detailed exit code (large config)."""
-        workspace = create_terraform_workspace(large_terraform_config, temp_workspace)
-        try:
-            runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
-
-            result = runner.plan(detailed_exitcode=True)
-            assert result.success, f"terraform plan failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["plan_drift_large"], (
-                f"drift plan took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['plan_drift_large']}ms"
+            assert detected.elapsed_ms < BUDGET_MS["plan"], (
+                f"{size} drift plan took {detected.elapsed_ms:.1f}ms, "
+                f"budget: {BUDGET_MS['plan']}ms"
             )
-        finally:
-            cleanup_workspace(workspace)
 
-    def test_state_list_small(self, terraform_runner, small_terraform_config, temp_workspace):
-        """Test terraform state list performance (small config)."""
-        workspace = create_terraform_workspace(small_terraform_config, temp_workspace)
-        try:
+    @pytest.mark.parametrize("size,resource_count", [("small", 5), ("medium", 25), ("large", 100)])
+    def test_state_list_config(self, terraform_runner, temp_workspace, size, resource_count):
+        """terraform state list must return every address, in budget."""
+        config = generate_terraform_config(resource_count=resource_count)
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, resource_count)
 
             result = runner.state_list()
             assert result.success, f"terraform state list failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["state_list_small"], (
-                f"state list took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['state_list_small']}ms"
+            addresses = result.stdout.split()
+            assert len(addresses) == resource_count, (
+                f"{size} state list returned {len(addresses)} addresses, "
+                f"expected {resource_count}"
             )
-        finally:
-            cleanup_workspace(workspace)
-
-    def test_state_list_medium(self, terraform_runner, medium_terraform_config, temp_workspace):
-        """Test terraform state list performance (medium config)."""
-        workspace = create_terraform_workspace(medium_terraform_config, temp_workspace)
-        try:
-            runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
-
-            result = runner.state_list()
-            assert result.success, f"terraform state list failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["state_list_medium"], (
-                f"state list took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['state_list_medium']}ms"
+            assert addresses[0].startswith("terraform_data."), (
+                f"unexpected address form in state: {addresses[0]!r}"
             )
-        finally:
-            cleanup_workspace(workspace)
-
-    def test_state_list_large(self, terraform_runner, large_terraform_config, temp_workspace):
-        """Test terraform state list performance (large config)."""
-        workspace = create_terraform_workspace(large_terraform_config, temp_workspace)
-        try:
-            runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
-
-            result = runner.state_list()
-            assert result.success, f"terraform state list failed: {result.stderr}"
-            assert result.elapsed_ms < DRIFT_THRESHOLDS["state_list_large"], (
-                f"state list took {result.elapsed_ms:.1f}ms, "
-                f"threshold: {DRIFT_THRESHOLDS['state_list_large']}ms"
+            assert result.elapsed_ms < BUDGET_MS["state_list"], (
+                f"{size} state list took {result.elapsed_ms:.1f}ms, "
+                f"budget: {BUDGET_MS['state_list']}ms"
             )
-        finally:
-            cleanup_workspace(workspace)
 
 
 @pytest.mark.terraform
@@ -192,47 +159,41 @@ class TestDriftDetectionScaling:
 
     @pytest.mark.parametrize("resource_count", [1, 5, 10, 25, 50, 100])
     def test_refresh_scaling(self, terraform_runner, temp_workspace, resource_count):
-        """Test that refresh time scales reasonably with resource count."""
+        """Refresh cost per resource must stay inside the scaling budget."""
         config = generate_terraform_config(resource_count=resource_count)
-        workspace = create_terraform_workspace(config, temp_workspace)
-        try:
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, resource_count)
 
             result = runner.refresh()
-            assert result.success
-
-            # Rough linear scaling: ~1s per resource + 5s base
-            expected_max = 5000 + (resource_count * 1000)
+            assert result.success, f"terraform refresh failed: {result.stderr}"
+            expected_max = budget_for(resource_count)
             assert result.elapsed_ms < expected_max, (
                 f"refresh with {resource_count} resources took {result.elapsed_ms:.1f}ms, "
                 f"expected < {expected_max}ms"
             )
-        finally:
-            cleanup_workspace(workspace)
 
     @pytest.mark.parametrize("resource_count", [1, 5, 10, 25, 50, 100])
     def test_drift_plan_scaling(self, terraform_runner, temp_workspace, resource_count):
-        """Test that drift plan time scales reasonably with resource count."""
+        """Drift plans must scale, and must report every drifted resource."""
         config = generate_terraform_config(resource_count=resource_count)
-        workspace = create_terraform_workspace(config, temp_workspace)
-        try:
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, resource_count)
 
+            rewrite_main_tf(workspace, generate_terraform_config(resource_count, drift=True))
             result = runner.plan(detailed_exitcode=True)
-            assert result.success
-
-            # Rough linear scaling: ~1s per resource + 5s base
-            expected_max = 5000 + (resource_count * 1000)
-            assert result.elapsed_ms < expected_max, (
-                f"drift plan with {resource_count} resources took {result.elapsed_ms:.1f}ms, "
-                f"expected < {expected_max}ms"
+            assert result.success, f"drift plan failed: {result.stderr}"
+            assert result.returncode == 2, (
+                f"drift was not detected for {resource_count} resources:\n"
+                f"{result.stdout[-1200:]}"
             )
-        finally:
-            cleanup_workspace(workspace)
+            assert plan_change_count(result) == resource_count
+            expected_max = budget_for(resource_count)
+            assert result.elapsed_ms < expected_max, (
+                f"drift plan with {resource_count} resources took "
+                f"{result.elapsed_ms:.1f}ms, expected < {expected_max}ms"
+            )
 
 
 @pytest.mark.terraform
@@ -240,42 +201,49 @@ class TestDriftDetectionWithModules:
     """Test drift detection performance with terraform modules."""
 
     def test_refresh_with_modules(self, terraform_runner, temp_workspace):
-        """Test refresh performance when using modules."""
-        config = generate_terraform_config(
-            resource_count=10,
-            include_modules=True,
-        )
-        workspace = create_terraform_workspace(config, temp_workspace)
-        try:
+        """Refresh over a configuration that uses a module."""
+        config = generate_terraform_config(resource_count=10, include_modules=True)
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, 15)
 
             result = runner.refresh()
-            assert result.success
-            # Modules add overhead
-            assert result.elapsed_ms < 60_000, (
-                f"refresh with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            assert result.success, f"terraform refresh failed: {result.stderr}"
+            assert "module.nodes" in runner.state_list().stdout, (
+                "module resources are missing from state; the module was not applied"
             )
-        finally:
-            cleanup_workspace(workspace)
+            assert result.elapsed_ms < BUDGET_MS["refresh"], (
+                f"refresh with modules took {result.elapsed_ms:.1f}ms, "
+                f"budget: {BUDGET_MS['refresh']}ms"
+            )
 
     def test_drift_plan_with_modules(self, terraform_runner, temp_workspace):
-        """Test drift plan performance when using modules."""
-        config = generate_terraform_config(
-            resource_count=10,
-            include_modules=True,
-        )
-        workspace = create_terraform_workspace(config, temp_workspace)
-        try:
+        """Drift inside a module must be detected, not just in the root module."""
+        config = generate_terraform_config(resource_count=10, include_modules=True)
+        with terraform_workspace(config, temp_workspace) as workspace:
             runner = TerraformRunner(workspace)
-            init_result = runner.init(backend=False)
-            assert init_result.success
+            _apply_and_verify(runner, 15)
+
+            # Change only the module's own resources.
+            module_main = Path(workspace) / "modules" / "nodes" / "main.tf"
+            module_main.write_text(
+                "\n".join(
+                    'resource "terraform_data" "mod_' + str(i) + '" {\n'
+                    f'  input = "drifted-{i}"\n'
+                    "}"
+                    for i in range(5)
+                )
+            )
 
             result = runner.plan(detailed_exitcode=True)
-            assert result.success
-            assert result.elapsed_ms < 60_000, (
-                f"drift plan with modules took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+            assert result.success, f"drift plan failed: {result.stderr}"
+            assert result.returncode == 2, (
+                "drift inside a module was not detected:\n" + result.stdout[-1200:]
             )
-        finally:
-            cleanup_workspace(workspace)
+            assert plan_change_count(result) == 5, (
+                f"expected 5 module resources to change, got {plan_change_count(result)}"
+            )
+            assert result.elapsed_ms < BUDGET_MS["plan"], (
+                f"drift plan with modules took {result.elapsed_ms:.1f}ms, "
+                f"budget: {BUDGET_MS['plan']}ms"
+            )

@@ -3,131 +3,144 @@ Policy Evaluation Performance Tests.
 
 Tests the performance of OPA/Rego policy evaluation for
 data center governance policies.
+
+These tests assert the *decision*, not just the exit status. OPA exits 0 even
+when the query fails to compile and even when the file it was handed is not a
+policy, so a test that only checks `returncode == 0` passes against a broken
+invocation. Every test here therefore reads `violations` (the deny set) and
+checks that a non-compliant input yields strictly more violations than a
+compliant one -- a differential property that fails if the policy stops
+responding to its input, whatever the machine speed.
+
+`opa eval <file.rego>` also does not load the file; the trailing argument is the
+query. The runner builds `data.<package>.deny` from the policy's own package
+declaration and passes `-d` for the policy and its sibling common.rego. See
+utils/rego_utils.py.
+
+Timing: budgets are 15-30x the measured CLI cost (13.9-33.0 ms, almost all
+process startup). The benchmark test does not use the wall clock for the
+judgement -- it asserts OPA's own `timer_rego_query_eval_ns` (measured 0.19 ms),
+which is comparable between machines.
 """
 
+from __future__ import annotations
+
 import os
-import tempfile
 import time
 
 import pytest
-from utils.rego_utils import create_opa_input, load_rego_policies
+from utils.rego_utils import create_opa_input, decide_query, load_rego_policies
 
-# Performance thresholds for policy evaluation (in milliseconds)
-POLICY_THRESHOLDS = {
-    "single_eval_small": 1_000,  # 1s for single policy evaluation
-    "single_eval_medium": 2_000,  # 2s for single policy evaluation
-    "single_eval_large": 5_000,  # 5s for single policy evaluation
-    "full_compliance_small": 5_000,  # 5s for full compliance check (small)
-    "full_compliance_medium": 10_000,  # 10s for full compliance check (medium)
-    "full_compliance_large": 30_000,  # 30s for full compliance check (large)
-    "batch_10": 10_000,  # 10s for batch of 10 evaluations
-    "batch_50": 30_000,  # 30s for batch of 50 evaluations
-    "batch_100": 60_000,  # 60s for batch of 100 evaluations
-}
+# Measured: one `opa eval` invocation 13.9-33.0 ms (median 15.2 ms over 10 runs),
+# almost all process start; OPA's own query metric for the same evaluation is
+# 186,125 ns (0.19 ms). Budgets are 15-30x the wall clock, which is the only part
+# that varies with machine speed, and 5x the comparable per-query metric.
+EVAL_BUDGET_MS = 500
+BATCH_BUDGET_MS = {10: 1_500, 50: 4_000, 100: 8_000}
+QUERY_EVAL_NS_BUDGET = 1_000_000  # 1 ms per evaluation, measured 0.19 ms
+
+POLICIES = ("compliance", "resource_tagging", "network_segmentation", "encryption", "access_control")
+
+
+def policy_path(rego_policy_dir: str, name: str) -> str:
+    return os.path.join(rego_policy_dir, f"{name}.rego")
+
+
+def assert_scored(result, context: str) -> None:
+    """The evaluation must have run and produced a deny set."""
+    assert result.success, f"{context}: OPA eval failed ({result.errors}): {result.stderr}"
+    assert result.parsed_output is not None, f"{context}: no parsable JSON from OPA"
+    assert isinstance(result.violations, list), f"{context}: deny set is not a list"
+    assert result.elapsed_ms < EVAL_BUDGET_MS, (
+        f"{context}: took {result.elapsed_ms:.1f}ms, budget: {EVAL_BUDGET_MS}ms"
+    )
 
 
 @pytest.mark.opa
 class TestPolicyEvaluationPerformance:
     """Test OPA/Rego policy evaluation performance."""
 
-    def test_eval_compliance_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test evaluation of the compliance.rego policy."""
-        policy_path = os.path.join(rego_policy_dir, "compliance.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
+    @pytest.mark.parametrize("policy_name", POLICIES)
+    def test_eval_policy(self, opa_runner, rego_policy_dir, sample_opa_input, policy_name):
+        """Each governance policy must respond to compliant vs non-compliant input."""
+        path = policy_path(rego_policy_dir, policy_name)
+        if not os.path.exists(path):
+            pytest.skip(f"Policy not found: {path}")
 
-        result = opa_runner.eval(policy_path, input_data=sample_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_small"], (
-            f"compliance policy eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_small']}ms"
+        compliant = opa_runner.eval(path, input_data=sample_opa_input)
+        assert_scored(compliant, f"{policy_name} (compliant)")
+
+        non_compliant = opa_runner.eval(
+            path,
+            input_data=create_opa_input(
+                tags={},
+                encryption={"at_rest": False, "in_transit": False},
+                network={"segment": "public"},
+                access={"mfa": False, "privilege": "admin"},
+                backup={"enabled": False},
+                monitoring={"enabled": False},
+                logging={"enabled": False},
+                security_assessment="",
+                risk_assessment="",
+                audit_trail="",
+            ),
+        )
+        assert_scored(non_compliant, f"{policy_name} (non-compliant)")
+
+        assert len(non_compliant.violations) > len(compliant.violations), (
+            f"{policy_name}: a deliberately non-compliant input produced "
+            f"{len(non_compliant.violations)} violations, no more than the "
+            f"compliant input's {len(compliant.violations)}. The policy is not "
+            "reading its input, so this test would pass on any config."
         )
 
-    def test_eval_resource_tagging_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test evaluation of the resource_tagging.rego policy."""
-        policy_path = os.path.join(rego_policy_dir, "resource_tagging.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
+    def test_eval_compliance_policy_reports_the_named_control(
+        self, opa_runner, rego_policy_dir, sample_opa_input
+    ):
+        """A missing control must be reported by name, not just counted."""
+        path = policy_path(rego_policy_dir, "compliance")
+        if not os.path.exists(path):
+            pytest.skip(f"Policy not found: {path}")
 
-        result = opa_runner.eval(policy_path, input_data=sample_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_small"], (
-            f"resource tagging policy eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_small']}ms"
+        assert opa_runner.eval(path, input_data=sample_opa_input).violations == [], (
+            "the compliant fixture is no longer compliant for the compliance policy"
         )
 
-    def test_eval_network_segmentation_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test evaluation of the network_segmentation.rego policy."""
-        policy_path = os.path.join(rego_policy_dir, "network_segmentation.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
-
-        result = opa_runner.eval(policy_path, input_data=sample_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_small"], (
-            f"network segmentation policy eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_small']}ms"
+        result = opa_runner.eval(path, input_data=create_opa_input(audit_trail=""))
+        assert_scored(result, "compliance (missing audit trail)")
+        assert any("valid audit trail" in v for v in result.violations), (
+            f"the audit-trail control did not fire by name: {result.violations[:5]}"
         )
 
-    def test_eval_encryption_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test evaluation of the encryption.rego policy."""
-        policy_path = os.path.join(rego_policy_dir, "encryption.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
+    def test_query_is_derived_from_the_policy_package(self, rego_policy_dir):
+        """The query must come from the policy's `package`, not from its filename.
 
-        result = opa_runner.eval(policy_path, input_data=sample_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_small"], (
-            f"encryption policy eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_small']}ms"
-        )
-
-    def test_eval_access_control_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test evaluation of the access_control.rego policy."""
-        policy_path = os.path.join(rego_policy_dir, "access_control.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
-
-        result = opa_runner.eval(policy_path, input_data=sample_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_small"], (
-            f"access control policy eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_small']}ms"
-        )
+        This is the defect that made every evaluation vacuous: the file path was
+        passed where OPA expects a query.
+        """
+        path = policy_path(rego_policy_dir, "compliance")
+        if not os.path.exists(path):
+            pytest.skip(f"Policy not found: {path}")
+        assert decide_query(path) == "data.datacenter.compliance.deny"
 
 
 @pytest.mark.opa
 class TestPolicyEvaluationNonCompliant:
     """Test policy evaluation performance with non-compliant inputs."""
 
-    def test_eval_non_compliant_compliance(
-        self, opa_runner, rego_policy_dir, non_compliant_opa_input
+    @pytest.mark.parametrize("policy_name", ("compliance", "encryption"))
+    def test_eval_non_compliant(
+        self, opa_runner, rego_policy_dir, non_compliant_opa_input, policy_name
     ):
-        """Test evaluation of compliance policy with non-compliant input."""
-        policy_path = os.path.join(rego_policy_dir, "compliance.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
+        """A fully non-compliant input must produce violations for these policies."""
+        path = policy_path(rego_policy_dir, policy_name)
+        if not os.path.exists(path):
+            pytest.skip(f"Policy not found: {path}")
 
-        result = opa_runner.eval(policy_path, input_data=non_compliant_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_medium"], (
-            f"non-compliant compliance eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_medium']}ms"
-        )
-
-    def test_eval_non_compliant_encryption(
-        self, opa_runner, rego_policy_dir, non_compliant_opa_input
-    ):
-        """Test evaluation of encryption policy with non-compliant input."""
-        policy_path = os.path.join(rego_policy_dir, "encryption.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
-
-        result = opa_runner.eval(policy_path, input_data=non_compliant_opa_input)
-        assert result.success, f"OPA eval failed: {result.stderr}"
-        assert result.elapsed_ms < POLICY_THRESHOLDS["single_eval_medium"], (
-            f"non-compliant encryption eval took {result.elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['single_eval_medium']}ms"
+        result = opa_runner.eval(path, input_data=non_compliant_opa_input)
+        assert_scored(result, f"{policy_name} (non-compliant)")
+        assert result.violations, (
+            f"{policy_name}: the non-compliant fixture produced no violations at all"
         )
 
 
@@ -135,58 +148,32 @@ class TestPolicyEvaluationNonCompliant:
 class TestPolicyEvaluationBatch:
     """Test batch policy evaluation performance."""
 
-    def test_batch_eval_10_resources(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test batch evaluation of 10 resources against compliance policy."""
-        policy_path = os.path.join(rego_policy_dir, "compliance.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
+    @pytest.mark.parametrize("count", [10, 50, 100])
+    def test_batch_eval(self, opa_runner, rego_policy_dir, count):
+        """count evaluations over distinct resources must all return decisions."""
+        path = policy_path(rego_policy_dir, "compliance")
+        if not os.path.exists(path):
+            pytest.skip(f"Policy not found: {path}")
 
+        decisions = []
         start = time.perf_counter()
-        for i in range(10):
-            input_data = create_opa_input(resource_id=f"resource-{i}")
-            result = opa_runner.eval(policy_path, input_data=input_data)
-            assert result.success, f"OPA eval {i} failed: {result.stderr}"
+        for i in range(count):
+            result = opa_runner.eval(
+                path, input_data=create_opa_input(resource_id=f"resource-{i}", audit_trail="")
+            )
+            assert result.success, f"OPA eval {i} failed: {result.errors} {result.stderr}"
+            decisions.append(len(result.violations))
         elapsed_ms = (time.perf_counter() - start) * 1000
 
-        assert elapsed_ms < POLICY_THRESHOLDS["batch_10"], (
-            f"batch of 10 evals took {elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['batch_10']}ms"
+        # Every one of the `count` resources is missing its audit trail, so every
+        # evaluation must have found it. A batch that silently returned nothing
+        # would otherwise be fast and green.
+        assert all(d > 0 for d in decisions), (
+            f"some evaluations returned no violations: {decisions}"
         )
-
-    def test_batch_eval_50_resources(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test batch evaluation of 50 resources against compliance policy."""
-        policy_path = os.path.join(rego_policy_dir, "compliance.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
-
-        start = time.perf_counter()
-        for i in range(50):
-            input_data = create_opa_input(resource_id=f"resource-{i}")
-            result = opa_runner.eval(policy_path, input_data=input_data)
-            assert result.success, f"OPA eval {i} failed: {result.stderr}"
-        elapsed_ms = (time.perf_counter() - start) * 1000
-
-        assert elapsed_ms < POLICY_THRESHOLDS["batch_50"], (
-            f"batch of 50 evals took {elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['batch_50']}ms"
-        )
-
-    def test_batch_eval_100_resources(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test batch evaluation of 100 resources against compliance policy."""
-        policy_path = os.path.join(rego_policy_dir, "compliance.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
-
-        start = time.perf_counter()
-        for i in range(100):
-            input_data = create_opa_input(resource_id=f"resource-{i}")
-            result = opa_runner.eval(policy_path, input_data=input_data)
-            assert result.success, f"OPA eval {i} failed: {result.stderr}"
-        elapsed_ms = (time.perf_counter() - start) * 1000
-
-        assert elapsed_ms < POLICY_THRESHOLDS["batch_100"], (
-            f"batch of 100 evals took {elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['batch_100']}ms"
+        assert elapsed_ms < BATCH_BUDGET_MS[count], (
+            f"batch of {count} evals took {elapsed_ms:.1f}ms, "
+            f"budget: {BATCH_BUDGET_MS[count]}ms"
         )
 
 
@@ -194,85 +181,70 @@ class TestPolicyEvaluationBatch:
 class TestPolicyEvaluationAllPolicies:
     """Test evaluation of all policies together."""
 
-    def test_eval_all_policies_compliant(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Test evaluation of all policies with a compliant input."""
+    @pytest.mark.parametrize("compliant", [True, False])
+    def test_eval_all_policies(self, opa_runner, rego_policy_dir, sample_opa_input, non_compliant_opa_input, compliant):
+        """Every policy in the directory must evaluate and return a decision."""
         policies = load_rego_policies(rego_policy_dir)
         if not policies:
             pytest.skip("No rego policies found")
 
-        start = time.perf_counter()
-        for policy_name, policy_content in policies.items():
-            # Write policy to temp file
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".rego", delete=False) as f:
-                f.write(policy_content)
-                policy_path = f.name
-
-            try:
-                result = opa_runner.eval(policy_path, input_data=sample_opa_input)
-                assert result.success, f"Policy {policy_name} eval failed: {result.stderr}"
-            finally:
-                os.unlink(policy_path)
-
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        assert elapsed_ms < POLICY_THRESHOLDS["full_compliance_small"], (
-            f"all policies eval took {elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['full_compliance_small']}ms"
-        )
-
-    def test_eval_all_policies_non_compliant(
-        self, opa_runner, rego_policy_dir, non_compliant_opa_input
-    ):
-        """Test evaluation of all policies with a non-compliant input."""
-        policies = load_rego_policies(rego_policy_dir)
-        if not policies:
-            pytest.skip("No rego policies found")
+        input_data = sample_opa_input if compliant else non_compliant_opa_input
+        total_violations = 0
 
         start = time.perf_counter()
-        for policy_name, policy_content in policies.items():
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".rego", delete=False) as f:
-                f.write(policy_content)
-                policy_path = f.name
-
-            try:
-                result = opa_runner.eval(policy_path, input_data=non_compliant_opa_input)
-                assert result.success, f"Policy {policy_name} eval failed: {result.stderr}"
-            finally:
-                os.unlink(policy_path)
-
+        for policy_name in sorted(policies):
+            path = policy_path(rego_policy_dir, policy_name)
+            result = opa_runner.eval(path, input_data=input_data)
+            assert result.success, (
+                f"Policy {policy_name} eval failed: {result.errors} {result.stderr}"
+            )
+            total_violations += len(result.violations)
         elapsed_ms = (time.perf_counter() - start) * 1000
-        assert elapsed_ms < POLICY_THRESHOLDS["full_compliance_medium"], (
-            f"all policies non-compliant eval took {elapsed_ms:.1f}ms, "
-            f"threshold: {POLICY_THRESHOLDS['full_compliance_medium']}ms"
-        )
+
+        if compliant:
+            # The compliant fixture is clean for every policy except tagging,
+            # which requires tag keys this fixture does not carry. Assert the
+            # whole set stays bounded rather than pretending it is zero.
+            assert total_violations < 100, (
+                f"the compliant fixture produced {total_violations} violations "
+                "across all policies; the fixtures have drifted from the policies"
+            )
+        else:
+            assert total_violations > 100, (
+                f"the non-compliant fixture produced only {total_violations} "
+                "violations across all policies"
+            )
+        assert elapsed_ms < 1_500, f"all-policy evaluation took {elapsed_ms:.1f}ms"
 
 
 @pytest.mark.opa
 class TestPolicyEvaluationBenchmark:
-    """Benchmark policy evaluation performance."""
+    """Benchmark policy evaluation performance.
+
+    Uses OPA's own query metrics (`timer_rego_query_eval_ns`) instead of the CLI
+    wall clock: the latter is ~99% process startup, which says nothing about the
+    policy. Repeated `--count N` runs give a median per evaluation.
+    """
 
     @pytest.mark.benchmark
-    def test_bench_compliance_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Benchmark the compliance policy evaluation."""
-        policy_path = os.path.join(rego_policy_dir, "compliance.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
+    @pytest.mark.parametrize("policy_name", ("compliance", "encryption"))
+    def test_bench_policy(self, opa_runner, rego_policy_dir, sample_opa_input, policy_name):
+        path = policy_path(rego_policy_dir, policy_name)
+        if not os.path.exists(path):
+            pytest.skip(f"Policy not found: {path}")
 
-        result = opa_runner.bench(policy_path, input_data=sample_opa_input, iterations=100)
-        assert result.success, f"OPA bench failed: {result.stderr}"
-        # Benchmark should complete within 60 seconds
-        assert result.elapsed_ms < 60_000, (
-            f"benchmark took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        result = opa_runner.bench(path, input_data=sample_opa_input, iterations=50)
+        assert result.success, f"OPA benchmark failed: {result.errors} {result.stderr}"
+
+        ns_per_eval = opa_runner.bench_ns_per_op(result)
+        assert ns_per_eval is not None, (
+            "OPA returned no query-eval metric, so nothing was benchmarked: "
+            f"{result.stdout[:500]}"
         )
-
-    @pytest.mark.benchmark
-    def test_bench_encryption_policy(self, opa_runner, rego_policy_dir, sample_opa_input):
-        """Benchmark the encryption policy evaluation."""
-        policy_path = os.path.join(rego_policy_dir, "encryption.rego")
-        if not os.path.exists(policy_path):
-            pytest.skip(f"Policy not found: {policy_path}")
-
-        result = opa_runner.bench(policy_path, input_data=sample_opa_input, iterations=100)
-        assert result.success, f"OPA bench failed: {result.stderr}"
-        assert result.elapsed_ms < 60_000, (
-            f"benchmark took {result.elapsed_ms:.1f}ms, threshold: 60000ms"
+        assert ns_per_eval < QUERY_EVAL_NS_BUDGET, (
+            f"{policy_name} query evaluation took {ns_per_eval / 1e6:.2f}ms, "
+            f"budget: {QUERY_EVAL_NS_BUDGET / 1e6:.0f}ms per evaluation"
+        )
+        assert result.elapsed_ms < 20_000, (
+            f"benchmark wall clock {result.elapsed_ms:.1f}ms exceeded 20s"
         )
