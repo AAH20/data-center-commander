@@ -1,7 +1,7 @@
 /**
  * Cost Intelligence Dashboard for Data Center Commander.
  *
- * Renders cost breakdowns, trends, and comparisons from /v1/costs.
+ * Renders cost breakdowns, trends, and comparisons from /v2/costs.
  * Provides four views: cost breakdown (by phase and cost type),
  * trends (monthly actuals and estimate PV over time), estimate vs actual
  * variance analysis, and price book browsing. All figures are tenant-scoped
@@ -143,7 +143,7 @@
   const syntheticDemo = new URLSearchParams(location.search).get("demo") === "synthetic";
 
   /**
-   * Fetches cost data from the /v1/costs endpoint.
+   * Fetches cost data from the /v2/costs endpoint.
    * @returns {Promise<Object|null>} Cost data or null if no tenant selected
    * @throws {Error} If the API request fails
    */
@@ -151,7 +151,7 @@
     if (!tenant) return null;
     const params = new URLSearchParams({tenant_id: tenant});
     if (syntheticDemo) params.set("demo", "synthetic");
-    const r = await fetch(`/v1/costs?${params}`, {cache:"no-store"});
+    const r = await fetch(`/v2/costs?${params}`, {cache:"no-store"});
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || "costs unavailable");
     return d;
@@ -334,7 +334,7 @@
 
   /**
    * Renders the cost breakdown panel with KPIs, phase donut, actuals bar, and estimate table.
-   * @param {Object} data - Cost data from /v1/costs
+   * @param {Object} data - Cost data from /v2/costs
    * @returns {void}
    */
   function renderBreakdown(data) {
@@ -435,7 +435,7 @@
 
   /**
    * Renders the trends panel with monthly actual and estimate PV trend charts.
-   * @param {Object} data - Cost data from /v1/costs
+   * @param {Object} data - Cost data from /v2/costs
    * @returns {void}
    */
   function renderTrends(data) {
@@ -517,7 +517,7 @@
 
   /**
    * Renders the estimate vs actual variance comparison panel.
-   * @param {Object} data - Cost data from /v1/costs
+   * @param {Object} data - Cost data from /v2/costs
    * @returns {void}
    */
   function renderCompare(data) {
@@ -605,7 +605,7 @@
 
   /**
    * Renders the price book panel with KPIs, category breakdown, and price table.
-   * @param {Object} data - Cost data from /v1/costs
+   * @param {Object} data - Cost data from /v2/costs
    * @returns {void}
    */
   function renderPrices(data) {

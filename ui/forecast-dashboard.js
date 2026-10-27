@@ -639,7 +639,7 @@
         if (new URLSearchParams(location.search).get("demo") === "synthetic") {
           params.set("demo", "synthetic");
         }
-        const resp = await fetch(`/v1/analytics?${params}`, { cache: "no-store" });
+        const resp = await fetch(`/v2/analytics?${params}`, { cache: "no-store" });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
         currentData = data;

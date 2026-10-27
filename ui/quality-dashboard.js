@@ -2,7 +2,7 @@
  * Data Quality Dashboard Visualization for Data Center Commander.
  *
  * Renders quality scores, anomaly alerts, and freshness status
- * from the /v1/analytics endpoint. Computes composite quality scores
+ * from the /v2/analytics endpoint. Computes composite quality scores
  * across KPI signals, telemetry samples, and data freshness. Detects
  * anomalies including stale signals, low coverage, synthetic-heavy data,
  * telemetry quality issues, and statistical trend anomalies.
@@ -264,7 +264,7 @@
 
   /**
    * Computes composite quality scores from KPI quality, telemetry quality, and series data.
-   * @param {Object} data - Analytics data from /v1/analytics
+   * @param {Object} data - Analytics data from /v2/analytics
    * @param {Array} data.kpi_quality - KPI quality records
    * @param {Array} data.telemetry_quality - Telemetry quality records
    * @param {Array} data.kpi_series - KPI time series data
@@ -314,7 +314,7 @@
    * Detects anomalies in KPI quality, telemetry, and time series data.
    * Checks for stale signals, low coverage, synthetic-heavy data, telemetry issues,
    * and statistical trend anomalies (z-score > 2.5).
-   * @param {Object} data - Analytics data from /v1/analytics
+   * @param {Object} data - Analytics data from /v2/analytics
    * @returns {Array<{level: string, title: string, detail: string, metric: string|null}>} Sorted anomaly list
    */
   function detectAnomalies(data) {
@@ -739,7 +739,7 @@
     try {
       const params = new URLSearchParams({ tenant_id: tenant, window_days: days });
       if (new URLSearchParams(location.search).get("demo") === "synthetic") params.set("demo", "synthetic");
-      const response = await fetch(`/v1/analytics?${params}`, { cache: "no-store" });
+      const response = await fetch(`/v2/analytics?${params}`, { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
 

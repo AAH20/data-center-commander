@@ -205,7 +205,7 @@
 
   /**
    * Fetches data from a DCC API endpoint with tenant scoping.
-   * @param {string} path - API path (e.g., "/v1/overview")
+   * @param {string} path - API path (e.g., "/v2/overview")
    * @returns {Promise<Object>} Parsed JSON response
    * @throws {Error} If the request fails
    */
@@ -701,13 +701,19 @@
     document.querySelector("#opsRefresh").disabled = true;
 
     try {
-      const [overview, analytics, capacity, connectors, evidence] = await Promise.all([
-        fetchApi("/v1/overview"),
-        fetchApi("/v1/analytics"),
-        fetchApi("/v1/capacity"),
-        fetchApi("/v1/connectors"),
-        fetchApi("/v1/evidence"),
+      const [overview, analytics, capacityPage, connectorsPage, evidencePage] = await Promise.all([
+        fetchApi("/v2/overview"),
+        fetchApi("/v2/analytics"),
+        fetchApi("/v2/capacity"),
+        fetchApi("/v2/connectors"),
+        fetchApi("/v2/evidence"),
       ]);
+
+      // /v2 collection routes return a pagination envelope ({items,total,...}); every
+      // renderer below takes a plain array, so unwrap here rather than at each call site.
+      const capacity = capacityPage.items || [];
+      const connectors = connectorsPage.items || [];
+      const evidence = evidencePage.items || [];
 
       const kpiQuality = analytics.kpi_quality || [];
       const telemetryQuality = analytics.telemetry_quality || [];
@@ -719,17 +725,17 @@
         telemetryQuality,
         workflowHealth,
         connectors,
-        capacity: capacity.capacity || [],
+        capacity,
       });
-      const sloStatus = computeSloStatus(kpiQuality, capacity.capacity || [], workflowHealth);
+      const sloStatus = computeSloStatus(kpiQuality, capacity, workflowHealth);
 
       renderTopCards(healthScore, alerts, sloStatus, connectors);
       renderHealth(connectors, telemetryQuality, kpiQuality, overview);
       renderAlerts(alerts);
       renderSloStatus(sloStatus);
-      renderCapacity(capacity.capacity || []);
+      renderCapacity(capacity);
       renderConnectors(connectors);
-      renderTimeline(evidence.evidence || []);
+      renderTimeline(evidence);
 
       const synth = overview.synthetic || kpiQuality.some((q) => Number(q.synthetic_observations) > 0);
       banner.innerHTML = `

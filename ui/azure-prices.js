@@ -18,6 +18,20 @@
  * @see {@link https://cloud.google.com/billing/docs/how-to/catalog-api|Google Cloud Billing Catalog API}
  */
 (() => {
+  /**
+   * Retail catalog routes, resolved against the app that is actually served.
+   *
+   * These are deliberately null: src/dcc/api_async.py — the served app — exposes no
+   * pricing route at all. The only implementations of "/v1/pricing/azure-retail" and
+   * "/v1/pricing/google-cloud-retail" live in the legacy, unmounted src/dcc/api.py
+   * (lines 240 and 265). Pointing the console at a guessed "/v2/pricing/..." path would
+   * just trade one permanent 404 for another, so the lookup is reported as unavailable
+   * below and the panel says so instead of rendering an empty results table.
+   *
+   * To enable: add the routes to api_async.py, then set the matching URL here.
+   */
+  const PRICING_ROUTES = { azure: null, google: null };
+
   const form = document.querySelector("#azurePriceForm");
   if (!form) return;
   const status = document.querySelector("#azurePriceStatus");
@@ -97,9 +111,14 @@
     const tenant = new URLSearchParams(location.search).get("tenant_id");
     if (!tenant) { googleStatus.textContent = "Select a tenant in the URL before making this tenant-scoped request."; return; }
     const query = new URLSearchParams(new FormData(googleForm)); query.set("tenant_id", tenant);
+    if (!PRICING_ROUTES.google) {
+      googleStatus.textContent = "Google Cloud catalog lookup is unavailable in this build: the served API exposes no pricing route. No prices or estimates were changed.";
+      googleResults.hidden = true;
+      return;
+    }
     googleStatus.textContent = "Contacting Google Cloud Billing Catalog…"; googleResults.hidden = true;
     try {
-      const response = await fetch(`/v1/pricing/google-cloud-retail?${query}`, {cache: "no-store"});
+      const response = await fetch(`${PRICING_ROUTES.google}?${query}`, {cache: "no-store"});
       const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       const table = document.createElement("table"), head = table.createTHead().insertRow(), body = table.createTBody();
       ["SKU description", "SKU ID", "Region", "Usage type", "Price", "Unit", "Effective", "Tier detail", "Estimate draft"].forEach(label => { const th = document.createElement("th"); th.textContent = label; head.append(th); });
@@ -136,9 +155,14 @@
     const tenant = new URLSearchParams(location.search).get("tenant_id");
     if (!tenant) { status.textContent = "Select a tenant in the URL before making this tenant-scoped request."; return; }
     const query = new URLSearchParams(new FormData(form)); query.set("tenant_id", tenant);
+    if (!PRICING_ROUTES.azure) {
+      status.textContent = "Azure retail catalog lookup is unavailable in this build: the served API exposes no pricing route. No prices or estimates were changed.";
+      host.hidden = true;
+      return;
+    }
     status.textContent = "Contacting the fixed Azure retail catalog endpoint…"; host.hidden = true;
     try {
-      const response = await fetch(`/v1/pricing/azure-retail?${query}`, {cache: "no-store"});
+      const response = await fetch(`${PRICING_ROUTES.azure}?${query}`, {cache: "no-store"});
       const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
       latest = data;
       const table = document.createElement("table"), head = table.createTHead().insertRow(), body = table.createTBody();

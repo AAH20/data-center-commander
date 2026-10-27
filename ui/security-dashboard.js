@@ -2,7 +2,7 @@
  * Security Monitoring Dashboard for Data Center Commander.
  *
  * Renders auth events, policy violations, and audit log from
- * the /v1/evidence endpoint and related security signals.
+ * the /v2/evidence endpoint and related security signals.
  * Provides security posture scoring, authentication event analysis,
  * policy violation tracking, audit log browsing with filtering,
  * connector access posture, and incident summary. All data is
@@ -679,6 +679,23 @@
   // ─── Main load ──────────────────────────────────────────────────────────────
 
   /**
+   * Builds a readable message from a failed API response body.
+   * FastAPI validation failures carry `detail` (a string or a list of errors) rather
+   * than `error`, so both shapes are handled instead of showing "[object Object]".
+   * @param {Object} body - Parsed JSON response body
+   * @param {Response} resp - The response, used for the status code
+   * @returns {string} Human-readable error text
+   */
+  function apiErrorText(body, resp) {
+    if (typeof body?.detail === "string") return body.detail;
+    if (typeof body?.error === "string") return body.error;
+    if (Array.isArray(body?.detail) && body.detail.length) {
+      return body.detail.map((d) => d.msg || d.type || "invalid request").join("; ");
+    }
+    return `HTTP ${resp.status}`;
+  }
+
+  /**
    * Loads security data from the API and renders all dashboard components.
    * @returns {Promise<void>}
    */
@@ -702,20 +719,25 @@
       }
 
       const [evidenceResp, workflowsResp, connectorsResp] = await Promise.all([
-        fetch(`/v1/evidence?${params}`, { cache: "no-store" }),
-        fetch(`/v1/workflows?${params}`, { cache: "no-store" }),
-        fetch(`/v1/connectors?${params}`, { cache: "no-store" }),
+        fetch(`/v2/evidence?${params}`, { cache: "no-store" }),
+        fetch(`/v2/workflows?${params}`, { cache: "no-store" }),
+        fetch(`/v2/connectors?${params}`, { cache: "no-store" }),
       ]);
 
       const evidenceData = await evidenceResp.json();
       const workflowsData = await workflowsResp.json();
       const connectorsData = await connectorsResp.json();
 
-      if (!evidenceResp.ok) throw new Error(evidenceData.error || `HTTP ${evidenceResp.status}`);
+      if (!evidenceResp.ok) throw new Error(apiErrorText(evidenceData, evidenceResp));
+      if (!workflowsResp.ok) throw new Error(apiErrorText(workflowsData, workflowsResp));
+      if (!connectorsResp.ok) throw new Error(apiErrorText(connectorsData, connectorsResp));
 
-      const evidence = evidenceData.evidence || [];
-      const workflows = workflowsData.workflows || [];
-      const connectors = connectorsData.connectors || [];
+      // /v2 collection routes answer with a pagination envelope ({items,total,...}),
+      // not the bare arrays the old /v1 handlers returned. Unwrap before rendering,
+      // otherwise every table below renders empty while the request succeeds.
+      const evidence = evidenceData.items || [];
+      const workflows = workflowsData.items || [];
+      const connectors = connectorsData.items || [];
 
       const scores = computeScores(evidence, workflows, connectors);
 
@@ -756,10 +778,10 @@
     if (new URLSearchParams(location.search).get("demo") === "synthetic") {
       params.set("demo", "synthetic");
     }
-    fetch(`/v1/evidence?${params}`, { cache: "no-store" })
+    fetch(`/v2/evidence?${params}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => renderAuditTable(d.evidence || []))
-      .catch(() => {});
+      .then((d) => renderAuditTable(d.items || []))
+      .catch((e) => { document.querySelector("#sdStatus").textContent = `Audit filter refresh failed: ${e.message}`; });
   });
   document.querySelector("#sdAuditType").addEventListener("change", () => {
     const tenant = new URLSearchParams(location.search).get("tenant_id");
@@ -768,10 +790,10 @@
     if (new URLSearchParams(location.search).get("demo") === "synthetic") {
       params.set("demo", "synthetic");
     }
-    fetch(`/v1/evidence?${params}`, { cache: "no-store" })
+    fetch(`/v2/evidence?${params}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => renderAuditTable(d.evidence || []))
-      .catch(() => {});
+      .then((d) => renderAuditTable(d.items || []))
+      .catch((e) => { document.querySelector("#sdStatus").textContent = `Audit filter refresh failed: ${e.message}`; });
   });
   document.querySelector("#sdAuditSeverity").addEventListener("change", () => {
     const tenant = new URLSearchParams(location.search).get("tenant_id");
@@ -780,10 +802,10 @@
     if (new URLSearchParams(location.search).get("demo") === "synthetic") {
       params.set("demo", "synthetic");
     }
-    fetch(`/v1/evidence?${params}`, { cache: "no-store" })
+    fetch(`/v2/evidence?${params}`, { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => renderAuditTable(d.evidence || []))
-      .catch(() => {});
+      .then((d) => renderAuditTable(d.items || []))
+      .catch((e) => { document.querySelector("#sdStatus").textContent = `Audit filter refresh failed: ${e.message}`; });
   });
   document.querySelector("#sdExport").addEventListener("click", () => {
     const tenant = new URLSearchParams(location.search).get("tenant_id");
