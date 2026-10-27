@@ -611,6 +611,63 @@ _AUTH_PUBLIC_PATHS = {
 }
 
 
+def _console_asset_prefixes() -> tuple[str, ...]:
+    """Mount paths served by a StaticFiles mount rooted at the console tree.
+
+    Read out of ``app.routes`` rather than written down as a literal. The console's
+    assets need the same exemption as "/" -- a browser cannot attach a header to a
+    <script src>, so a key-protected /assets/*.js served a shell whose scripts all
+    401'd and left a blank page. But an exemption spelled ``path.startswith("/assets")``
+    is a promise about routes that do not exist yet: the day a data route is registered
+    under that prefix it inherits public access silently. Deriving the prefix from the
+    route table keeps the exemption tied to what is actually a static file tree.
+    """
+    from starlette.routing import Mount
+
+    console_root = _ui_dir.resolve()
+    prefixes: list[str] = []
+    for route in app.routes:
+        if not isinstance(route, Mount) or not isinstance(route.app, StaticFiles):
+            continue
+        directory = getattr(route.app, "directory", None)
+        if not directory:
+            continue
+        try:
+            root = Path(directory).resolve()
+        except OSError:
+            continue
+        if root != console_root:
+            # A static mount over some other directory is not the console's asset
+            # tree and is not covered by this exemption.
+            continue
+        prefix = route.path.rstrip("/")
+        # A mount at "/" would exempt the whole application, /v2 included. Refuse it
+        # rather than silently turning authentication off.
+        if prefix:
+            prefixes.append(prefix)
+    return tuple(prefixes)
+
+
+def _is_public_console_asset(path: str) -> bool:
+    """True only for a file in the shipped console tree, never for a data route.
+
+    The files under ui/ are the same on every deployment and in the repository: HTML
+    fragments and module scripts, no tenant rows. A path containing a "." or ".."
+    segment is refused outright rather than normalised: "/assets/../v2/overview"
+    starts with the public prefix and resolves somewhere else, and an exemption that
+    has to reason about which of the two the router will honour is a bug waiting for
+    a URL parser that disagrees with it. Fail closed instead.
+    """
+    segments = [segment for segment in path.split("/") if segment]
+    if not segments or "." in segments or ".." in segments:
+        return False
+    normalised = "/" + "/".join(segments)
+    for prefix in _console_asset_prefixes():
+        if normalised == prefix or normalised.startswith(prefix + "/"):
+            return True
+    return False
+
+
 def _auth_is_open() -> bool:
     """True only when anonymity was explicitly requested via the environment.
 
@@ -646,7 +703,12 @@ async def auth_middleware(request: Request, call_next):
     on /metrics.
     """
     path = request.url.path
-    if path in _AUTH_PUBLIC_PATHS or path.startswith("/docs") or _auth_is_open():
+    if (
+        path in _AUTH_PUBLIC_PATHS
+        or path.startswith("/docs")
+        or _is_public_console_asset(path)
+        or _auth_is_open()
+    ):
         return await call_next(request)
 
     presented = _presented_key(request)
