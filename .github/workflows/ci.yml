@@ -125,6 +125,18 @@ jobs:
           terraform version
           opa version
 
+      # tests/e2e drives a real browser. The Python package and the browser binary are
+      # installed separately: with the package present and no browser, every test errors in
+      # fixture setup with "Executable doesn't exist", which reads as a regression and is not
+      # one. The suite conftest calls importorskip for both, so a job that skipped this step
+      # would report 293 skips and look green -- which is why the suite step runs with -rs and
+      # the skip reasons are visible in the log.
+      - name: Install Playwright and Chromium
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+          python -c "from playwright.sync_api import sync_playwright as s; p = s().start(); print('chromium at', p.chromium.executable_path); p.stop()"
+
       # This gate is BLOCKING. It used to be continue-on-error: true, justified by
       # "636 pre-existing failures, 334 of them terraform tests targeting
       # terraform/modules/aws/vpc". That layout no longer exists -- the modules moved to
@@ -136,7 +148,6 @@ jobs:
       # the badge asserts something nobody is checking.
       #
       # Excluded, each for a stated capability gap rather than for being red:
-      #   tests/e2e            needs a Chromium binary and a running server
       #   tests/iac-visual     needs a running server plus 7 baselines generated on the
       #                        same platform as the gate; fonts differ per runner image
       #   tests/performance    wall-clock microbenchmarks. This job is a 3-way Python
@@ -184,7 +195,6 @@ jobs:
           # them as _FailedTest collection errors and the job could never pass.
           pip install -e ".[test,checkov]" coverage
           coverage run -m pytest tests/ -q -p no:cacheprovider -rs \
-            --ignore=tests/e2e \
             --ignore=tests/iac-visual \
             --ignore=tests/performance
           coverage report -m

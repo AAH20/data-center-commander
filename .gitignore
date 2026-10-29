@@ -48,3 +48,4 @@ policies/sentinel/.sentinel/
 tests/iac-visual/screenshots/
 tests/iac-visual/summary.json
 tests/iac-visual/diffs/
+.hermes-wave-manifest-*.json
