@@ -141,7 +141,7 @@ if(syntheticDemoMode){const ribbon=document.createElement('div');ribbon.classNam
 (function scrubUrlKey(){try{const u=new URL(location.href);if(u.searchParams.has("api_key")){u.searchParams.delete("api_key");history.replaceState({},"",u.toString())}}catch(e){}})();
 function apiKeyState(){const input=document.getElementById("apiKeyInput");const typed=input?input.value.trim():"";const stored=localStorage.getItem("dcc-api-key")||"";const meta=(document.querySelector('meta[name="dcc-api-key"]')||{}).content||"";return{typed,stored,meta,value:typed||stored||meta,any:Boolean(typed||stored||meta)}}
 const _fetch=(u,o={})=>{const key=apiKeyState().value;const headers={...(key?{"X-API-Key":key}:{}),...(o.headers||{})};return fetch(u,{...o,headers})};function apiError(path,response,body){const detail=body&&typeof body.detail==='object'?body.detail:null;const message=(body&&typeof body.detail==='string'&&body.detail)||(detail&&(detail.error||detail.detail))||(body&&body.error)||`${path} returned HTTP ${response.status}`;return Error(response.status===401?'authentication required: set an API key for this deployment':response.status===403?`tenant mismatch: the API key is not authorised for this tenant_id (${message})`:message)}
-async function readJson(path,response){const text=await response.text();let body={};try{body=text?JSON.parse(text):{}}catch(err){throw Error(`${path} returned HTTP ${response.status} with a non-JSON body`)}if(!response.ok)throw apiError(path,response,body);return body}
+async function readJson(path,response){const text=await response.text();let body={};try{body=text?JSON.parse(text):{}}catch(err){throw Error(`${path} returned HTTP ${response.status} with a non-JSON body`)}/* .status is carried on the error so a caller can tell a 401 (no key / bad key) from a 403 or a 500 without parsing the message text. window.dccError already did this for module scripts; the console's own reads did not. */if(!response.ok){const error=apiError(path,response,body);error.status=response.status;throw error}return body}
 async function get(path){const params=new URLSearchParams({tenant_id:tenant||''});if(syntheticDemoMode)params.set('demo','synthetic');const r=await _fetch(`${path}?${params}`,{cache:'no-store'});return readJson(path,r)}
 /* Per-panel rendering guards. Before this, every panel was written in one straight
    line inside a single try: the first render error (a key the API does not return,
@@ -149,18 +149,58 @@ async function get(path){const params=new URLSearchParams({tenant_id:tenant||''}
    with no explanation. Each render now fails alone and says so in its own container. */
 function paint(sel,label,render,fail){const el=document.querySelector(sel);if(!el)return;try{const html=render();if(html!=null)el.innerHTML=html}catch(err){el.innerHTML=fail?fail(err):`<div class="empty"><strong>${esc(label)} unavailable</strong>${esc(err.message)}</div>`}}
 function paintError(sel,label,reason){paint(sel,label,()=>{throw (reason instanceof Error?reason:Error(String(reason||'the request did not succeed')))})}
+/* ── Single owner of the #apiStatus badge ────────────────────────────────────────
+   The badge used to have six writers spread over two scripts: the markup, load()
+   (healthz ok, healthz failed, overview.synthetic, "N of 7 reads failed") and the
+   synthetic-quarantine IIFE. Each wrote a different string and the last fetch to
+   resolve won, so the same tenant painted "SYNTHETIC DEMO · not live" (154px) on one
+   load and "SYNTHETIC DEMO · quarantined from operational view" (284px) on the next,
+   reflowing the toolbar. tests/iac-visual recorded that as 4759px (0.37%) on one
+   capture and 0.000% on the next five.
+   Order is no longer an input. Every observer reports a fact; renderApiStatus()
+   derives the one string and colour from the whole fact set, so identical facts
+   always paint an identical badge whichever request lands first. Writers must never
+   touch badge.textContent directly again. */
+const apiStatusFacts={probe:"pending",overview:"idle",synthetic:null,authRequired:false,quarantineError:false,readsFailed:0,readsExpected:0,tenantPresent:Boolean(tenant)};
+function renderApiStatus(patch){
+  if(patch)Object.assign(apiStatusFacts,patch);
+  const badge=document.querySelector("#apiStatus");if(!badge)return;
+  const f=apiStatusFacts;
+  /* Precedence is a decision about what the operator must know first: an
+     unauthenticated console is the most actionable, a synthetic deployment is the
+     most misleading if unsaid, and a partial read failure is least severe. */
+  let text,color=null;
+  if(f.authRequired){text="Authentication required · set API key";color="var(--red)"}
+  else if(f.probe==="unreachable"){text="API unreachable";color="var(--red)"}
+  else if(f.synthetic===true){text="SYNTHETIC DEMO · quarantined from operational view";color="var(--amber)"}
+  else if(f.quarantineError){text="Synthetic demo · source verification unavailable";color="var(--amber)"}
+  else if(f.readsFailed>0){text=`${f.readsFailed} of ${f.readsExpected} reads failed`;color="var(--amber)"}
+  else if(f.probe!=="ready"||f.overview==="pending"){text="Connecting · loopback"}
+  else if(!f.tenantPresent){text="API ready · choose a tenant"}
+  else{text="API ready · loopback"}
+  /* Idempotent: a repeat observation of the same facts must not touch the DOM, or
+     every redundant report would reset the visual harness' settle timer. */
+  if(badge.textContent!==text)badge.textContent=text;
+  const inline=color||"";
+  if(badge.style.color!==inline)badge.style.color=inline;
+  badge.classList.toggle("error",color==="var(--red)");
+}
+window.renderApiStatus=renderApiStatus;
 async function load(){
-  const badge=document.querySelector('#apiStatus');
   let health=null;try{health=await _fetch('/healthz',{cache:'no-store'})}catch(err){health=null}
-  if(!health||!health.ok){badge.textContent='API unreachable';badge.classList.add('error');paintError('#qualityState','Live read model','/healthz did not answer');return}
-  badge.textContent='API ready · loopback';badge.classList.remove('error');
+  if(!health||!health.ok){renderApiStatus({probe:'unreachable'});paintError('#qualityState','Live read model','/healthz did not answer');return}
+  renderApiStatus({probe:'ready'});
   if(!tenant){document.querySelector('#qualityState').innerHTML='<strong>Choose a tenant</strong>Append ?tenant_id=&lt;tenant UUID&gt; after the URL when the database is provisioned.';return}
+  /* The badge holds "Connecting · loopback" until the overview answers, so a capture
+     taken mid-load cannot catch a half-informed "API ready" that flips to the
+     synthetic warning a moment later. */
+  renderApiStatus({overview:'pending'});
   /* allSettled: one unavailable panel must not blank the whole workspace. */
   const settled=await Promise.allSettled([get('/v2/overview'),get('/v2/facilities'),get('/v2/assets'),get('/v2/workflows'),get('/v2/connectors'),get('/v2/capacity'),get('/v2/evidence')]);
   /* req(i) throws the recorded reason for exactly one endpoint, so a failed fetch is
      reported by the panels that needed it and by nothing else. */
   const req=i=>{const r=settled[i];if(r.status==='rejected')throw (r.reason instanceof Error?r.reason:Error(String(r.reason)));return r.value};
-  let kpis=null;try{kpis=req(0).kpis||[];if(req(0).synthetic){badge.textContent='SYNTHETIC DEMO · not live';badge.style.color='var(--amber)'}}catch(err){kpis=null}
+  let kpis=null;try{const overview=req(0);kpis=overview.kpis||[];renderApiStatus({overview:'settled',synthetic:Boolean(overview.synthetic),authRequired:false})}catch(err){kpis=null;renderApiStatus({overview:'settled'})}
   if(kpis)for(const k of kpis){const v=document.querySelector(`[data-kpi="${CSS.escape(k.metric_key)}"]`);const m=document.querySelector(`[data-meta="${CSS.escape(k.metric_key)}"]`);if(v){v.textContent=fmt(k.value_numeric,k.unit);v.classList.remove('unknown')}if(m)m.textContent=`${k.provenance?.synthetic?'SYNTHETIC DEMO · ':''}${k.quality_status} · ${Math.round((k.coverage||0)*100)}% coverage · ${when(k.window_start)}–${when(k.window_end)}`}
   paint('#asOf','Telemetry timestamp',()=>{const d=req(0);return d.latest_telemetry_ingested_at?`Telemetry ingested ${when(d.latest_telemetry_ingested_at)}`:'No telemetry ingested'});
   paint('#openWork','Open workflow count',()=>esc(req(0).open_workflows??'—'));
@@ -176,9 +216,16 @@ async function load(){
   paint('#capacityView','Capacity snapshots',()=>table(req(5).items,[['dimension','Dimension'],['scenario','Scenario'],['usable','Usable'],['reserved','Reserved'],['policy_reserve','Policy reserve'],['forecast_peak','Forecast peak'],['unit','Unit'],['quality_status','Quality']]));
   paint('#evidenceView','Evidence references',()=>table(req(6).items,[['sequence','Seq'],['event_type','Event'],['occurred_at','Time',r=>when(r.occurred_at)],['actor_ref','Actor'],['subject_type','Subject type'],['subject_id','Subject'],['event_hash','Digest',r=>String(r.event_hash||'').slice(0,16)+'…']]));
   const down=settled.filter(r=>r.status==='rejected').length;
-  if(down)badge.textContent=`${down} of ${settled.length} reads failed`;
+  /* A 401 on every read is the no-key/bad-key signature, not an empty deployment:
+     say so instead of leaving "API ready" over a page of error panels. Healthz is
+     in the public path list, so it answers 200 even when nothing else will. */
+  const unauthorized=settled.length>0&&settled.every(r=>r.status==='rejected'&&r.reason&&r.reason.status===401);
+  if(unauthorized)renderApiStatus({authRequired:true});
+  else renderApiStatus({readsFailed:down,readsExpected:settled.length});
 }
-load();
+/* Published so the quarantine pass in a later script can await the initial paint
+   instead of racing it (see window.__dccInitialPaints). */
+window.__dccInitialLoad=load();
 async function loadCosts(){
   if(!tenant)return;
   const money=(n,c)=>n==null?'Not priced':new Intl.NumberFormat(undefined,{style:'currency',currency:c,maximumFractionDigits:2}).format(Number(n));
@@ -198,7 +245,7 @@ async function loadCosts(){
   paint('#priceView','Price book',()=>withheld?withheldNotice:table(prices,[['item_code','Item'],['description','Description'],['category','Class'],['unit_price','Unit price'],['currency','Currency'],['quantity_unit','Unit'],['geography','Geography'],['delivery_basis','Price basis'],['observed_at','Observed',r=>when(r.observed_at)],['valid_to','Valid to'],['source_name','Source'],['source_ref','Source reference'],['confidence','Confidence'],['quality_status','Approval'],['provenance','Provenance',r=>r.provenance?.synthetic?'SYNTHETIC · NOT LIVE':JSON.stringify(r.provenance)]]));
   paint('#actualCostView','Actual cost ledger',()=>withheld?withheldNotice:table(actuals,[['accounting_period','Period'],['cost_type','Cost type'],['currency','Currency'],['actual_amount','Actual cost'],['entries','Entries'],['synthetic','Source status',r=>r.synthetic?'SYNTHETIC · NOT LIVE':'accounting source']]));
 }
-loadCosts();
+window.__dccInitialCosts=loadCosts();
 </script><script id="governance-and-operations">
 /* Two read-only panels over endpoints the console never surfaced:
      /v2/compliance/scan + /v2/security/posture  -> Governance & posture
@@ -302,12 +349,36 @@ document.querySelector('#refreshOperations')?.addEventListener('click',()=>loadO
 </script><script id="command-center-interactions">
 let analyticsSnapshot=null, workflowSnapshot=[], refreshClock=null;
 async function scopedGet(path,extra={}){const params=new URLSearchParams({tenant_id:tenant||"",...extra});if(syntheticDemoMode)params.set('demo','synthetic');const response=await _fetch(`${path}?${params}`,{cache:"no-store"});return readJson(path,response)}
-function showView(name){document.querySelectorAll(".view").forEach(view=>view.classList.toggle("active",view.id===`view-${name}`));document.querySelectorAll(".nav [data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));const active=document.querySelector(`.nav [data-view="${name}"]`);document.querySelector("#crumb").textContent=active?active.textContent.trim():name;/* Keep ?tenant_id and ?demo: replaceState("#security") dropped the query string entirely, and
+/* Every module view owns its own loader; showView only toggles panels. Without a
+   branch here, a nav click revealed a static "Select a tenant..." placeholder until
+   the operator found the in-view Refresh control and pressed it.
+     economics -> window.loadEconomicsDashboard   (exported by ui/economics-dashboard.js:716)
+     ops       -> window.loadOpsDashboard         (exported by ui/ops-dashboard.js:772)
+     security  -> window.loadSecurityDashboard    (NOT exported; ui/security-dashboard.js
+                  keeps loadSecurity private at line 689 and only binds it to #sdRefresh)
+     quality   -> window.loadQualityDashboard     (NOT exported; ui/quality-dashboard.js
+                  keeps loadQuality private at line 727 and only binds it to #qdRefresh)
+   Where the bridge is absent we press the module's own Refresh control -- the only
+   entry point it publishes today -- instead of inventing a loader. Reported to the
+   module owner; once those two exports exist the fallback is dead code.
+   forecast and assets need no branch: ui/forecast-dashboard.js binds its own
+   [data-view="forecast"] click handler and ui/topology.js binds [data-view="assets"],
+   both verified firing /v2/analytics and /v2/topology on nav click. */
+function runModuleLoader(bridgeName,fallbackSelector){
+  const bridge=window[bridgeName];
+  if(typeof bridge==="function"){bridge();return}
+  const control=fallbackSelector?document.querySelector(fallbackSelector):null;
+  if(control&&!control.disabled)control.click();
+}
+function showView(name,opts){document.querySelectorAll(".view").forEach(view=>view.classList.toggle("active",view.id===`view-${name}`));document.querySelectorAll(".nav [data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===name));const active=document.querySelector(`.nav [data-view="${name}"]`);document.querySelector("#crumb").textContent=active?active.textContent.trim():name;/* Keep ?tenant_id and ?demo: replaceState("#security") dropped the query string entirely, and
    every module re-reads tenant_id from location.search, so one nav click made them all report
    "Select a tenant" and stop requesting data. */history.replaceState(null,"",`${location.pathname}${location.search}#${name}`);if(name==="analytics")loadAnalytics().catch(showAnalyticsError);if(name==="workflows")renderWorkflowQueue();if(name==="governance")loadGovernance();if(name==="operations")loadOperations();/* Deferred module views load their own data. The economics dashboard only auto-loaded
    when the hash was already #economics, so arriving via the nav button never ran it and
    its banner stayed empty -- the view looked broken rather than empty. Each is optional
-   chained because the module may not have loaded yet. */if(name==="economics")window.loadEconomicsDashboard?.()}
+   chained because the module may not have loaded yet. */if(name==="economics")window.loadEconomicsDashboard?.()/* security/quality/ops: the module loads itself from location.hash at init
+   (security-dashboard.js:181, quality-dashboard.js:191, ops-dashboard.js:177), so the
+   boot-time deep-link replay below must not fire the loader again or every panel is
+   fetched twice. A nav click has no opts, so it always loads. */if(!(opts&&opts.replay)){if(name==="ops")runModuleLoader("loadOpsDashboard","#opsRefresh");if(name==="security")runModuleLoader("loadSecurityDashboard","#sdRefresh");if(name==="quality")runModuleLoader("loadQualityDashboard","#qdRefresh")}}
 /* Bridge for the deferred module scripts. They are separate <script type="module">
    files and can only reach this page through window; they already call
    window.showView?.() and window.getPlacementComparisonSnapshot?.(), both of which
@@ -393,14 +464,14 @@ document.querySelector("#exportWorkflows").addEventListener("click",()=>{const r
 const initialView=location.hash.slice(1);
 const _viewExists=n=>Boolean(n)&&Boolean(document.querySelector(`#view-${CSS.escape(n)}`));
 const pendingView=initialView&&!_viewExists(initialView)?initialView:null;
-if(initialView&&!pendingView)showView(initialView);else{
+if(initialView&&!pendingView)showView(initialView,{replay:true});else{
   showView("overview");
   // Keep the deep link in the address bar until its view exists; showView("overview")
   // would otherwise replace it and orphan the pending target.
   if(pendingView)history.replaceState(null,"","#"+pendingView);
 }
-window.addEventListener("load",()=>{const target=location.hash.slice(1);if(_viewExists(target))showView(target);else if(pendingView&&_viewExists(pendingView))showView(pendingView)});
-loadAnalytics().catch(showAnalyticsError);
+window.addEventListener("load",()=>{const target=location.hash.slice(1);if(_viewExists(target))showView(target,{replay:true});else if(pendingView&&_viewExists(pendingView))showView(pendingView,{replay:true})});
+window.__dccInitialPaints=Promise.allSettled([window.__dccInitialLoad,window.__dccInitialCosts,loadAnalytics().catch(showAnalyticsError)]);
 </script><style>.feature-pending{display:none!important}</style><script>document.querySelector('#workspaceSetup').hidden=true;document.querySelector('#view-assets .module')?.classList.add('feature-pending');</script><script type="module" src="/assets/onboarding.js"></script><script type="module" src="/assets/topology.js"></script><script type="module" src="/assets/forecast-dashboard.js"></script>
 <script id="workload-and-critical-environment-workbench">
 (()=>{
@@ -459,6 +530,10 @@ loadAnalytics().catch(showAnalyticsError);
 })();
 </script>
 <script id="synthetic-data-quarantine">
-(async()=>{const params=new URLSearchParams(location.search),tenantId=params.get("tenant_id");if(!tenantId||params.get('demo')==='synthetic')return;try{const response=await _fetch(`/v2/overview?tenant_id=${encodeURIComponent(tenantId)}`,{cache:"no-store"});if(!response.ok)return;const source=await response.json();if(!source.synthetic)return;document.querySelector("#apiStatus").textContent="SYNTHETIC DEMO · quarantined from operational view";document.querySelector("#apiStatus").style.color="var(--amber)";for(const id of ["estimateCards","energyRows","facilityView","assetView","workflowTable","reliabilityView","capacityView","connectorView","priceView","actualCostView"]){const node=document.getElementById(id);if(node)node.replaceChildren()}for(const id of ["estimateView","qualityState","workflowState","analyticsStatus"]){const node=document.getElementById(id);if(node)node.textContent="Synthetic demonstration records are quarantined from operational views. Connect an authoritative source and verify provenance, units, freshness and coverage to populate this panel."}for(const id of ["analyticsCards","energyMetricCards","economicsCards"]){const node=document.getElementById(id);if(node)node.replaceChildren()}for(const node of document.querySelectorAll("[data-kpi]")){node.textContent="Not verified";node.classList.add("unknown")}for(const node of document.querySelectorAll("[data-meta]"))node.textContent="Synthetic sample excluded · source required";for(const id of ["openWork","facilityCount","asOf"]){const node=document.getElementById(id);if(node)node.textContent="Not verified"}}catch{if(tenantId==="dcc00000-0000-4000-8000-000000000001"){document.querySelector("#apiStatus").textContent="Synthetic demo · source verification unavailable";for(const id of ["estimateCards","priceView","actualCostView","energyRows","facilityView","assetView","workflowTable"]){document.getElementById(id)?.replaceChildren()}}}})();
+(async()=>{const params=new URLSearchParams(location.search),tenantId=params.get("tenant_id");if(!tenantId||params.get('demo')==='synthetic')return;try{const response=await _fetch(`/v2/overview?tenant_id=${encodeURIComponent(tenantId)}`,{cache:"no-store"});if(!response.ok){if(response.status===401)renderApiStatus({authRequired:true});return}const source=await response.json();if(!source.synthetic){renderApiStatus({synthetic:false});return}renderApiStatus({synthetic:true,authRequired:false});/* This pass empties the same panels load()/loadCosts()/loadAnalytics() paint. Running it
+   unsynchronised made it a third writer: with the demo tenant one load kept the energy
+   rows and the next replaced them with the quarantine notice, which is what produced
+   the assets/quality size-mismatch captures. Wait for the initial paint, then quarantine
+   on top of it, so the outcome no longer depends on which response arrives first. */if(window.__dccInitialPaints)await window.__dccInitialPaints;for(const id of ["estimateCards","energyRows","facilityView","assetView","workflowTable","reliabilityView","capacityView","connectorView","priceView","actualCostView"]){const node=document.getElementById(id);if(node)node.replaceChildren()}for(const id of ["estimateView","qualityState","workflowState","analyticsStatus"]){const node=document.getElementById(id);if(node)node.textContent="Synthetic demonstration records are quarantined from operational views. Connect an authoritative source and verify provenance, units, freshness and coverage to populate this panel."}for(const id of ["analyticsCards","energyMetricCards","economicsCards"]){const node=document.getElementById(id);if(node)node.replaceChildren()}for(const node of document.querySelectorAll("[data-kpi]")){node.textContent="Not verified";node.classList.add("unknown")}for(const node of document.querySelectorAll("[data-meta]"))node.textContent="Synthetic sample excluded · source required";for(const id of ["openWork","facilityCount","asOf"]){const node=document.getElementById(id);if(node)node.textContent="Not verified"}}catch(error){if(error&&error.status===401)renderApiStatus({authRequired:true});else if(tenantId==="dcc00000-0000-4000-8000-000000000001"){renderApiStatus({quarantineError:true});for(const id of ["estimateCards","priceView","actualCostView","energyRows","facilityView","assetView","workflowTable"]){document.getElementById(id)?.replaceChildren()}}}})();
 </script>
 <script src="/assets/azure-prices.js" defer></script><script src="/assets/placement-comparison.js" defer></script><script src="/assets/placement-scenarios.js" defer></script><script src="/assets/economics-dashboard.js" defer></script><script src="/assets/quality-dashboard.js" defer></script><script src="/assets/security-dashboard.js" defer></script><script src="/assets/ops-dashboard.js" defer></script></body></html>
