@@ -137,6 +137,20 @@ jobs:
           playwright install --with-deps chromium
           python -c "from playwright.sync_api import sync_playwright as s; p = s().start(); print('chromium at', p.chromium.executable_path); p.stop()"
 
+      # pg_dump writes session settings the target server must understand. A client newer than
+      # the server emits `SET transaction_timeout = 0`, which PostgreSQL only gained in 17, and
+      # restoring that into the postgres:16 service fails with
+      #   pg_restore: error: unrecognized configuration parameter "transaction_timeout"
+      # A backup that cannot be restored is not a backup, so match the client to the server
+      # rather than letting the runner's newer binaries decide.
+      - name: Match the PostgreSQL client to the test server
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          PATH="/usr/lib/postgresql/16/bin:$PATH" pg_dump --version
+          PATH="/usr/lib/postgresql/16/bin:$PATH" pg_restore --version
+
       # This gate is BLOCKING. It used to be continue-on-error: true, justified by
       # "636 pre-existing failures, 334 of them terraform tests targeting
       # terraform/modules/aws/vpc". That layout no longer exists -- the modules moved to
@@ -195,10 +209,27 @@ jobs:
           # them as _FailedTest collection errors and the job could never pass.
           pip install -e ".[test,checkov]" coverage
           coverage run -m pytest tests/ -q -p no:cacheprovider -rs \
+            --ignore=tests/e2e \
             --ignore=tests/iac-visual \
             --ignore=tests/performance
           coverage report -m
           coverage xml
+
+      # The browser suite runs in its OWN pytest process, and that is not tidiness.
+      # Playwright's sync API keeps an asyncio loop alive in the calling thread, so when this
+      # suite shared a process with everything else these unrelated root-tier tests failed:
+      #   tests/test_tenant_security.py::TestContextVar::test_contextvar_isolation_between_contexts
+      #   RuntimeError: asyncio.run() cannot be called from a running event loop
+      # Measured, not theorised: 3 failed, 7934 passed in the combined run, and the two asyncio
+      # failures were the contamination, not a defect in the tests that reported it.
+      # Separate process, separate loop, and this step still fails the job like any other.
+      - name: Run browser end-to-end tests
+        env:
+          PYTHONPATH: src
+          DCC_DATABASE_URL: postgresql://postgres:***@localhost:5432/dcc_test
+          HYPOTHESIS_PROFILE: ci
+        run: |
+          pytest tests/e2e -q -p no:cacheprovider -rs
       - name: Upload coverage artifact
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
