@@ -46,11 +46,15 @@ if not _browser_binaries_present():
 
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator
 
@@ -58,12 +62,16 @@ import pytest
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
-API_PORT = 8790
-BASE_URL = f"http://127.0.0.1:{API_PORT}"
 TENANT_ID = "dcc00000-0000-4000-8000-000000000001"
 
-
-
+# The port is chosen per run, not fixed. `DCC_E2E_PORT` lets a developer pin one,
+# and a pinned port that is already busy is a hard error (`_assert_port_free`).
+# There is no default port any more: a fixed 8790 could not distinguish "my
+# server started" from "somebody else's server is up", so the tier silently
+# tested whatever was already listening.
+PINNED_PORT_ENV = "DCC_E2E_PORT"
+SERVER_READY_TIMEOUT = 45.0  # a cold uvicorn import on a loaded runner is slow
+_HEALTH_IDENTITY = {"service": "data-center-commander", "mode": "read_only"}
 
 
 def _port_open(host: str, port: int) -> bool:
@@ -72,33 +80,268 @@ def _port_open(host: str, port: int) -> bool:
         return s.connect_ex((host, port)) == 0
 
 
+def _free_loopback_port() -> int:
+    """Ask the OS for an unused loopback port.
+
+    Bound and released immediately: the app has to bind it itself, so the socket
+    cannot be handed over. That gap is why ownership is verified afterwards
+    (`_listener_pids`) instead of trusting this value.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
+def _describe_pid(pid: int) -> str:
+    try:
+        out = subprocess.run(
+            ["ps", "-o", "command=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        cmd = out.stdout.strip().splitlines()
+        return cmd[0][:160] if cmd else "<no command line>"
+    except Exception:  # noqa: BLE001 - diagnostics must never mask the real error
+        return "<ps failed>"
+
+
+def _listener_pids(port: int) -> list[int] | None:
+    """PIDs listening on `port`, or None when ownership cannot be determined.
+
+    None does not mean "nobody": the caller fails closed rather than adopting a
+    listener it cannot identify.
+    """
+    if shutil.which("lsof"):
+        out = subprocess.run(
+            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+            capture_output=True,
+            text=True,
+        )
+        if out.returncode == 0:
+            return sorted({int(x) for x in out.stdout.split() if x.strip().isdigit()})
+        if out.returncode == 1 and not out.stdout.strip():
+            return []  # lsof's "nothing is listening"
+    tcp4 = Path("/proc/net/tcp")
+    tcp6 = Path("/proc/net/tcp6")
+    if tcp4.exists() or tcp6.exists():
+        inodes: set[str] = set()
+        for table in (tcp4, tcp6):
+            if not table.exists():
+                continue
+            try:
+                lines = table.read_text().splitlines()[1:]
+            except OSError:
+                continue
+            for line in lines:
+                fields = line.split()
+                if len(fields) < 10 or fields[3] != "0A":  # 0A = LISTEN
+                    continue
+                try:
+                    local_port = int(fields[1].rsplit(":", 1)[1], 16)
+                except (IndexError, ValueError):
+                    continue
+                if local_port == port:
+                    inodes.add(fields[9])
+        if not inodes:
+            return []
+        pids: set[int] = set()
+        for fd_dir in Path("/proc").glob("[0-9]*/fd"):
+            try:
+                for fd in fd_dir.iterdir():
+                    target = os.readlink(fd)
+                    if target.startswith("socket:[") and target[8:-1] in inodes:
+                        pids.add(int(fd_dir.parent.name))
+                        break
+            except OSError:
+                continue
+        return sorted(pids)
+    return None
+
+
+def _assert_port_free(port: int) -> None:
+    """Refuse to share a pinned port with a process this fixture did not start."""
+    if not _port_open("127.0.0.1", port):
+        return
+    pids = _listener_pids(port)
+    if pids:
+        detail = "listening process is " + "; ".join(
+            f"pid {pid}: {_describe_pid(pid)}" for pid in pids
+        )
+    elif pids is None:
+        detail = (
+            "a listener accepted a TCP connection but no tool (lsof, /proc/net/tcp) "
+            "could attribute it to a PID"
+        )
+    else:
+        detail = "the port accepts connections but no listening PID was reported"
+    pytest.fail(
+        f"E2E server port {port} is already in use -- {detail}. "
+        "This fixture only tests a server it starts itself and will not adopt an "
+        "existing listener. Unset DCC_E2E_PORT to let it pick a free ephemeral "
+        "port, or set DCC_E2E_PORT to a port nothing is using.",
+        pytrace=False,
+    )
+
+
+def _health(base: str) -> dict | None:
+    try:
+        with urllib.request.urlopen(base + "/healthz", timeout=2) as response:
+            if response.status != 200:
+                return None
+            body = json.loads(response.read().decode())
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _log_tail(path: Path, limit: int = 2500) -> str:
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return "<no server log>"
+    return text[-limit:] if text else "<server log empty>"
+
+
+@dataclass
+class Server:
+    """The server this fixture started, and proof that it is the one listening."""
+
+    proc: subprocess.Popen
+    port: int
+    url: str
+    log_path: Path
+
+    @property
+    def pid(self) -> int:
+        return self.proc.pid
+
+
 @pytest.fixture(scope="session")
-def api_server() -> Generator[subprocess.Popen, None, None]:
-    """Start the DCC API server for the test session."""
+def api_server() -> Generator[Server, None, None]:
+    """Start the DCC API server on a free loopback port and prove ownership.
+
+    The previous version polled a hardcoded port 8790 and declared the server
+    ready the moment anything accepted a connection there, so a stale process on
+    8790 was adopted: its behaviour became the test result and any failure was
+    blamed on the code under test. Measured here -- with another agent's uvicorn
+    already on 8790, the fixture handed the tests http://127.0.0.1:8790 while the
+    child it spawned had already exited, and the tier reported "291 passed"
+    about a process it never started.
+
+    Readiness now requires all three of:
+      * the child is still running (a bind failure exits, it does not hang);
+      * the only listening PID on the port is that child (lsof or /proc), so a
+        foreign listener is refused rather than adopted;
+      * /healthz on that port reports the v2 app identity.
+
+    The health payload alone proves nothing: the legacy `dcc.api` handler answers
+    /healthz with the identical ``{"service": "data-center-commander", "mode":
+    "read_only"}`` body, so identity is decided by PID.
+    """
+    import helpers as e2e_helpers
+
+    pinned = os.environ.get(PINNED_PORT_ENV)
+    if pinned:
+        port = int(pinned)
+        _assert_port_free(port)
+    else:
+        port = _free_loopback_port()
+    url = f"http://127.0.0.1:{port}"
+
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
+    # Without this the child's stdout is block-buffered into a file and a startup
+    # failure leaves an empty log, which is exactly when the log matters.
+    env["PYTHONUNBUFFERED"] = "1"
     # DCC_DATABASE_URL is deliberately NOT stripped: the v2 app answers read
     # endpoints with 503 `database_not_configured` without a DSN, so tests that
     # need real read responses must be able to point the server at a database
     # (see the `database_url` fixture).
+    log_path = Path(
+        os.environ.get("DCC_E2E_SERVER_LOG")
+        or (Path(os.environ.get("TMPDIR", "/tmp")) / f"dcc-e2e-server-{port}.log")
+    )
+    log = open(log_path, "wb")  # noqa: SIM115 - the child writes to this fd
     proc = subprocess.Popen(
-        [sys.executable, str(ROOT / "scripts" / "run-local.py")],
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "run-local.py"),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
         cwd=str(ROOT),
         env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
     )
-    for _ in range(50):
-        if _port_open("127.0.0.1", API_PORT):
-            break
+
+    def _stop() -> None:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=10)
+        log.close()
+
+    def _fail(message: str) -> None:
+        _stop()
+        pytest.fail(
+            f"{message}\n--- server log ({log_path}) ---\n{_log_tail(log_path)}",
+            pytrace=False,
+        )
+
+    deadline = time.monotonic() + SERVER_READY_TIMEOUT
+    while time.monotonic() < deadline:
+        code = proc.poll()
+        if code is not None:
+            _fail(
+                f"the E2E server process exited with code {code} during startup on "
+                f"port {port}; the tests will not run against some other process "
+                "instead"
+            )
+        pids = _listener_pids(port)
+        if pids is None:
+            _fail(
+                f"cannot determine which process listens on port {port} (no usable "
+                "lsof and no /proc/net/tcp); refusing to run the E2E tier against a "
+                "server whose ownership it cannot prove"
+            )
+        if pids:
+            if pids != [proc.pid]:
+                who = "; ".join(f"pid {pid}: {_describe_pid(pid)}" for pid in pids)
+                _fail(
+                    f"port {port} is served by {who}, which is not the server this "
+                    f"fixture started (pid {proc.pid}); refusing to adopt a foreign "
+                    "listener"
+                )
+            body = _health(url)
+            if body and all(body.get(key) == value for key, value in _HEALTH_IDENTITY.items()):
+                break
         time.sleep(0.1)
     else:
-        proc.kill()
-        # Server may fail to start without database; tests using mock_api don't need it
-        import warnings
-        warnings.warn("API server did not start; tests requiring real API will fail")
-    yield proc
-    proc.kill()
+        _fail(
+            f"the E2E server on port {port} (pid {proc.pid}) did not answer /healthz "
+            f"with {_HEALTH_IDENTITY} within {SERVER_READY_TIMEOUT:.0f}s"
+        )
+
+    e2e_helpers.set_base_url(url)
+    server = Server(proc=proc, port=port, url=url, log_path=log_path)
+    try:
+        yield server
+    finally:
+        _stop()
+        e2e_helpers.set_base_url(None)
+
+
+@pytest.fixture(scope="session")
+def base_url(api_server: Server) -> str:
+    """Base URL of the server this fixture started -- never a hardcoded port."""
+    return api_server.url
     proc.wait(timeout=5)
 
 
@@ -142,7 +385,10 @@ def context(browser: Browser) -> Generator[BrowserContext, None, None]:
 
 
 @pytest.fixture()
-def page(context: BrowserContext) -> Generator[Page, None, None]:
+def page(context: BrowserContext, api_server: Server) -> Generator[Page, None, None]:
+    # `api_server` is a dependency, not a decoration: it guarantees a server this
+    # fixture started is up before any test navigates, and it sets the URL that
+    # helpers.base_url() returns.
     page = context.new_page()
     # Pre-set onboarding profile so dialog doesn't auto-show
     page.add_init_script("""
@@ -159,16 +405,16 @@ def page(context: BrowserContext) -> Generator[Page, None, None]:
 
 
 @pytest.fixture()
-def page_with_tenant(context: BrowserContext) -> Generator[Page, None, None]:
+def page_with_tenant(context: BrowserContext, api_server: Server) -> Generator[Page, None, None]:
     """Page with tenant_id pre-set in URL."""
     page = context.new_page()
-    page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+    page.goto(f"{api_server.url}/?tenant_id={TENANT_ID}")
     yield page
     page.close()
 
 
 @pytest.fixture()
-def mock_api(page: Page) -> dict:
+def mock_api(page: Page, api_server: Server) -> dict:
     """Install route handlers that return empty/successful API responses.
 
     The product serves ``/v2`` (``dcc.api_async``); ``/v1`` is the legacy
@@ -177,6 +423,7 @@ def mock_api(page: Page) -> dict:
     for ``/v1/overview`` and ``/v2/overview`` alike.
     """
     routes = {}
+    server_url = api_server.url
 
     def _resolve(key: str):
         for candidate in (key, key.replace("v2/", "v1/", 1), key.split("/", 1)[-1]):
@@ -185,7 +432,7 @@ def mock_api(page: Page) -> dict:
         return None
 
     def handler(route):
-        path = route.request.url.split("?")[0].replace(BASE_URL, "")
+        path = route.request.url.split("?")[0].replace(server_url, "")
         key = path.lstrip("/")
         payload = _resolve(key)
         if payload is not None:

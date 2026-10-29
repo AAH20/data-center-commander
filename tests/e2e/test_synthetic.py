@@ -7,7 +7,8 @@ import urllib.parse
 import pytest
 from playwright.sync_api import Page, expect
 
-BASE_URL = "http://127.0.0.1:8790"
+from helpers import base_url
+
 TENANT_ID = "dcc00000-0000-4000-8000-000000000001"
 
 
@@ -16,13 +17,13 @@ class TestSyntheticDemo:
 
     def test_synthetic_toggle_button(self, page: Page, api_server, mock_all_empty):
         """Synthetic demo toggle button should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator('button:has-text("Open synthetic demo")')).to_be_visible()
 
     def test_synthetic_toggle_enters_demo(self, page: Page, api_server, mock_all_empty):
         """Clicking toggle should enter synthetic demo mode."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         page.click('button:has-text("Open synthetic demo")')
         page.wait_for_timeout(500)
@@ -34,33 +35,33 @@ class TestSyntheticDemo:
 
     def test_synthetic_ribbon_displayed(self, page: Page, api_server, mock_all_empty):
         """Synthetic demo ribbon should be displayed in demo mode."""
-        page.goto(f"{BASE_URL}/?demo=synthetic&tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?demo=synthetic&tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator(".banner.warn", has_text="SYNTHETIC DEMO")).to_be_visible()
 
     def test_synthetic_api_status(self, page: Page, api_server, mock_overview_synthetic):
         """API status should show synthetic demo in demo mode."""
-        page.goto(f"{BASE_URL}/?demo=synthetic&tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?demo=synthetic&tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator("#apiStatus")).to_contain_text("SYNTHETIC DEMO")
 
     def test_synthetic_exit_button(self, page: Page, api_server, mock_all_empty):
         """Exit synthetic demo button should be present in demo mode."""
-        page.goto(f"{BASE_URL}/?demo=synthetic&tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?demo=synthetic&tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator('button:has-text("Exit synthetic demo")')).to_be_visible()
 
     def test_synthetic_exit_demo(self, page: Page, api_server, mock_all_empty):
         """Clicking exit should leave synthetic demo mode."""
-        page.goto(f"{BASE_URL}/?demo=synthetic&tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?demo=synthetic&tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         page.click('button:has-text("Exit synthetic demo")')
         page.wait_for_timeout(500)
-        expect(page).not_to_have_url(f"{BASE_URL}/?demo=synthetic")
+        expect(page).not_to_have_url(f"{base_url()}/?demo=synthetic")
 
     def test_synthetic_quarantine_message(self, page: Page, api_server, mock_overview_synthetic):
         """Synthetic data should show quarantine message."""
-        page.goto(f"{BASE_URL}/?demo=synthetic&tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?demo=synthetic&tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator("#qualityState")).to_contain_text("SYNTHETIC DEMO DATA")
 
@@ -73,7 +74,7 @@ class TestSyntheticDemo:
         so the cell legitimately reads "Unknown" -- both are non-values, and a
         numeric reading would be the failure.
         """
-        page.goto(f"{BASE_URL}/?demo=synthetic&tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?demo=synthetic&tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator('[data-kpi="facility_energy_kwh"]')).to_have_text(
             re.compile(r"^(Unknown|Not verified)$")

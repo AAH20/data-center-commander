@@ -6,9 +6,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from helpers import navigate_to
+from helpers import base_url, navigate_to
 
-BASE_URL = "http://127.0.0.1:8790"
 TENANT_ID = "dcc00000-0000-4000-8000-000000000001"
 
 
@@ -17,69 +16,69 @@ class TestPlacementComparison:
 
     def test_placement_nav_button(self, page: Page, api_server, mock_all_empty):
         """Placement comparison nav button should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator('.nav [data-view="placement"]')).to_be_visible()
 
     def test_placement_view_title(self, page: Page, api_server, mock_all_empty):
         """Placement view should have correct title."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#view-placement h1")).to_contain_text("On-premises vs cloud")
 
     def test_placement_workbench(self, page: Page, api_server, mock_all_empty):
         """Placement workbench container should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placementWorkbench")).to_be_visible()
 
     def test_placement_tabs(self, page: Page, api_server, mock_all_empty):
         """Placement tabs should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator(".placement-tabs")).to_be_visible()
 
     def test_placement_tab_tco(self, page: Page, api_server, mock_all_empty):
         """TCO model tab should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placement-tab-tco")).to_be_visible()
 
     def test_placement_tab_fit(self, page: Page, api_server, mock_all_empty):
         """Workload fit tab should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placement-tab-fit")).to_be_visible()
 
     def test_placement_tab_gates(self, page: Page, api_server, mock_all_empty):
         """Decision gates tab should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placement-tab-gates")).to_be_visible()
 
     def test_placement_form_present(self, page: Page, api_server, mock_all_empty):
         """Placement form should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placementForm")).to_be_visible()
 
     def test_placement_results_container(self, page: Page, api_server, mock_all_empty):
         """Placement results container should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placementResults")).to_be_visible()
 
     def test_placement_gates_container(self, page: Page, api_server, mock_all_empty):
         """Placement gates container should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         # Empty until a comparison is run: assert it is mounted.
@@ -87,7 +86,7 @@ class TestPlacementComparison:
 
     def test_placement_gates_checkboxes(self, page: Page, api_server, mock_all_empty):
         """Placement gates should have checkboxes."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         page.click("#placement-tab-gates")
@@ -96,7 +95,7 @@ class TestPlacementComparison:
 
     def test_placement_gates_summary(self, page: Page, api_server, mock_all_empty):
         """Placement gates summary should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         page.click("#placement-tab-gates")
@@ -108,26 +107,26 @@ class TestPlacementComparison:
 
     def test_placement_export_button(self, page: Page, api_server, mock_all_empty):
         """Export comparison button should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#exportPlacement")).to_be_visible()
 
     def test_placement_view_hidden_by_default(self, page: Page, api_server, mock_all_empty):
         """Placement view should be hidden by default."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         expect(page.locator("#view-placement")).not_to_have_class(re.compile(r"\bactive\b"))
 
     def test_placement_hash_navigation(self, page: Page, api_server, mock_all_empty):
         """URL hash should navigate to placement view."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}#placement")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}#placement")
         page.wait_for_timeout(500)
         expect(page.locator("#view-placement")).to_have_class(re.compile(r"\bactive\b"))
 
     def test_placement_tab_switching(self, page: Page, api_server, mock_all_empty):
         """Clicking tabs should switch panels."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         page.click("#placement-tab-fit")
@@ -136,35 +135,35 @@ class TestPlacementComparison:
 
     def test_placement_scenario_name_input(self, page: Page, api_server, mock_all_empty):
         """Placement scenario name input should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placementScenarioName")).to_be_visible()
 
     def test_placement_save_button(self, page: Page, api_server, mock_all_empty):
         """Save draft snapshot button should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#savePlacementScenario")).to_be_visible()
 
     def test_placement_refresh_button(self, page: Page, api_server, mock_all_empty):
         """Refresh saved drafts button should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#refreshPlacementScenarios")).to_be_visible()
 
     def test_placement_scenario_status(self, page: Page, api_server, mock_all_empty):
         """Placement scenario status should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placementScenarioStatus")).to_be_visible()
 
     def test_placement_scenario_list(self, page: Page, api_server, mock_all_empty):
         """Placement scenario list should be present."""
-        page.goto(f"{BASE_URL}/?tenant_id={TENANT_ID}")
+        page.goto(f"{base_url()}/?tenant_id={TENANT_ID}")
         page.wait_for_timeout(500)
         navigate_to(page, "placement")
         expect(page.locator("#placementScenarioList")).to_be_visible()
