@@ -387,7 +387,7 @@ jobs:
           fi
 
       - name: Upload Checkov SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('checkov-report.sarif') != ''
         with:
           sarif_file: checkov-report.sarif
@@ -467,7 +467,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IAC_IMAGE_NAME }}:${{ github.sha }} || true
 
       - name: Upload Trivy SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('trivy-fs-report.sarif') != ''
         with:
           sarif_file: trivy-fs-report.sarif
