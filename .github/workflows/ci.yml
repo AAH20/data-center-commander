@@ -141,15 +141,23 @@ jobs:
       # the server emits `SET transaction_timeout = 0`, which PostgreSQL only gained in 17, and
       # restoring that into the postgres:16 service fails with
       #   pg_restore: error: unrecognized configuration parameter "transaction_timeout"
-      # A backup that cannot be restored is not a backup, so match the client to the server
-      # rather than letting the runner's newer binaries decide.
+      # A backup that cannot be restored is not a backup, so match the client to the server.
+      #
+      # postgresql-client-16 is not in the runner's default repositories -- a first attempt at
+      # `apt-get install postgresql-client-16` failed with "Unable to locate package" -- so it
+      # comes from the PGDG archive, which is the official source for non-default majors.
       - name: Match the PostgreSQL client to the test server
         run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-16
           echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
-          PATH="/usr/lib/postgresql/16/bin:$PATH" pg_dump --version
-          PATH="/usr/lib/postgresql/16/bin:$PATH" pg_restore --version
+          /usr/lib/postgresql/16/bin/pg_dump --version
+          /usr/lib/postgresql/16/bin/pg_restore --version
 
       # This gate is BLOCKING. It used to be continue-on-error: true, justified by
       # "636 pre-existing failures, 334 of them terraform tests targeting
